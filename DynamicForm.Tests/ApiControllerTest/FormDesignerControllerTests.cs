@@ -17,10 +17,9 @@ namespace DynamicForm.Tests.ApiControllerTest;
 public class FormDesignerControllerTests
 {
     private readonly Mock<IFormDesignerService> _designerMock = new();
-    private readonly Mock<IFormListService>     _listMock     = new();
 
     private FormDesignerController CreateController()
-        => new FormDesignerController(_designerMock.Object, _listMock.Object);
+        => new FormDesignerController(_designerMock.Object);
 
     [Fact]
     public void GetDesigner_ReturnsViewModel()
