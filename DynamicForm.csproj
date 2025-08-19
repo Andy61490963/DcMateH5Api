@@ -1,0 +1,43 @@
+<Project Sdk="Microsoft.NET.Sdk.Web">
+
+    <PropertyGroup>
+        <TargetFramework>net10.0</TargetFramework>
+        <Nullable>enable</Nullable>
+        <ImplicitUsings>enable</ImplicitUsings>
+		
+		<!-- 產生 XML 註解檔 -->
+	    <GenerateDocumentationFile>true</GenerateDocumentationFile>
+	    <NoWarn>$(NoWarn);1591</NoWarn> <!-- 避免每個未標註 <summary> 都報警告 -->
+		
+		<!-- <generateassemblyinfo>false</generateassemblyinfo> -->
+		<!-- 組件資訊交給 SDK 產生 -->
+	    <Company>DynamicForm</Company>
+	    <Product>DynamicForm</Product>
+	    <Version>1.0.0</Version>
+	    <AssemblyTitle>DynamicForm</AssemblyTitle>
+	    <Authors>WeYu</Authors>
+	    <Description>DynamicForm Web Application</Description>
+    </PropertyGroup>
+
+    <ItemGroup>
+      <PackageReference Include="Dapper" Version="2.1.66" />
+      <PackageReference Include="Microsoft.Data.SqlClient" Version="6.1.0-preview2.25178.5" />
+      <PackageReference Include="Microsoft.SqlServer.TransactSql.ScriptDom" Version="170.64.0" />
+      <PackageReference Include="Swashbuckle.AspNetCore" Version="9.0.3" />
+      <PackageReference Include="Microsoft.AspNetCore.Authentication.JwtBearer" Version="8.0.7" />
+    </ItemGroup>
+
+  <ItemGroup>
+      <!-- Exclude test project files from main project compilation -->
+      <Compile Remove="DynamicForm.Tests\**" />
+      <EmbeddedResource Remove="DynamicForm.Tests\**" />
+      <None Remove="DynamicForm.Tests\**" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <Reference Include="Microsoft.AspNetCore.Authentication.JwtBearer">
+      <HintPath>bin\Debug\net10.0\Microsoft.AspNetCore.Authentication.JwtBearer.dll</HintPath>
+    </Reference>
+  </ItemGroup>
+
+</Project>

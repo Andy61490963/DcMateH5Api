@@ -1,0 +1,28 @@
+# Build outputs
+bin/
+obj/
+*.dll
+*.exe
+
+# Rider / JetBrains
+.idea/
+*.DotSettings.user
+
+# VS Code / VS
+.vscode/
+*.suo
+*.user
+
+# OS / 系統
+.DS_Store
+Thumbs.db
+
+# Log / dumps
+*.log
+*.dmp
+
+# Others
+AppData/
+*.pdb
+/docker-compose.yml
+/Dockerfile
