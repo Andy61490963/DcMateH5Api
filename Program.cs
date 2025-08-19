@@ -21,6 +21,7 @@ using DcMateH5Api.Areas.Security.Models;
 using DcMateH5Api.Areas.Security.Services;
 using DcMateH5Api.DbExtensions;
 using DcMateH5Api.Helper;
+using DcMateH5Api.Logging;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -113,6 +114,7 @@ builder.Services.AddSingleton<ISqlConnectionFactory, SqlConnectionFactory>();
 // DbExecutor 負責執行查詢/交易，需要維持在單一 HTTP Request 的範圍內，
 // 保證同一個 Request 共用同一個 Executor，但不會跨 Request 共用 → 使用 Scoped。
 builder.Services.AddScoped<IDbExecutor, DbExecutor>();
+builder.Services.AddScoped<ISqlLogService, SqlLogService>();
 
 // 用完立即 Dispose() 歸還池子，其他請求可馬上用，吞吐量高
 builder.Services.AddScoped<SqlConnection, SqlConnection>(_ =>
