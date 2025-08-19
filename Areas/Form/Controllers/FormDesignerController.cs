@@ -16,18 +16,45 @@ namespace DynamicForm.Areas.Form.Controllers;
 public class FormDesignerController : ControllerBase
 {
     private readonly IFormDesignerService _formDesignerService;
-    private readonly IFormListService _formListService;
 
     public FormDesignerController(
-        IFormDesignerService formDesignerService,
-        IFormListService formListService)
+        IFormDesignerService formDesignerService)
     {
         _formDesignerService = formDesignerService;
-        _formListService = formListService;
     }
 
-    // ────────── Form Designer 入口 ──────────
+    // ────────── Form Designer 列表 ──────────
+    /// <summary>
+    /// 取得所有表單主檔清單，可透過關鍵字進行模糊搜尋。
+    /// </summary>
+    /// <param name="q">可選的搜尋關鍵字，將比對 FORM_NAME</param>
+    /// <returns>符合條件的表單主檔列表</returns>
+    [HttpGet]
+    public IActionResult GetFormMasters(string? q)
+    {
+        var list = _formDesignerService.GetFormMasters();
+        if (!string.IsNullOrWhiteSpace(q))
+        {
+            list = list
+                .Where(x => x.FORM_NAME.Contains(q, StringComparison.OrdinalIgnoreCase))
+                .ToList();
+        }
+        return Ok(list);
+    }
 
+    /// <summary>
+    /// 刪除指定的表單主檔資料。
+    /// </summary>
+    /// <param name="id">FORM_FIELD_Master 的唯一識別編號</param>
+    /// <returns>NoContent 回應</returns>
+    [HttpDelete("{id}")]
+    public IActionResult Delete(Guid id)
+    {
+        _formDesignerService.DeleteFormMaster(id);
+        return NoContent();
+    }
+    
+    // ────────── Form Designer 入口 ──────────
     /// <summary>
     /// 取得指定表單的設計器主畫面資料
     /// </summary>

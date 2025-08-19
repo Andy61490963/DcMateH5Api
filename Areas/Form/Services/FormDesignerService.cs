@@ -30,6 +30,41 @@ public class FormDesignerService : IFormDesignerService
     private readonly List<string> _requiredColumns;
     
     #region Public API
+    
+    /// <summary>
+    /// 取得 列表
+    /// </summary>
+    /// <returns></returns>
+    public List<FORM_FIELD_Master> GetFormMasters()
+    {
+        var statusList = new[] { TableStatusType.Active, TableStatusType.Disabled };
+        return _con.Query<FORM_FIELD_Master>(Sql.FormMasterSelect, new{ STATUS = statusList }).ToList();
+    }
+
+    /// <summary>
+    /// 取得 單一
+    /// </summary>
+    /// <param name="id"></param>
+    /// <returns></returns>
+    public FORM_FIELD_Master? GetFormMaster(Guid? id)
+    {
+        return _con.QueryFirstOrDefault<FORM_FIELD_Master>(Sql.FormMasterById, new { id });
+    }
+
+    /// <summary>
+    /// 刪除 單一
+    /// </summary>
+    /// <param name="id"></param>
+    public void DeleteFormMaster(Guid id)
+    {
+        _con.Execute(Sql.DeleteFormMaster, new { id });
+    }
+    
+    /// <summary>
+    /// 取得 所有資料 給前端長樹
+    /// </summary>
+    /// <param name="id"></param>
+    /// <returns></returns>
     public FormDesignerIndexViewModel GetFormDesignerIndexViewModel(Guid? id)
     {
         var master = GetFormMaster(id) ?? new();
@@ -635,24 +670,7 @@ public class FormDesignerService : IFormDesignerService
             new { baseTableName, viewTableName, excludeId });
         return count > 0;
     }
-
-    public List<FORM_FIELD_Master> GetFormMasters()
-    {
-        var statusList = new[] { TableStatusType.Active, TableStatusType.Disabled };
-        return _con.Query<FORM_FIELD_Master>(Sql.FormMasterSelect, new{ STATUS = statusList }).ToList();
-    }
-
-    public FORM_FIELD_Master? GetFormMaster(Guid? id)
-    {
-        return _con.QueryFirstOrDefault<FORM_FIELD_Master>(Sql.FormMasterById, new { id });
-    }
-
-    public void DeleteFormMaster(Guid id)
-    {
-        _con.Execute(Sql.DeleteFormMaster, new { id });
-    }
-
-
+    
     #endregion
 
     #region Private Helpers

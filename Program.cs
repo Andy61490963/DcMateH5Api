@@ -128,7 +128,6 @@ builder.Services.AddScoped<IAuthorizationHandler, PermissionAuthorizationHandler
 
 // Services
 builder.Services.AddScoped<IEnumListService, EnumListService>();
-builder.Services.AddScoped<IFormListService, FormListService>();
 builder.Services.AddScoped<IFormDesignerService, FormDesignerService>();
 builder.Services.AddScoped<IAuthenticationService, AuthenticationService>();
 builder.Services.AddScoped<ITokenGenerator, JwtTokenGenerator>();

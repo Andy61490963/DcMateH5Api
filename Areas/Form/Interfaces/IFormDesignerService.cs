@@ -6,6 +6,9 @@ namespace DynamicForm.Areas.Form.Interfaces;
 
 public interface IFormDesignerService
 {
+    List<FORM_FIELD_Master> GetFormMasters();
+    void DeleteFormMaster(Guid id);
+    
     FormDesignerIndexViewModel GetFormDesignerIndexViewModel(Guid? id);
     
     /// <summary>

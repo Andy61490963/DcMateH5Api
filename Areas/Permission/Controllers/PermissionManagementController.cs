@@ -109,7 +109,7 @@ namespace DynamicForm.Areas.Permission.Controllers
 
         #region 權限 CRUD
 
-        /// <summary>建立新的權限碼。</summary>
+        /// <summary>建立新的權限碼(數值必須為列舉值)。</summary>
         [HttpPost(Routes.Permissions)]
         [ProducesResponseType(typeof(PermissionModel), StatusCodes.Status201Created)]
         [ProducesResponseType(StatusCodes.Status400BadRequest)]
