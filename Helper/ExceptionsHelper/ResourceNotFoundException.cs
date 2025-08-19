@@ -1,4 +1,4 @@
-﻿namespace DynamicForm.Helper.ExceptionsHelper;
+﻿namespace DcMateH5Api.Helper.ExceptionsHelper;
 
 public sealed class DuplicateResourceException : Exception
 {

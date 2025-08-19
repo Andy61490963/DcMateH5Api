@@ -1,6 +1,6 @@
 using System;
 
-namespace DynamicForm.Areas.Security.Interfaces
+namespace DcMateH5Api.Areas.Security.Interfaces
 {
     /// <summary>
     /// 提供密碼雜湊與驗證功能的介面。

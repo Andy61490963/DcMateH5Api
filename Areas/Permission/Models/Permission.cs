@@ -1,6 +1,6 @@
 using ClassLibrary;
 
-namespace DynamicForm.Areas.Permission.Models
+namespace DcMateH5Api.Areas.Permission.Models
 {
     /// <summary>
     /// 功能權限。

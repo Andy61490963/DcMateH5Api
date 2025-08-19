@@ -1,11 +1,11 @@
 using System.IdentityModel.Tokens.Jwt;
-using DynamicForm.Areas.Permission.Interfaces;
-using DynamicForm.Areas.Permission.ViewModels.Menu;
-using DynamicForm.Helper;
+using DcMateH5Api.Areas.Permission.Interfaces;
+using DcMateH5Api.Areas.Permission.ViewModels.Menu;
+using DcMateH5Api.Helper;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 
-namespace DynamicForm.Areas.Security.Controllers
+namespace DcMateH5Api.Areas.Security.Controllers
 {
     /// <summary>
     /// 取得使用者可見的側邊選單。

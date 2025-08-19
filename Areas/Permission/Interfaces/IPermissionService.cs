@@ -1,8 +1,8 @@
 using ClassLibrary;
-using DynamicForm.Areas.Permission.Models;
-using DynamicForm.Areas.Permission.ViewModels.Menu;
+using DcMateH5Api.Areas.Permission.Models;
+using DcMateH5Api.Areas.Permission.ViewModels.Menu;
 
-namespace DynamicForm.Areas.Permission.Interfaces
+namespace DcMateH5Api.Areas.Permission.Interfaces
 {
     /// <summary>
     /// 提供群組與權限相關操作。

@@ -1,7 +1,7 @@
 using System.Threading.Tasks;
-using DynamicForm.Areas.Security.ViewModels;
+using DcMateH5Api.Areas.Security.ViewModels;
 
-namespace DynamicForm.Areas.Security.Interfaces
+namespace DcMateH5Api.Areas.Security.Interfaces
 {
     /// <summary>
     /// 提供使用者驗證功能的服務介面。

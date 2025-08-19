@@ -1,12 +1,12 @@
 using ClassLibrary;
 using Dapper;
-using DynamicForm.Areas.Permission.Interfaces;
-using DynamicForm.Areas.Permission.Models;
-using DynamicForm.Areas.Permission.ViewModels.Menu;
+using DcMateH5Api.Areas.Permission.Interfaces;
+using DcMateH5Api.Areas.Permission.Models;
+using DcMateH5Api.Areas.Permission.ViewModels.Menu;
 using Microsoft.Data.SqlClient;
 using Microsoft.Extensions.Caching.Memory;
 
-namespace DynamicForm.Areas.Permission.Services
+namespace DcMateH5Api.Areas.Permission.Services
 {
     /// <summary>
     /// 權限服務的實作類別，負責透過 Dapper 與資料庫交互，管理群組、權限、功能、選單及其關聯設定。

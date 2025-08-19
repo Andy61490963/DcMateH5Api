@@ -1,10 +1,10 @@
 using ClassLibrary;
-using DynamicForm.Authorization;
-using DynamicForm.Helper;
+using DcMateH5Api.Authorization;
+using DcMateH5Api.Helper;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 
-namespace DynamicForm.Areas.Security.Controllers
+namespace DcMateH5Api.Areas.Security.Controllers
 {
     /// <summary>
     /// 需要 JWT 授權才能存取的範例端點。

@@ -1,6 +1,6 @@
 using ClassLibrary;
 
-namespace DynamicForm.Areas.Form.Models;
+namespace DcMateH5Api.Areas.Form.Models;
 
 /// <summary>
 /// 描述查詢條件的資料模型。

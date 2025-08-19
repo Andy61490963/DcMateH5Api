@@ -1,4 +1,4 @@
-﻿namespace DynamicForm.Helper;
+﻿namespace DcMateH5Api.Helper;
 
 public class GeneratePkValueHelper
 {

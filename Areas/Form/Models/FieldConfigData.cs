@@ -1,4 +1,4 @@
-namespace DynamicForm.Areas.Form.Models;
+namespace DcMateH5Api.Areas.Form.Models;
 
 public sealed record FieldConfigData(
     List<FormFieldConfigDto> FieldConfigs,

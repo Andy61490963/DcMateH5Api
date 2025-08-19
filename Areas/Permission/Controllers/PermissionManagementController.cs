@@ -1,12 +1,12 @@
 using ClassLibrary;
-using DynamicForm.Areas.Permission.Interfaces;
-using DynamicForm.Areas.Permission.Models;
-using DynamicForm.Areas.Permission.ViewModels.PermissionManagement;
+using DcMateH5Api.Areas.Permission.Interfaces;
+using DcMateH5Api.Areas.Permission.Models;
+using DcMateH5Api.Areas.Permission.ViewModels.PermissionManagement;
 using Microsoft.AspNetCore.Mvc;
 using System;
-using DynamicForm.Helper;
+using DcMateH5Api.Helper;
 
-namespace DynamicForm.Areas.Permission.Controllers
+namespace DcMateH5Api.Areas.Permission.Controllers
 {
     /// <summary>
     /// 提供群組、權限、功能、選單以及其關聯設定的 API 介面。

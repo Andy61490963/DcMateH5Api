@@ -2,7 +2,7 @@ using System;
 using ClassLibrary;
 using Microsoft.AspNetCore.Authorization;
 
-namespace DynamicForm.Authorization
+namespace DcMateH5Api.Authorization
 {
     /// <summary>
     /// 指定存取此端點所需的權限代碼。

@@ -2,7 +2,7 @@
 using Dapper;
 using Microsoft.Data.SqlClient;
 
-namespace DynamicForm.DbExtensions;
+namespace DcMateH5Api.DbExtensions;
 
 public sealed class DbExecutor : IDbExecutor
 {

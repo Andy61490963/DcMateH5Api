@@ -1,7 +1,7 @@
 using System;
 using System.ComponentModel.DataAnnotations;
 
-namespace DynamicForm.Areas.Permission.ViewModels.PermissionManagement
+namespace DcMateH5Api.Areas.Permission.ViewModels.PermissionManagement
 {
     /// <summary>
     /// 將使用者指派至群組的請求資料。

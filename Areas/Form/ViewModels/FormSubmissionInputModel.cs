@@ -1,7 +1,7 @@
 using System;
 using System.Collections.Generic;
 
-namespace DynamicForm.Areas.Form.ViewModels;
+namespace DcMateH5Api.Areas.Form.ViewModels;
 
 /// <summary>
 /// ViewModel for submitting form data from client.

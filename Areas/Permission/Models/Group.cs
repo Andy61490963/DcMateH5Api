@@ -1,6 +1,6 @@
 using System;
 
-namespace DynamicForm.Areas.Permission.Models
+namespace DcMateH5Api.Areas.Permission.Models
 {
     /// <summary>
     /// 群組資訊。

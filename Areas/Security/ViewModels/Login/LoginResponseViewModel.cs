@@ -1,6 +1,6 @@
-using DynamicForm.Areas.Security.Models;
+using DcMateH5Api.Areas.Security.Models;
 
-namespace DynamicForm.Areas.Security.ViewModels
+namespace DcMateH5Api.Areas.Security.ViewModels
 {
     /// <summary>
     /// 登入結果回傳給前端的內容。

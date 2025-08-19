@@ -1,7 +1,7 @@
 ﻿using Microsoft.Data.SqlClient;
 using Microsoft.Extensions.Options;
 
-namespace DynamicForm.DbExtensions;
+namespace DcMateH5Api.DbExtensions;
 
 public interface ISqlConnectionFactory
 {

@@ -1,6 +1,6 @@
 ﻿using System.Security.Cryptography;
 
-namespace DynamicForm.Helper;
+namespace DcMateH5Api.Helper;
 
 /// <summary>
 /// 用於產生高品質亂數與唯一雪花 ID 的輔助工具類別

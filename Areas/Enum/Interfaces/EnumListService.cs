@@ -1,6 +1,6 @@
 ﻿using ClassLibrary;
 
-namespace DynamicForm.Areas.Enum.Interfaces;
+namespace DcMateH5Api.Areas.Enum.Interfaces;
 
 public interface IEnumListService
 {

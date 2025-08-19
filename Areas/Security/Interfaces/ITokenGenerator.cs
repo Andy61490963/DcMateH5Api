@@ -1,6 +1,6 @@
-using DynamicForm.Areas.Security.Models;
+using DcMateH5Api.Areas.Security.Models;
 
-namespace DynamicForm.Areas.Security.Interfaces
+namespace DcMateH5Api.Areas.Security.Interfaces
 {
     /// <summary>
     /// 產生 JWT Token 的介面。

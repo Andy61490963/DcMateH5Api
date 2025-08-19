@@ -1,7 +1,7 @@
 using System.Collections.Generic;
 using ClassLibrary;
 
-namespace DynamicForm.Areas.Form.Models;
+namespace DcMateH5Api.Areas.Form.Models;
 
 public class FORM_FIELD_Master
 {

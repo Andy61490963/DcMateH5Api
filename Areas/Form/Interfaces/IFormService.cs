@@ -1,8 +1,8 @@
-﻿using DynamicForm.Areas.Form.Models;
-using DynamicForm.Areas.Form.ViewModels;
+﻿using DcMateH5Api.Areas.Form.Models;
+using DcMateH5Api.Areas.Form.ViewModels;
 using System.Collections.Generic;
 
-namespace DynamicForm.Areas.Form.Interfaces;
+namespace DcMateH5Api.Areas.Form.Interfaces;
 
 public interface IFormService
 {
