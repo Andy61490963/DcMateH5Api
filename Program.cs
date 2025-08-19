@@ -21,6 +21,7 @@ using DcMateH5Api.Areas.Security.Models;
 using DcMateH5Api.Areas.Security.Services;
 using DcMateH5Api.DbExtensions;
 using DcMateH5Api.Helper;
+using DcMateH5Api.Logging;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -140,6 +141,8 @@ builder.Services.AddScoped<IFormDataService, FormDataService>();
 builder.Services.AddScoped<IFormService, FormService>();
 builder.Services.AddScoped<IPermissionService, PermissionService>();
 builder.Services.AddScoped<ITransactionService, TransactionService>();
+builder.Services.AddScoped<ISqlLogService, SqlLogService>();
+builder.Services.AddScoped<ICrudService, CrudService>();
 
 // ---- CORS ----
 builder.Services.AddCors(options =>

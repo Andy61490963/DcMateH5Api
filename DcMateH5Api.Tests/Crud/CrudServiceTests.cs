@@ -3,6 +3,7 @@ using Dapper;
 using Moq;
 using Microsoft.Data.SqlClient;
 using Xunit;
+using DcMateH5Api.Logging;
 
 public class CrudServiceTests
 {
@@ -16,10 +17,15 @@ public class CrudServiceTests
         mockDb.Setup(d => d.ExecuteAsync(expected.Sql, expected.Params, null, CommandType.Text, It.IsAny<CancellationToken>()))
               .ReturnsAsync(1)
               .Verifiable();
-        var svc = new CrudService(builder, mockDb.Object);
+        var mockLog = new Mock<ISqlLogService>();
+        mockLog.Setup(l => l.LogAsync(It.IsAny<SqlLogEntry>(), It.IsAny<CancellationToken>()))
+                .Returns(Task.CompletedTask)
+                .Verifiable();
+        var svc = new CrudService(builder, mockDb.Object, mockLog.Object);
         var result = await svc.InsertAsync("Users", dto, CancellationToken.None);
         Assert.Equal(1, result);
         mockDb.Verify();
+        mockLog.Verify();
     }
 
     [Fact]
@@ -33,12 +39,17 @@ public class CrudServiceTests
         mockDb.Setup(d => d.ExecuteAsync(It.IsAny<SqlConnection>(), It.IsAny<SqlTransaction?>(), expected.Sql, It.Is<object>(p => p is DynamicParameters), null, CommandType.Text, It.IsAny<CancellationToken>()))
               .ReturnsAsync(1)
               .Verifiable();
-        var svc = new CrudService(builder, mockDb.Object);
+        var mockLog = new Mock<ISqlLogService>();
+        mockLog.Setup(l => l.LogAsync(It.IsAny<SqlLogEntry>(), It.IsAny<CancellationToken>()))
+                .Returns(Task.CompletedTask)
+                .Verifiable();
+        var svc = new CrudService(builder, mockDb.Object, mockLog.Object);
         using var conn = new SqlConnection();
         SqlTransaction? tx = null;
         var result = await svc.UpdateAsync(conn, tx, "Users", setDto, whereDto, CancellationToken.None);
         Assert.Equal(1, result);
         mockDb.Verify();
+        mockLog.Verify();
     }
 
     [Fact]
@@ -51,9 +62,14 @@ public class CrudServiceTests
         mockDb.Setup(d => d.ExecuteScalarAsync<int?>(expected.Sql, expected.Params, null, CommandType.Text, It.IsAny<CancellationToken>()))
               .ReturnsAsync(1)
               .Verifiable();
-        var svc = new CrudService(builder, mockDb.Object);
+        var mockLog = new Mock<ISqlLogService>();
+        mockLog.Setup(l => l.LogAsync(It.IsAny<SqlLogEntry>(), It.IsAny<CancellationToken>()))
+                .Returns(Task.CompletedTask)
+                .Verifiable();
+        var svc = new CrudService(builder, mockDb.Object, mockLog.Object);
         var exists = await svc.ExistsAsync("Users", whereDto, CancellationToken.None);
         Assert.True(exists);
         mockDb.Verify();
+        mockLog.Verify();
     }
 }
