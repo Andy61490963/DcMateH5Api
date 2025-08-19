@@ -11,12 +11,12 @@
 		
 		<!-- <generateassemblyinfo>false</generateassemblyinfo> -->
 		<!-- 組件資訊交給 SDK 產生 -->
-	    <Company>DynamicForm</Company>
-	    <Product>DynamicForm</Product>
+	    <Company>DcMateH5Api</Company>
+	    <Product>DcMateH5Api</Product>
 	    <Version>1.0.0</Version>
-	    <AssemblyTitle>DynamicForm</AssemblyTitle>
+	    <AssemblyTitle>DcMateH5Api</AssemblyTitle>
 	    <Authors>WeYu</Authors>
-	    <Description>DynamicForm Web Application</Description>
+	    <Description>DcMateH5Api Web Application</Description>
     </PropertyGroup>
 
     <ItemGroup>
@@ -29,9 +29,9 @@
 
   <ItemGroup>
       <!-- Exclude test project files from main project compilation -->
-      <Compile Remove="DynamicForm.Tests\**" />
-      <EmbeddedResource Remove="DynamicForm.Tests\**" />
-      <None Remove="DynamicForm.Tests\**" />
+      <Compile Remove="DcMateH5Api.Tests\**" />
+      <EmbeddedResource Remove="DcMateH5Api.Tests\**" />
+      <None Remove="DcMateH5Api.Tests\**" />
   </ItemGroup>
 
   <ItemGroup>

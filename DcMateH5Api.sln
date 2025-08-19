@@ -1,8 +1,8 @@
 ﻿
 Microsoft Visual Studio Solution File, Format Version 12.00
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "DynamicForm", "DynamicForm.csproj", "{7711266C-0080-4A91-B47E-DA28FEDAB1B2}"
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "DcMateH5Api", "DcMateH5Api.csproj", "{7711266C-0080-4A91-B47E-DA28FEDAB1B2}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "DynamicForm.Tests", "DynamicForm.Tests\DynamicForm.Tests.csproj", "{F5E9FC86-1414-41E8-A1C6-28A10BE5F139}"
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "DcMateH5Api.Tests", "DcMateH5Api.Tests\DcMateH5Api.Tests.csproj", "{F5E9FC86-1414-41E8-A1C6-28A10BE5F139}"
 EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
