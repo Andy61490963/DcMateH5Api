@@ -1,7 +1,7 @@
-﻿using DynamicForm.Areas.Form.Models;
+﻿using DcMateH5Api.Areas.Form.Models;
 using ClassLibrary;
 
-namespace DynamicForm.Areas.Form.Interfaces.FormLogic;
+namespace DcMateH5Api.Areas.Form.Interfaces.FormLogic;
 
 public interface IFormFieldConfigService
 {

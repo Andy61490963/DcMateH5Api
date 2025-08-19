@@ -1,7 +1,7 @@
-using DynamicForm.Helper;
+using DcMateH5Api.Helper;
 using Xunit;
 
-namespace DynamicForm.Tests.HelperTest;
+namespace DcMateH5Api.Tests.HelperTest;
 
 public class RandomHelperTests
 {

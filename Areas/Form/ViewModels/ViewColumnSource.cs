@@ -1,4 +1,4 @@
-namespace DynamicForm.Areas.Form.ViewModels;
+namespace DcMateH5Api.Areas.Form.ViewModels;
 
 /// <summary>
 /// 描述 View 欄位的來源表資訊

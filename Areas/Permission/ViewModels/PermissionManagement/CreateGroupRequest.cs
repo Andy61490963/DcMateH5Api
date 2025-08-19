@@ -1,6 +1,6 @@
 using System.ComponentModel.DataAnnotations;
 
-namespace DynamicForm.Areas.Permission.ViewModels.PermissionManagement
+namespace DcMateH5Api.Areas.Permission.ViewModels.PermissionManagement
 {
     /// <summary>
     /// 建立群組的請求資料。

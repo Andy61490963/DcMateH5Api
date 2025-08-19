@@ -1,11 +1,11 @@
 using System.Threading.Tasks;
 using Dapper;
-using DynamicForm.Areas.Security.Models;
-using DynamicForm.Areas.Security.Interfaces;
-using DynamicForm.Areas.Security.ViewModels;
+using DcMateH5Api.Areas.Security.Models;
+using DcMateH5Api.Areas.Security.Interfaces;
+using DcMateH5Api.Areas.Security.ViewModels;
 using Microsoft.Data.SqlClient;
 
-namespace DynamicForm.Areas.Security.Services
+namespace DcMateH5Api.Areas.Security.Services
 {
     /// <summary>
     /// 使用者驗證服務。

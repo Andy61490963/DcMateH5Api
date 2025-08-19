@@ -3,7 +3,7 @@ using System.Threading.Tasks;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.Extensions.Options;
 
-namespace DynamicForm.Authorization
+namespace DcMateH5Api.Authorization
 {
     /// <summary>
     /// 動態產生基於權限的政策，讓 [RequirePermission] 可使用任意權限字串。

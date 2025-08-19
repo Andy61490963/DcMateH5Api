@@ -1,4 +1,4 @@
-namespace DynamicForm.Models;
+namespace DcMateH5Api.Models;
 
 public class ErrorViewModel
 {

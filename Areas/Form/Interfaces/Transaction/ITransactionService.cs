@@ -1,6 +1,6 @@
 ﻿using Microsoft.Data.SqlClient;
 
-namespace DynamicForm.Areas.Form.Interfaces.Transaction;
+namespace DcMateH5Api.Areas.Form.Interfaces.Transaction;
 
 public interface ITransactionService
 {

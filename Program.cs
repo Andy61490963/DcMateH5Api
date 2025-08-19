@@ -5,22 +5,22 @@ using Microsoft.AspNetCore.Authorization;
 using Microsoft.Data.SqlClient;
 using Microsoft.IdentityModel.Tokens;
 using Microsoft.OpenApi.Models;
-using DynamicForm.Authorization;
-using DynamicForm.Areas.Enum.Interfaces;
-using DynamicForm.Areas.Enum.Services;
-using DynamicForm.Areas.Form.Interfaces;
-using DynamicForm.Areas.Form.Interfaces.FormLogic;
-using DynamicForm.Areas.Form.Interfaces.Transaction;
-using DynamicForm.Areas.Form.Services;
-using DynamicForm.Areas.Form.Services.FormLogic;
-using DynamicForm.Areas.Form.Services.Transaction;
-using DynamicForm.Areas.Permission.Interfaces;
-using DynamicForm.Areas.Permission.Services;
-using DynamicForm.Areas.Security.Interfaces;
-using DynamicForm.Areas.Security.Models;
-using DynamicForm.Areas.Security.Services;
-using DynamicForm.DbExtensions;
-using DynamicForm.Helper;
+using DcMateH5Api.Authorization;
+using DcMateH5Api.Areas.Enum.Interfaces;
+using DcMateH5Api.Areas.Enum.Services;
+using DcMateH5Api.Areas.Form.Interfaces;
+using DcMateH5Api.Areas.Form.Interfaces.FormLogic;
+using DcMateH5Api.Areas.Form.Interfaces.Transaction;
+using DcMateH5Api.Areas.Form.Services;
+using DcMateH5Api.Areas.Form.Services.FormLogic;
+using DcMateH5Api.Areas.Form.Services.Transaction;
+using DcMateH5Api.Areas.Permission.Interfaces;
+using DcMateH5Api.Areas.Permission.Services;
+using DcMateH5Api.Areas.Security.Interfaces;
+using DcMateH5Api.Areas.Security.Models;
+using DcMateH5Api.Areas.Security.Services;
+using DcMateH5Api.DbExtensions;
+using DcMateH5Api.Helper;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -57,7 +57,7 @@ builder.Services.AddSwaggerGen(options =>
         {
             Title = $"{SwaggerGroups.DisplayNames[group]} API",
             Version = "v1",
-            Description = $"DynamicForm - {group} endpoints"
+            Description = $"DcMateH5Api - {group} endpoints"
         });
     }
 

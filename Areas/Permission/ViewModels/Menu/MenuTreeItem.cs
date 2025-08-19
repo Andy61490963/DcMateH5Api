@@ -1,7 +1,7 @@
 using System;
 using System.Collections.Generic;
 
-namespace DynamicForm.Areas.Permission.ViewModels.Menu
+namespace DcMateH5Api.Areas.Permission.ViewModels.Menu
 {
     /// <summary>
     /// 表示側邊選單的節點，包含子節點資訊。

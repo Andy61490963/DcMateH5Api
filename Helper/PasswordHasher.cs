@@ -1,8 +1,8 @@
 using System;
 using System.Security.Cryptography;
-using DynamicForm.Areas.Security.Interfaces;
+using DcMateH5Api.Areas.Security.Interfaces;
 
-namespace DynamicForm.Helper
+namespace DcMateH5Api.Helper
 {
     /// <summary>
     /// 使用 PBKDF2 產生與驗證密碼雜湊。

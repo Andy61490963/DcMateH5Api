@@ -1,6 +1,6 @@
 using System;
 
-namespace DynamicForm.Areas.Permission.ViewModels.PermissionManagement
+namespace DcMateH5Api.Areas.Permission.ViewModels.PermissionManagement
 {
     /// <summary>
     /// 指派功能權限給群組的請求。

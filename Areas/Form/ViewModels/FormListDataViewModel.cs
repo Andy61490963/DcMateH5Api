@@ -1,4 +1,4 @@
-namespace DynamicForm.Areas.Form.ViewModels;
+namespace DcMateH5Api.Areas.Form.ViewModels;
 
 /// <summary>
 /// 資料列表用 ViewModel

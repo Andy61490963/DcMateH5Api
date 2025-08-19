@@ -1,6 +1,6 @@
 using ClassLibrary;
 
-namespace DynamicForm.Helper;
+namespace DcMateH5Api.Helper;
 
 /// <summary>
 /// 提供欄位對應的控制元件型別、預設寬度與邏輯的輔助方法。

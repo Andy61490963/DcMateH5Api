@@ -1,9 +1,9 @@
 using System.Text.Json.Serialization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Mvc.ApiExplorer;
-using DynamicForm.Helper;
+using DcMateH5Api.Helper;
 
-namespace DynamicForm.Areas.ApiStats.Controllers
+namespace DcMateH5Api.Areas.ApiStats.Controllers
 {
     /// <summary>
     /// API 統計與目錄（JSON 版）

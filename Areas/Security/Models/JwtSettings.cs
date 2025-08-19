@@ -1,4 +1,4 @@
-namespace DynamicForm.Areas.Security.Models
+namespace DcMateH5Api.Areas.Security.Models
 {
     /// <summary>
     /// JWT 設定值，對應 appsettings.json 中的 JwtSettings 區段。

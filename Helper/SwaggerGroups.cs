@@ -1,4 +1,4 @@
-namespace DynamicForm.Helper;
+namespace DcMateH5Api.Helper;
 
 /// <summary>
 /// Swagger 文件的分類常數，避免重複字串與易於維護。

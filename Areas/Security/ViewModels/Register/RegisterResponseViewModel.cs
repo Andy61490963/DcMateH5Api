@@ -1,4 +1,4 @@
-namespace DynamicForm.Areas.Security.ViewModels
+namespace DcMateH5Api.Areas.Security.ViewModels
 {
     /// <summary>
     /// 登入請求內容。

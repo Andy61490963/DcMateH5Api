@@ -1,6 +1,6 @@
 using System.Net;
 
-namespace DynamicForm.Helper;
+namespace DcMateH5Api.Helper;
 
 /// <summary>
 /// Represents an HTTP error with an associated status code.

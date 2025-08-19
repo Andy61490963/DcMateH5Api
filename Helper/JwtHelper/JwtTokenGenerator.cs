@@ -2,12 +2,12 @@ using System;
 using System.IdentityModel.Tokens.Jwt;
 using System.Security.Claims;
 using System.Text;
-using DynamicForm.Areas.Security.Models;
-using DynamicForm.Areas.Security.Interfaces;
+using DcMateH5Api.Areas.Security.Models;
+using DcMateH5Api.Areas.Security.Interfaces;
 using Microsoft.Extensions.Options;
 using Microsoft.IdentityModel.Tokens;
 
-namespace DynamicForm.Helper
+namespace DcMateH5Api.Helper
 {
     /// <summary>
     /// 使用設定檔產生 JWT Token。

@@ -2,12 +2,12 @@ using System;
 using System.IdentityModel.Tokens.Jwt;
 using System.Security.Claims;
 using System.Threading.Tasks;
-using DynamicForm.Areas.Permission.Interfaces;
+using DcMateH5Api.Areas.Permission.Interfaces;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Routing;
 using Microsoft.AspNetCore.Http;
 
-namespace DynamicForm.Authorization
+namespace DcMateH5Api.Authorization
 {
     /// <summary>
     /// 依 Controller 範疇檢查某 action 的權限（例如 View/Edit/Delete）。

@@ -1,6 +1,6 @@
 using System;
 
-namespace DynamicForm.Areas.Security.Models
+namespace DcMateH5Api.Areas.Security.Models
 {
     /// <summary>
     /// JWT 相關結果資訊。

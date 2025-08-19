@@ -1,7 +1,7 @@
 using System.ComponentModel.DataAnnotations;
 using ClassLibrary;
 
-namespace DynamicForm.Areas.Permission.ViewModels.PermissionManagement
+namespace DcMateH5Api.Areas.Permission.ViewModels.PermissionManagement
 {
     /// <summary>
     /// 建立權限的請求資料。

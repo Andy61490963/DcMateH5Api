@@ -1,12 +1,12 @@
-using DynamicForm.Areas.Permission.Controllers;
-using DynamicForm.Areas.Permission.Interfaces;
-using DynamicForm.Areas.Permission.Models;
-using DynamicForm.Areas.Permission.ViewModels.PermissionManagement;
+using DcMateH5Api.Areas.Permission.Controllers;
+using DcMateH5Api.Areas.Permission.Interfaces;
+using DcMateH5Api.Areas.Permission.Models;
+using DcMateH5Api.Areas.Permission.ViewModels.PermissionManagement;
 using Microsoft.AspNetCore.Mvc;
 using Moq;
 using ClassLibrary;
 
-namespace DynamicForm.Tests.ApiControllerTest;
+namespace DcMateH5Api.Tests.ApiControllerTest;
 
 /// <summary>
 /// 測試 <see cref="PermissionManagementController"/> 在新增與更新時對於重複名稱的處理。
