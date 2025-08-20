@@ -3,9 +3,8 @@ using System.Diagnostics;
 using System.IdentityModel.Tokens.Jwt;
 using System.Security.Claims;
 using System.Text.Json;
-using Azure;
 using Dapper;
-using Microsoft.AspNetCore.Http;
+using DcMateH5Api.Areas.Log.Interfaces;
 using Microsoft.Data.SqlClient;
 using DcMateH5Api.Logging;
 
@@ -19,13 +18,13 @@ namespace DcMateH5Api.DbExtensions;
 public sealed class DbExecutor : IDbExecutor
 {
     private readonly ISqlConnectionFactory _factory;
-    private readonly ISqlLogService _logService;
+    private readonly ILogService _logService;
     private readonly IHttpContextAccessor _http;
     private const int DefaultTimeoutSeconds = 30; // 預設逾時秒數
     private const int MaxParameterLength = 4000; // 參數序列化上限 (避免 DB 過長塞爆)
     
     private const string CorrelationIdKey = "CorrelationId";
-    public DbExecutor(ISqlConnectionFactory factory, ISqlLogService logService, IHttpContextAccessor http)
+    public DbExecutor(ISqlConnectionFactory factory, ILogService logService, IHttpContextAccessor http)
     {
         _factory = factory;
         _logService = logService;

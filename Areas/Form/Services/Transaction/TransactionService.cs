@@ -6,6 +6,7 @@ namespace DcMateH5Api.Areas.Form.Services.Transaction;
 
 /// <summary>
 /// 實作資料庫交易邏輯，封裝 Commit / Rollback 控制
+/// 這邊先不要拿掉
 /// </summary>
 public class TransactionService : ITransactionService
 {

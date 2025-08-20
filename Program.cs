@@ -14,6 +14,8 @@ using DcMateH5Api.Areas.Form.Interfaces.Transaction;
 using DcMateH5Api.Areas.Form.Services;
 using DcMateH5Api.Areas.Form.Services.FormLogic;
 using DcMateH5Api.Areas.Form.Services.Transaction;
+using DcMateH5Api.Areas.Log.Interfaces;
+using DcMateH5Api.Areas.Log.Services;
 using DcMateH5Api.Areas.Permission.Interfaces;
 using DcMateH5Api.Areas.Permission.Services;
 using DcMateH5Api.Areas.Security.Interfaces;
@@ -21,9 +23,18 @@ using DcMateH5Api.Areas.Security.Models;
 using DcMateH5Api.Areas.Security.Services;
 using DcMateH5Api.DbExtensions;
 using DcMateH5Api.Helper;
-using DcMateH5Api.Logging;
+using Microsoft.Extensions.Diagnostics.HealthChecks;
 
 var builder = WebApplication.CreateBuilder(args);
+
+var redisConn = builder.Configuration.GetValue<string>("Redis:Connection");
+
+// Redis 分散式快取（StackExchangeRedisCache）
+builder.Services.AddStackExchangeRedisCache(options =>
+{
+    options.Configuration = redisConn;
+    options.InstanceName = "DcMateH5Api:";
+});
 
 builder.Services.AddHttpContextAccessor();
 builder.WebHost.UseUrls("http://0.0.0.0:5000"); // 目前只開 HTTP
@@ -38,7 +49,6 @@ var swaggerGroups = new[]
     SwaggerGroups.ApiStats
 };
 
-// ---- Swagger ----
 // ---- Swagger ----
 builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddSwaggerGen(options =>
@@ -114,7 +124,7 @@ builder.Services.AddSingleton<ISqlConnectionFactory, SqlConnectionFactory>();
 // DbExecutor 負責執行查詢/交易，需要維持在單一 HTTP Request 的範圍內，
 // 保證同一個 Request 共用同一個 Executor，但不會跨 Request 共用 → 使用 Scoped。
 builder.Services.AddScoped<IDbExecutor, DbExecutor>();
-builder.Services.AddScoped<ISqlLogService, SqlLogService>();
+builder.Services.AddScoped<ILogService, LogService>();
 
 // 用完立即 Dispose() 歸還池子，其他請求可馬上用，吞吐量高
 builder.Services.AddScoped<SqlConnection, SqlConnection>(_ =>
@@ -178,6 +188,10 @@ builder.Services.AddControllers()
         // 讓 400 維持 RFC 7807 ProblemDetails（可在此客製化）
         // opt.InvalidModelStateResponseFactory = ...
     });
+
+// 健康檢查（給 Nginx 用）
+builder.Services.AddHealthChecks()
+    .AddCheck("self", () => HealthCheckResult.Healthy());
 
 var app = builder.Build();
 
