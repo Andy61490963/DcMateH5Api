@@ -23,6 +23,7 @@ using DcMateH5Api.Areas.Security.Models;
 using DcMateH5Api.Areas.Security.Services;
 using DcMateH5Api.DbExtensions;
 using DcMateH5Api.Helper;
+using DcMateH5Api.Services.Cache; // 引入快取服務命名空間
 using Microsoft.Extensions.Diagnostics.HealthChecks;
 
 var builder = WebApplication.CreateBuilder(args);
@@ -109,9 +110,10 @@ builder.Services.AddSwaggerGen(options =>
 });
 
 // ---- Options / Cache / Config ----
-builder.Services.AddOptions();
-builder.Services.AddMemoryCache();
-builder.Services.Configure<JwtSettings>(builder.Configuration.GetSection("JwtSettings"));
+builder.Services.AddOptions(); // 啟用選項模式
+builder.Services.Configure<CacheOptions>(builder.Configuration.GetSection("Cache")); // 綁定快取設定
+builder.Services.AddScoped<ICacheService, RedisCacheService>(); // 註冊 Redis 快取服務
+builder.Services.Configure<JwtSettings>(builder.Configuration.GetSection("JwtSettings")); // 綁定 JWT 設定
 
 // ---- DI 註冊 ----
 

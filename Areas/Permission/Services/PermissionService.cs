@@ -4,7 +4,7 @@ using DcMateH5Api.Areas.Permission.Interfaces;
 using DcMateH5Api.Areas.Permission.Models;
 using DcMateH5Api.Areas.Permission.ViewModels.Menu;
 using Microsoft.Data.SqlClient;
-using Microsoft.Extensions.Caching.Memory;
+using DcMateH5Api.Services.Cache; // 引入自訂快取服務
 
 namespace DcMateH5Api.Areas.Permission.Services
 {
@@ -16,13 +16,12 @@ namespace DcMateH5Api.Areas.Permission.Services
     {
         private readonly IDbExecutor _db;
         private readonly SqlConnection _con;
-        private readonly IMemoryCache _cache;
-        private static readonly TimeSpan CacheDuration = TimeSpan.FromMinutes(5);
+        private readonly ICacheService _cache; // Redis 快取服務
 
         /// <summary>
-        /// 建構函式，注入資料庫連線與記憶體快取。
+        /// 建構函式，注入資料庫連線與快取服務。
         /// </summary>
-        public PermissionService(IDbExecutor db, SqlConnection con, IMemoryCache cache)
+        public PermissionService(IDbExecutor db, SqlConnection con, ICacheService cache)
         {
             _db = db;
             _con = con;
@@ -359,88 +358,84 @@ namespace DcMateH5Api.Areas.Permission.Services
         /// <summary>
         /// 取得指定使用者可見的選單樹。
         /// </summary>
-        public async Task<IEnumerable<MenuTreeItem>> GetUserMenuTreeAsync(Guid userId, CancellationToken ct)
+        public async Task<IEnumerable<MenuTreeItem>> GetUserMenuTreeAsync(Guid userId, CancellationToken ct) // 依使用者取得選單樹狀結構
         {
-            var cacheKey = GetMenuCacheKey(userId);
-            if (_cache.TryGetValue(cacheKey, out IEnumerable<MenuTreeItem> cached))
-                return cached;
+            var cacheKey = GetMenuCacheKey(userId); // 產生使用者專屬的快取鍵
+            var cached = await _cache.GetAsync<IEnumerable<MenuTreeItem>>(cacheKey, ct); // 從 Redis 取得快取資料
+            if (cached != null) return cached; // 若快取存在直接回傳
 
-            const string sql = @"WITH BaseVisible AS (
-SELECT m.ID
-FROM SYS_MENU m
-WHERE ISNULL(m.IS_DELETE, 0) = 0
-  AND (
-       m.IS_SHARE = 1
-    OR EXISTS (
-         SELECT 1
-         FROM SYS_GROUP_FUNCTION_PERMISSION gfp
-         JOIN SYS_USER_GROUP ug
-           ON ug.SYS_GROUP_ID = gfp.SYS_GROUP_ID
-          AND ug.SYS_USER_ID  = @UserId
-         JOIN SYS_GROUP g
-           ON g.ID = ug.SYS_GROUP_ID
-          AND ISNULL(g.IS_ACTIVE, 1) = 1
-         JOIN SYS_PERMISSION p
-           ON p.ID = gfp.SYS_PERMISSION_ID
-          AND ISNULL(p.IS_ACTIVE, 1) = 1
-         JOIN SYS_FUNCTION f
-           ON f.ID = gfp.SYS_FUNCTION_ID
-          AND ISNULL(f.IS_DELETE, 0) = 0
-         WHERE gfp.SYS_FUNCTION_ID = m.SYS_FUNCTION_ID
-       )
-  )
-),
-Tree AS (
-    SELECT m.*
-    FROM SYS_MENU m
-    WHERE m.ID IN (SELECT ID FROM BaseVisible)
+            const string sql = @"WITH BaseVisible AS ( -- 篩選使用者可見的選單
+SELECT m.ID -- 選單ID
+FROM SYS_MENU m -- 選單表
+WHERE ISNULL(m.IS_DELETE, 0) = 0 -- 排除已刪除的選單
+  AND ( -- 以下判斷選單是否可見
+       m.IS_SHARE = 1 -- 若為共享選單則可見
+    OR EXISTS ( -- 檢查使用者群組與功能權限
+         SELECT 1 -- 只需判斷是否存在
+         FROM SYS_GROUP_FUNCTION_PERMISSION gfp -- 群組功能權限表
+         JOIN SYS_USER_GROUP ug -- 使用者與群組關聯表
+           ON ug.SYS_GROUP_ID = gfp.SYS_GROUP_ID -- 以群組ID關聯
+          AND ug.SYS_USER_ID  = @UserId -- 指定使用者ID
+         JOIN SYS_GROUP g -- 群組表
+           ON g.ID = ug.SYS_GROUP_ID -- 以群組ID連接
+          AND ISNULL(g.IS_ACTIVE, 1) = 1 -- 群組必須為啟用狀態
+         JOIN SYS_PERMISSION p -- 權限表
+           ON p.ID = gfp.SYS_PERMISSION_ID -- 關聯權限ID
+          AND ISNULL(p.IS_ACTIVE, 1) = 1 -- 權限必須為啟用狀態
+         JOIN SYS_FUNCTION f -- 功能表
+           ON f.ID = gfp.SYS_FUNCTION_ID -- 關聯功能ID
+          AND ISNULL(f.IS_DELETE, 0) = 0 -- 功能不得被刪除
+         WHERE gfp.SYS_FUNCTION_ID = m.SYS_FUNCTION_ID -- 必須為同一功能
+       ) -- EXISTS 結束
+  ) -- AND 條件結束
+), -- BaseVisible CTE 結束
+Tree AS ( -- 透過遞迴找出所有相關選單
+    SELECT m.* -- 第一層：可見選單
+    FROM SYS_MENU m -- 選單表
+    WHERE m.ID IN (SELECT ID FROM BaseVisible) -- 限制於可見選單ID
 
-    UNION ALL
+    UNION ALL -- 合併遞迴結果
 
-    SELECT parent.*
-    FROM SYS_MENU parent
-    JOIN Tree child ON child.PARENT_ID = parent.ID
-    WHERE ISNULL(parent.IS_DELETE, 0) = 0
+    SELECT parent.* -- 找出父選單
+    FROM SYS_MENU parent -- 父選單表
+    JOIN Tree child ON child.PARENT_ID = parent.ID -- 以子選單連接父選單
+    WHERE ISNULL(parent.IS_DELETE, 0) = 0 -- 排除已刪除的父選單
 )
-SELECT DISTINCT
-    t.ID, t.PARENT_ID, t.SYS_FUNCTION_ID, t.NAME, t.SORT, t.IS_SHARE,
-    f.AREA, f.CONTROLLER, f.DEFAULT_ENDPOINT
-FROM Tree t
-LEFT JOIN SYS_FUNCTION f ON f.ID = t.SYS_FUNCTION_ID
-ORDER BY t.SORT, t.NAME
-OPTION (MAXRECURSION 32);";
+SELECT DISTINCT -- 移除重複資料
+    t.ID, t.PARENT_ID, t.SYS_FUNCTION_ID, t.NAME, t.SORT, t.IS_SHARE, -- 選單欄位
+    f.AREA, f.CONTROLLER, f.DEFAULT_ENDPOINT -- 對應功能路徑
+FROM Tree t -- 來源為遞迴結果
+LEFT JOIN SYS_FUNCTION f ON f.ID = t.SYS_FUNCTION_ID -- 關聯功能表取得路徑資訊
+ORDER BY t.SORT, t.NAME -- 依排序與名稱排序
+OPTION (MAXRECURSION 32);"; // 限制遞迴層級避免無限迴圈
 
-            var rows = (await _db.QueryAsync<MenuTreeItem>(
-                sql, new { UserId = userId },
-                timeoutSeconds: 30,
-                ct: ct
-                )).ToList();
-            
-            // 依 PARENT_ID 分組，這邊只有兩種狀況，一種是父節點為null，一種不為null
-            var lookup = rows.ToLookup(r => r.PARENT_ID);
-            
-            // 掛子節點
-            foreach (var item in rows)
+            var rows = (await _db.QueryAsync<MenuTreeItem>( // 執行 SQL 取得平面選單資料
+                sql, new { UserId = userId }, // 傳入使用者參數
+                timeoutSeconds: 30, // 設定逾時秒數
+                ct: ct // 取消權杖
+                )).ToList(); // 轉成清單以便處理
+
+            var lookup = rows.ToLookup(r => r.PARENT_ID); // 依父節點ID分組
+
+            foreach (var item in rows) // 逐一處理每個節點
             {
                 var children = lookup[item.ID] // 找出所有以自己為父的節點
-                    .OrderBy(c => c.SORT)
-                    .ThenBy(c => c.NAME)
-                    .ToList();
+                    .OrderBy(c => c.SORT) // 依排序欄位排序
+                    .ThenBy(c => c.NAME) // 再以名稱排序
+                    .ToList(); // 轉成清單
 
-                item.Children = children; // 掛到 Children 屬性
+                item.Children = children; // 將子節點掛到 Children 屬性
             }
 
-            // 根：沒有父或父不在 rows 清單（被刪除/被過濾）
-            var idSet = rows.Select(x => x.ID).ToHashSet();
+            var idSet = rows.Select(x => x.ID).ToHashSet(); // 建立所有節點ID的集合
             var result = rows
-                .Where(x => x.PARENT_ID == null || !idSet.Contains(x.PARENT_ID.Value)) // 孤兒節點會被升級成父節點
-                .OrderBy(x => x.SORT)
-                .ThenBy(x => x.NAME)
-                .ToList();
+                .Where(x => x.PARENT_ID == null || !idSet.Contains(x.PARENT_ID.Value)) // 找出根節點或孤兒節點
+                .OrderBy(x => x.SORT) // 依排序欄位排序
+                .ThenBy(x => x.NAME) // 再以名稱排序
+                .ToList(); // 轉成清單
 
-
-            _cache.Set(cacheKey, result, CacheDuration);
-            return result;
+            await _cache.SetAsync(cacheKey, result, ct: ct); // 將結果寫入快取，使用預設 TTL
+            return result; // 回傳樹狀結果
         }
 
         #endregion
@@ -450,39 +445,32 @@ OPTION (MAXRECURSION 32);";
         /// <summary>
         /// 將使用者加入指定群組，並清除使用者權限快取。
         /// </summary>
-        public Task AssignUserToGroupAsync(Guid userId, Guid groupId, CancellationToken ct)
+        public async Task AssignUserToGroupAsync(Guid userId, Guid groupId, CancellationToken ct) // 將使用者加入群組並清除快取
         {
-            var id = Guid.NewGuid();
+            var id = Guid.NewGuid(); // 建立關聯資料的唯一識別碼
             const string sql =
-                @"INSERT INTO SYS_USER_GROUP (ID, SYS_USER_ID, SYS_GROUP_ID)
-                  VALUES (@Id, @UserId, @GroupId)";
-            _cache.Remove(GetCacheKey(userId));
-            _cache.Remove(GetMenuCacheKey(userId));
-            return _db.ExecuteAsync(sql, new { Id = id, UserId = userId, GroupId = groupId },  
-                timeoutSeconds: 30,
-                ct: ct);
+                @"INSERT INTO SYS_USER_GROUP (ID, SYS_USER_ID, SYS_GROUP_ID) -- 插入關聯欄位
+                  VALUES (@Id, @UserId, @GroupId)"; // 新增使用者與群組的關聯資料
+            await _cache.RemoveAsync(GetCacheKey(userId), ct); // 移除使用者權限快取
+            await _cache.RemoveAsync(GetMenuCacheKey(userId), ct); // 移除使用者選單快取
+            await _db.ExecuteAsync(sql, new { Id = id, UserId = userId, GroupId = groupId }, // 執行插入資料的 SQL
+                timeoutSeconds: 30, // 設定逾時秒數
+                ct: ct); // 取消權杖
         }
 
         /// <summary>
         /// 從群組移除使用者，並清除使用者權限快取。
         /// </summary>
-        public Task RemoveUserFromGroupAsync(Guid userId, Guid groupId, CancellationToken ct)
+        public async Task RemoveUserFromGroupAsync(Guid userId, Guid groupId, CancellationToken ct) // 將使用者自群組移除並清除快取
         {
             const string sql =
-                @"DELETE FROM SYS_USER_GROUP
-                  WHERE SYS_USER_ID = @UserId AND SYS_GROUP_ID = @GroupId";
-            _cache.Remove(GetCacheKey(userId));
-            _cache.Remove(GetMenuCacheKey(userId));
-            // return _db.TxAsync(async (conn, tx, token) =>
-            // {
-            //     await _db.ExecuteAsync(conn, tx, sql, new { UserId = userId, GroupId = groupId },  
-            //         timeoutSeconds: 30,
-            //         ct: token);
-            //     
-            // }, ct: ct);
-            return _db.ExecuteAsync(sql, new { UserId = userId, GroupId = groupId },  
-                timeoutSeconds: 30,
-                ct: ct);
+                @"DELETE FROM SYS_USER_GROUP -- 從關聯表刪除資料
+                  WHERE SYS_USER_ID = @UserId AND SYS_GROUP_ID = @GroupId"; // 指定刪除條件
+            await _cache.RemoveAsync(GetCacheKey(userId), ct); // 移除使用者權限快取
+            await _cache.RemoveAsync(GetMenuCacheKey(userId), ct); // 移除使用者選單快取
+            await _db.ExecuteAsync(sql, new { UserId = userId, GroupId = groupId }, // 執行刪除資料的 SQL
+                timeoutSeconds: 30, // 設定逾時秒數
+                ct: ct); // 取消權杖
         }
 
         #endregion
@@ -540,38 +528,39 @@ OPTION (MAXRECURSION 32);";
         /// <param name="controller">Controller 名稱。</param>
         /// <param name="actionCode">動作代碼 (ActionType 對應的整數值)。</param>
         /// <returns>若具有權限回傳 true，否則 false。</returns>
-        public async Task<bool> UserHasControllerPermissionAsync(Guid userId, string area, string controller, int actionCode)
+        public async Task<bool> UserHasControllerPermissionAsync(Guid userId, string area, string controller, int actionCode) // 檢查使用者是否擁有指定控制器的權限
         {
-            var cacheKey = $"perm:{userId}:{area}:{controller}:{actionCode}";
-            if (_cache.TryGetValue(cacheKey, out bool ok)) return ok;
+            var cacheKey = $"perm:{userId}:{area}:{controller}:{actionCode}"; // 組合權限快取鍵
+            var cached = await _cache.GetAsync<bool?>(cacheKey); // 嘗試從快取取得結果
+            if (cached.HasValue) return cached.Value; // 若快取存在則直接回傳
 
             const string sql =
-                @"SELECT CASE WHEN EXISTS (
-                      SELECT 1
-                      FROM SYS_USER_GROUP ug
-                      JOIN SYS_GROUP_FUNCTION_PERMISSION gfp
-                        ON gfp.SYS_GROUP_ID = ug.SYS_GROUP_ID
-                      JOIN SYS_FUNCTION f
-                        ON f.ID = gfp.SYS_FUNCTION_ID
-                       AND f.IS_DELETE = 0
-                      JOIN SYS_PERMISSION p
-                        ON p.ID = gfp.SYS_PERMISSION_ID
-                      WHERE ug.SYS_USER_ID = @UserId
-                        AND f.AREA       = @Area
-                        AND f.CONTROLLER = @Controller
-                        AND p.CODE       = @ActionCode
-                    ) THEN 1 ELSE 0 END AS HasPermission;";
+                @"SELECT CASE WHEN EXISTS ( -- 判斷是否存在符合條件的資料
+                      SELECT 1 -- 只需判斷存在即可
+                      FROM SYS_USER_GROUP ug -- 使用者與群組關聯表
+                      JOIN SYS_GROUP_FUNCTION_PERMISSION gfp -- 群組功能權限表
+                        ON gfp.SYS_GROUP_ID = ug.SYS_GROUP_ID -- 以群組ID關聯
+                      JOIN SYS_FUNCTION f -- 功能表
+                        ON f.ID = gfp.SYS_FUNCTION_ID -- 連接功能ID
+                       AND f.IS_DELETE = 0 -- 功能不得被刪除
+                      JOIN SYS_PERMISSION p -- 權限表
+                        ON p.ID = gfp.SYS_PERMISSION_ID -- 連接權限ID
+                      WHERE ug.SYS_USER_ID = @UserId -- 指定使用者
+                        AND f.AREA       = @Area -- 指定區域
+                        AND f.CONTROLLER = @Controller -- 指定控制器
+                        AND p.CODE       = @ActionCode -- 指定動作代碼
+                    ) THEN 1 ELSE 0 END AS HasPermission;"; // 若存在則回傳1否則0
 
-            var has = await _con.ExecuteScalarAsync<int>(sql, new
+            var has = await _con.ExecuteScalarAsync<int>(sql, new // 執行 SQL 判斷是否有權限
             {
-                UserId = userId,
-                Area = area ?? string.Empty,
-                Controller = controller,
-                ActionCode = actionCode
-            }) > 0;
+                UserId = userId, // 使用者ID參數
+                Area = area ?? string.Empty, // 區域參數，若為 null 則給空字串
+                Controller = controller, // 控制器名稱參數
+                ActionCode = actionCode // 動作代碼參數
+            }) > 0; // 大於0代表有權限
 
-            _cache.Set(cacheKey, has, TimeSpan.FromSeconds(60));
-            return has;
+            await _cache.SetAsync(cacheKey, has, TimeSpan.FromSeconds(60)); // 將結果寫入快取並設定60秒TTL
+            return has; // 回傳檢查結果
         }
 
         /// <summary>
