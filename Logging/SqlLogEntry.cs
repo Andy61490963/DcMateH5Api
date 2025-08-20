@@ -13,7 +13,10 @@ public class SqlLogEntry
     public Guid Id { get; set; } = Guid.NewGuid();
 
     /// <summary>Optional user id triggering the command.</summary>
-    public string? UserId { get; set; }
+    public Guid? UserId { get; set; }
+    
+    /// <summary>To group same Http request log.</summary>
+    public Guid? RequestId { get; set; }
 
     /// <summary>Execution timestamp.</summary>
     public DateTime ExecutedAt { get; set; }

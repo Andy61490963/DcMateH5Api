@@ -3,6 +3,7 @@ using System.Diagnostics;
 using System.IdentityModel.Tokens.Jwt;
 using System.Security.Claims;
 using System.Text.Json;
+using Azure;
 using Dapper;
 using Microsoft.AspNetCore.Http;
 using Microsoft.Data.SqlClient;
@@ -10,14 +11,20 @@ using DcMateH5Api.Logging;
 
 namespace DcMateH5Api.DbExtensions;
 
+/// <summary>
+/// DbExecutor 是一個包裝 Dapper 的資料存取層，
+/// 對外提供 Query/Execute/Transaction 等方法，
+/// 並且內建 SQL 執行紀錄 (Logging)。
+/// </summary>
 public sealed class DbExecutor : IDbExecutor
 {
     private readonly ISqlConnectionFactory _factory;
     private readonly ISqlLogService _logService;
     private readonly IHttpContextAccessor _http;
-    private const int DefaultTimeoutSeconds = 30;
-    private const int MaxParameterLength = 4000;
-
+    private const int DefaultTimeoutSeconds = 30; // 預設逾時秒數
+    private const int MaxParameterLength = 4000; // 參數序列化上限 (避免 DB 過長塞爆)
+    
+    private const string CorrelationIdKey = "CorrelationId";
     public DbExecutor(ISqlConnectionFactory factory, ISqlLogService logService, IHttpContextAccessor http)
     {
         _factory = factory;
@@ -25,6 +32,9 @@ public sealed class DbExecutor : IDbExecutor
         _http = http;
     }
 
+    /// <summary>
+    /// 建立 Dapper CommandDefinition 物件
+    /// </summary>
     private static CommandDefinition BuildCmd(
         string sql,
         object? param,
@@ -43,12 +53,37 @@ public sealed class DbExecutor : IDbExecutor
             flags: flags,
             cancellationToken: ct);
     }
+    
+    /// <summary>
+    /// 讓同一個 Request 的所有 SQL Log 共用同一個 CorrelationId
+    /// </summary>
+    /// <param name="context"></param>
+    /// <returns></returns>
+    public static Guid GetCorrelationId(HttpContext? context)
+    {
+        // 如果沒有 HttpContext（例如非 Web 環境），就直接給一個新的 Guid。
+        if (context == null) return Guid.NewGuid();
 
-    // helper methods for logging
+        // 檢查 HttpContext.Items（每個 Request 自帶的字典），
+        // 看看有沒有存過 "CorrelationId"
+        if (!context.Items.TryGetValue(CorrelationIdKey, out var value) || value is not Guid guid)
+        {
+            // 沒有的話就生成一個新的 Guid
+            guid = Guid.NewGuid();
+            context.Items[CorrelationIdKey] = guid;
+        }
+
+        return guid;
+    }
+    
+    /// <summary>
+    /// 建立 SQL 紀錄物件，包含 SQL/參數/使用者資訊。
+    /// </summary>
     private SqlLogEntry CreateLogEntry(string sql, object? param)
     {
         return new SqlLogEntry
         {
+            RequestId =  GetCorrelationId(_http.HttpContext),
             ExecutedAt = DateTime.UtcNow,
             SqlText = sql,
             Parameters = SerializeParameters(param),
@@ -57,16 +92,32 @@ public sealed class DbExecutor : IDbExecutor
         };
     }
 
-    private string? GetUserId()
+    /// <summary>
+    /// 從 Claims 取得 UserId（JWT "sub"）
+    /// </summary>
+    private Guid? GetUserId()
     {
         var user = _http.HttpContext?.User;
-        return user?.FindFirst(JwtRegisteredClaimNames.Sub)?.Value
-            ?? user?.FindFirst(ClaimTypes.NameIdentifier)?.Value;
-    }
+        var id = user?.FindFirst(JwtRegisteredClaimNames.Sub)?.Value
+                 ?? user?.FindFirst(ClaimTypes.NameIdentifier)?.Value;
 
+        if (Guid.TryParse(id, out var userId))
+        {
+            return userId;
+        }
+
+        return null; 
+    }
+    
+    /// <summary>
+    /// 從 HttpContext 取得來源 IP
+    /// </summary>
     private string? GetIpAddress()
         => _http.HttpContext?.Connection?.RemoteIpAddress?.ToString();
 
+    /// <summary>
+    /// 將 SQL 參數序列化成 JSON 
+    /// </summary>
     private static string? SerializeParameters(object? param)
     {
         if (param == null) return null;
@@ -87,7 +138,7 @@ public sealed class DbExecutor : IDbExecutor
         {
             var json = JsonSerializer.Serialize(toSerialize);
             if (json.Length > MaxParameterLength)
-                json = json[..MaxParameterLength];
+                json = json[..MaxParameterLength]; // 過長截斷
             return json;
         }
         catch
@@ -96,21 +147,29 @@ public sealed class DbExecutor : IDbExecutor
         }
     }
 
+    /// <summary>
+    /// 嘗試寫入 SQL Log 
+    /// </summary>
     private async Task TryLogAsync(SqlLogEntry entry)
     {
         try
         {
             await _logService.LogAsync(entry, CancellationToken.None);
         }
-        catch
+        catch (Exception ex)
         {
-            // swallow logging failures
+            // 失敗不處理，會影響主交易
+            throw new InvalidOperationException("SQL Log 寫入失敗", ex);
         }
     }
 
     // -------------------------
     // 無交易（短連線）版本
     // -------------------------
+    
+    /// <summary>
+    /// 查詢多筆資料
+    /// </summary>
     public async Task<List<T>> QueryAsync<T>(string sql, object? param = null,
         int? timeoutSeconds = null, CommandType commandType = CommandType.Text, CancellationToken ct = default)
     {
@@ -142,6 +201,9 @@ public sealed class DbExecutor : IDbExecutor
         }
     }
 
+    /// <summary>
+    /// 查詢第一筆資料，找不到就回傳 null
+    /// </summary>
     public async Task<T?> QueryFirstOrDefaultAsync<T>(string sql, object? param = null,
         int? timeoutSeconds = null, CommandType commandType = CommandType.Text, CancellationToken ct = default)
     {
@@ -171,6 +233,9 @@ public sealed class DbExecutor : IDbExecutor
         }
     }
 
+    /// <summary>
+    /// 查詢唯一一筆資料，找不到回傳 null
+    /// </summary>
     public async Task<T?> QuerySingleOrDefaultAsync<T>(string sql, object? param = null,
         int? timeoutSeconds = null, CommandType commandType = CommandType.Text, CancellationToken ct = default)
     {
@@ -200,6 +265,9 @@ public sealed class DbExecutor : IDbExecutor
         }
     }
 
+    /// <summary>
+    /// 執行 INSERT / UPDATE / DELETE，回傳受影響筆數
+    /// </summary>
     public async Task<int> ExecuteAsync(string sql, object? param = null,
         int? timeoutSeconds = null, CommandType commandType = CommandType.Text, CancellationToken ct = default)
     {
@@ -229,6 +297,9 @@ public sealed class DbExecutor : IDbExecutor
         }
     }
 
+    /// <summary>
+    /// 執行查詢，回傳單一值 (scalar)
+    /// </summary>
     public async Task<T?> ExecuteScalarAsync<T>(string sql, object? param = null,
         int? timeoutSeconds = null, CommandType commandType = CommandType.Text, CancellationToken ct = default)
     {
@@ -259,8 +330,9 @@ public sealed class DbExecutor : IDbExecutor
     }
 
     // -------------------------
-    // 有交易（使用既有 conn/tx）版本
+    // 有交易版本 (使用既有 conn/tx)
     // -------------------------
+    // （以下跟上面幾乎一樣，只是多帶 SqlConnection / SqlTransaction）
     public async Task<List<T>> QueryAsync<T>(SqlConnection conn, SqlTransaction? tx,
         string sql, object? param = null, int? timeoutSeconds = null,
         CommandType commandType = CommandType.Text, CancellationToken ct = default)
@@ -404,8 +476,12 @@ public sealed class DbExecutor : IDbExecutor
     }
 
     // -------------------------
-    // 交易包裹
+    // 交易包裹 (Transaction Scope)
     // -------------------------
+    
+    /// <summary>
+    /// 包一個交易，不回傳值
+    /// </summary>
     public async Task TxAsync(
         Func<SqlConnection, SqlTransaction, CancellationToken, Task> work,
         IsolationLevel isolation = IsolationLevel.ReadCommitted, CancellationToken ct = default)
@@ -442,7 +518,10 @@ public sealed class DbExecutor : IDbExecutor
             await TryLogAsync(log);
         }
     }
-
+    
+    /// <summary>
+    /// 包一個交易，並且回傳泛型結果
+    /// </summary>
     public async Task<T> TxAsync<T>(
         Func<SqlConnection, SqlTransaction, CancellationToken, Task<T>> work,
         IsolationLevel isolation = IsolationLevel.ReadCommitted, CancellationToken ct = default)

@@ -27,8 +27,8 @@ public sealed class SqlLogService : ISqlLogService
     private readonly ISqlConnectionFactory _factory;
 
     private const string InsertSql =
-        @"INSERT INTO SYS_SQL_LOG (ID, USER_ID, EXECUTED_AT, DURATION_MS, SQL_TEXT, PARAMETERS, AFFECTED_ROWS, IP_ADDRESS, ERROR_MESSAGE, IS_SUCCESS)
-          VALUES (@Id, @UserId, @ExecutedAt, @DurationMs, @SqlText, @Parameters, @AffectedRows, @IpAddress, @ErrorMessage, @IsSuccess)";
+        @"INSERT INTO SYS_SQL_LOG (ID, USER_ID, REQUEST_ID, EXECUTED_AT, DURATION_MS, SQL_TEXT, PARAMETERS, AFFECTED_ROWS, IP_ADDRESS, ERROR_MESSAGE, IS_SUCCESS)
+          VALUES (@Id, @UserId, @RequestId, @ExecutedAt, @DurationMs, @SqlText, @Parameters, @AffectedRows, @IpAddress, @ErrorMessage, @IsSuccess)";
 
     public SqlLogService(ISqlConnectionFactory factory)
         => _factory = factory;
