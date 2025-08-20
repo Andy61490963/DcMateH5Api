@@ -360,8 +360,8 @@ namespace DcMateH5Api.Areas.Permission.Services
         /// </summary>
         public async Task<IEnumerable<MenuTreeItem>> GetUserMenuTreeAsync(Guid userId, CancellationToken ct) // 依使用者取得選單樹狀結構
         {
-            var cacheKey = GetMenuCacheKey(userId); // 產生使用者專屬的快取鍵
-            var cached = await _cache.GetAsync<IEnumerable<MenuTreeItem>>(cacheKey, ct); // 從 Redis 取得快取資料
+            // 統一使用 CacheHelper 與 CacheKeys 管理快取，避免魔法字串散落。
+            var cached = await _cache.GetUserMenuAsync<IEnumerable<MenuTreeItem>>(userId, ct); // 依照規則取得使用者選單快取
             if (cached != null) return cached; // 若快取存在直接回傳
 
             const string sql = @"WITH BaseVisible AS ( -- 篩選使用者可見的選單
@@ -434,7 +434,7 @@ OPTION (MAXRECURSION 32);"; // 限制遞迴層級避免無限迴圈
                 .ThenBy(x => x.NAME) // 再以名稱排序
                 .ToList(); // 轉成清單
 
-            await _cache.SetAsync(cacheKey, result, ct: ct); // 將結果寫入快取，使用預設 TTL
+            await _cache.SetUserMenuAsync(userId, result, ct: ct); // 將結果寫入快取，使用統一鍵值命名
             return result; // 回傳樹狀結果
         }
 
@@ -451,8 +451,8 @@ OPTION (MAXRECURSION 32);"; // 限制遞迴層級避免無限迴圈
             const string sql =
                 @"INSERT INTO SYS_USER_GROUP (ID, SYS_USER_ID, SYS_GROUP_ID) -- 插入關聯欄位
                   VALUES (@Id, @UserId, @GroupId)"; // 新增使用者與群組的關聯資料
-            await _cache.RemoveAsync(GetCacheKey(userId), ct); // 移除使用者權限快取
-            await _cache.RemoveAsync(GetMenuCacheKey(userId), ct); // 移除使用者選單快取
+            // 快取清除使用統一 Helper，避免重複與遺漏。
+            await _cache.RemoveUserCachesAsync(userId, ct); // 同時清除使用者權限與選單快取
             await _db.ExecuteAsync(sql, new { Id = id, UserId = userId, GroupId = groupId }, // 執行插入資料的 SQL
                 timeoutSeconds: 30, // 設定逾時秒數
                 ct: ct); // 取消權杖
@@ -466,8 +466,8 @@ OPTION (MAXRECURSION 32);"; // 限制遞迴層級避免無限迴圈
             const string sql =
                 @"DELETE FROM SYS_USER_GROUP -- 從關聯表刪除資料
                   WHERE SYS_USER_ID = @UserId AND SYS_GROUP_ID = @GroupId"; // 指定刪除條件
-            await _cache.RemoveAsync(GetCacheKey(userId), ct); // 移除使用者權限快取
-            await _cache.RemoveAsync(GetMenuCacheKey(userId), ct); // 移除使用者選單快取
+            // 快取清除使用統一 Helper，避免重複與遺漏。
+            await _cache.RemoveUserCachesAsync(userId, ct); // 同時清除使用者權限與選單快取
             await _db.ExecuteAsync(sql, new { UserId = userId, GroupId = groupId }, // 執行刪除資料的 SQL
                 timeoutSeconds: 30, // 設定逾時秒數
                 ct: ct); // 取消權杖
@@ -530,8 +530,8 @@ OPTION (MAXRECURSION 32);"; // 限制遞迴層級避免無限迴圈
         /// <returns>若具有權限回傳 true，否則 false。</returns>
         public async Task<bool> UserHasControllerPermissionAsync(Guid userId, string area, string controller, int actionCode) // 檢查使用者是否擁有指定控制器的權限
         {
-            var cacheKey = $"perm:{userId}:{area}:{controller}:{actionCode}"; // 組合權限快取鍵
-            var cached = await _cache.GetAsync<bool?>(cacheKey); // 嘗試從快取取得結果
+            // 使用統一的 CacheKeys 與 Helper，避免硬編碼的快取鍵。
+            var cached = await _cache.GetControllerPermissionAsync(userId, area, controller, actionCode); // 嘗試從快取取得結果
             if (cached.HasValue) return cached.Value; // 若快取存在則直接回傳
 
             const string sql =
@@ -559,19 +559,9 @@ OPTION (MAXRECURSION 32);"; // 限制遞迴層級避免無限迴圈
                 ActionCode = actionCode // 動作代碼參數
             }) > 0; // 大於0代表有權限
 
-            await _cache.SetAsync(cacheKey, has, TimeSpan.FromSeconds(60)); // 將結果寫入快取並設定60秒TTL
+            await _cache.SetControllerPermissionAsync(userId, area, controller, actionCode, has, TimeSpan.FromSeconds(60)); // 將結果寫入快取並設定TTL
             return has; // 回傳檢查結果
         }
-
-        /// <summary>
-        /// 取得使用者權限快取的快取鍵。
-        /// </summary>
-        private static string GetCacheKey(Guid userId) => $"user_permissions:{userId}";
-
-        /// <summary>
-        /// 取得使用者側邊選單的快取鍵。
-        /// </summary>
-        private static string GetMenuCacheKey(Guid userId) => $"user_menu:{userId}";
 
         #endregion
     }
