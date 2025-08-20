@@ -40,7 +40,7 @@ namespace DcMateH5Api.Authorization
             // 2) 取 userId：先取 sub，失敗再取 NameIdentifier
             if (!TryGetUserId(context.User, out var userId)) return;
 
-            // 3) 拿到目前路由的 Area / Controller（用 RouteValues 最穩定）
+            // 3) 拿到目前路由的 Area / Controller
             var httpCtx = _http.HttpContext;
             var routeValues = httpCtx?.GetRouteData()?.Values;
 

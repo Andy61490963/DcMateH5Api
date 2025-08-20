@@ -38,9 +38,8 @@ namespace DcMateH5Api.Areas.Security.Services
         /// <inheritdoc />
         public async Task<LoginResponseViewModel?> AuthenticateAsync(string account, string password, CancellationToken ct = default)
         {
-            const string sql = @"/**/SELECT ID, NAME AS Account, SWD AS PasswordHash, SWD_SALT AS PasswordSalt FROM SYS_USER WHERE NAME = @Account AND IS_DELETE = 0";
             var user = await _db.QueryFirstOrDefaultAsync<UserAccount>(
-                sql,
+                Sql.GetUser,
                 new { Account = account },
                 timeoutSeconds: 30,
                 ct: ct
@@ -69,9 +68,8 @@ namespace DcMateH5Api.Areas.Security.Services
         public async Task<RegisterResponseViewModel?> RegisterAsync(string account, string password, CancellationToken ct = default)
         {
             // 1. 檢查帳號是否已存在
-            const string checkSql = @"/**/SELECT COUNT(1) FROM SYS_USER WHERE NAME = @Account AND IS_DELETE = 0";
             var exists = await _db.ExecuteScalarAsync<int>(
-                checkSql,   
+                Sql.CheckSql,   
                 new { Account = account },
                 timeoutSeconds: 30,
                 ct: ct
@@ -89,10 +87,8 @@ namespace DcMateH5Api.Areas.Security.Services
             // 3. 寫入資料庫
             var userId = Guid.NewGuid();
             var role = "ADMIN";
-            const string insertSql = @"/**/
-        INSERT INTO SYS_USER (ID, AC, NAME, SWD, SWD_SALT, ROLE, IS_DELETE)
-        VALUES (@Id, @AC, @Name, @Hash, @Salt, @Role, 0)";
-            await _connection.ExecuteAsync(insertSql, new
+
+            await _db.ExecuteAsync(Sql.InsertSql, new
             {
                 Id = userId,
                 AC = account,
@@ -100,7 +96,9 @@ namespace DcMateH5Api.Areas.Security.Services
                 Hash = hash,
                 Salt = salt,
                 Role = role
-            });
+            },
+            timeoutSeconds: 30,
+            ct: ct);
 
             return new RegisterResponseViewModel
             {
@@ -110,5 +108,13 @@ namespace DcMateH5Api.Areas.Security.Services
             };
         }
 
+        private static class Sql
+        {
+            public const string GetUser = @"/**/SELECT ID, NAME AS Account, SWD AS PasswordHash, SWD_SALT AS PasswordSalt FROM SYS_USER WHERE NAME = @Account AND IS_DELETE = 0";
+            public const string CheckSql = @"/**/SELECT COUNT(1) FROM SYS_USER WHERE NAME = @Account AND IS_DELETE = 0";
+            public const string InsertSql = @"/**/
+        INSERT INTO SYS_USER (ID, AC, NAME, SWD, SWD_SALT, ROLE, IS_DELETE)
+        VALUES (@Id, @AC, @Name, @Hash, @Salt, @Role, 0)";
+        }
     }
 }

@@ -7,7 +7,6 @@ namespace DcMateH5Api.Areas.ApiStats.Controllers
 {
     /// <summary>
     /// API 統計與目錄（JSON 版）
-    /// 此段純 GPT 生成，方便參考而已，不需維護
     /// </summary>
     [ApiController]
     [ApiExplorerSettings(GroupName = SwaggerGroups.ApiStats)]
