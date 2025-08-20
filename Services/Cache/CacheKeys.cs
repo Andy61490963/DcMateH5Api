@@ -16,7 +16,7 @@ namespace DcMateH5Api.Services.Cache
 
         /// <summary>使用者控制器權限快取鍵。</summary>
         public static string ControllerPermission(Guid userId, string area, string controller, int actionCode)
-            => $"perm:{userId}:{area}:{controller}:{actionCode}";
+            => $"Permission:{userId}:{area}:{controller}:{actionCode}";
     }
 }
 

@@ -36,7 +36,15 @@ namespace DcMateH5Api.Areas.Security.Controllers
             if (userIdClaim is null || !Guid.TryParse(userIdClaim, out var userId))
                 return Unauthorized();
 
+            // 開始計時
+            // var sw = System.Diagnostics.Stopwatch.StartNew();
+            
             var menus = await _permissionService.GetUserMenuTreeAsync(userId, ct);
+            
+                        
+            // sw.Stop(); // 停止計時
+            // var elapsedMs = sw.ElapsedMilliseconds;
+            
             return Ok(menus);
         }
     }
