@@ -2,9 +2,10 @@ using System.Reflection;
 using System.Text;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.AspNetCore.Authorization;
-using Microsoft.Data.SqlClient;
+using Microsoft.Extensions.Diagnostics.HealthChecks;
 using Microsoft.IdentityModel.Tokens;
 using Microsoft.OpenApi.Models;
+
 using DcMateH5Api.Authorization;
 using DcMateH5Api.Areas.Enum.Interfaces;
 using DcMateH5Api.Areas.Enum.Services;
@@ -23,112 +24,34 @@ using DcMateH5Api.Areas.Security.Models;
 using DcMateH5Api.Areas.Security.Services;
 using DcMateH5Api.DbExtensions;
 using DcMateH5Api.Helper;
-using DcMateH5Api.Services.Cache; // 引入快取服務命名空間
-using Microsoft.Extensions.Diagnostics.HealthChecks;
+using DcMateH5Api.Services.Cache;
+using Microsoft.Data.SqlClient;
 
 var builder = WebApplication.CreateBuilder(args);
 
+// 容器內對外開 5000（你有 Nginx 在前面做 8081 反代）
+builder.WebHost.UseUrls("http://0.0.0.0:5000");
+
+// -------------------- Config 讀取（有 fallback） --------------------
+var config = builder.Configuration;
+
 var redisConn = builder.Configuration.GetValue<string>("Redis:Connection");
 
-// Redis 分散式快取（StackExchangeRedisCache）
-builder.Services.AddStackExchangeRedisCache(options =>
+var jwt = config.GetSection("JwtSettings").Get<JwtSettings>()
+          ?? throw new InvalidOperationException("JwtSettings missing.");
+
+builder.Services.Configure<JwtSettings>(config.GetSection("JwtSettings"));
+builder.Services.Configure<CacheOptions>(config.GetSection("Cache"));
+builder.Services.Configure<DbOptions>(config.GetSection("ConnectionStrings"));
+
+// -------------------- 分散式快取（Redis） --------------------
+builder.Services.AddStackExchangeRedisCache(opt =>
 {
-    options.Configuration = redisConn;
-    options.InstanceName = "DcMateH5Api:";
+    opt.Configuration  = redisConn;
+    opt.InstanceName = "DcMateH5Api:";
 });
 
-builder.Services.AddHttpContextAccessor();
-builder.WebHost.UseUrls("http://0.0.0.0:5000"); // 目前只開 HTTP
-
-// ---- Swagger Groups ----
-var swaggerGroups = new[]
-{
-    SwaggerGroups.Form,
-    SwaggerGroups.Permission,
-    SwaggerGroups.Security,
-    SwaggerGroups.Enum,
-    SwaggerGroups.ApiStats
-};
-
-// ---- Swagger ----
-builder.Services.AddEndpointsApiExplorer();
-builder.Services.AddSwaggerGen(options =>
-{
-    // 加回 v1（包含全部 API，解決 UI 預設抓 /swagger/v1/swagger.json 404）
-    options.SwaggerDoc("v1", new OpenApiInfo
-    {
-        Title = "API (All)",
-        Version = "v1",
-        Description = "右上角有分類可以選取"
-    });
-
-    // 各分組 doc
-    foreach (var group in swaggerGroups)
-    {
-        options.SwaggerDoc(group, new OpenApiInfo
-        {
-            Title = $"{SwaggerGroups.DisplayNames[group]} API",
-            Version = "v1",
-            Description = $"DcMateH5Api - {group} endpoints"
-        });
-    }
-
-    // XML 註解（需在 .csproj 打開 <GenerateDocumentationFile>true</GenerateDocumentationFile>）
-    var xmlFile = $"{Assembly.GetExecutingAssembly().GetName().Name}.xml";
-    var xmlPath = Path.Combine(AppContext.BaseDirectory, xmlFile);
-    if (File.Exists(xmlPath))
-    {
-        options.IncludeXmlComments(xmlPath, includeControllerXmlComments: true);
-    }
-
-    // 正確的 Bearer 設定（Type=Http + Scheme=bearer）
-    options.AddSecurityDefinition("Bearer", new OpenApiSecurityScheme
-    {
-        In = ParameterLocation.Header,
-        Description = "輸入Token",
-        Name = "Authorization",
-        Type = SecuritySchemeType.Http,
-        Scheme = "bearer",
-        BearerFormat = "JWT"
-    });
-
-    options.AddSecurityRequirement(new OpenApiSecurityRequirement
-    {
-        {
-            new OpenApiSecurityScheme { Reference = new OpenApiReference
-                { Type = ReferenceType.SecurityScheme, Id = "Bearer" } },
-            Array.Empty<string>()
-        }
-    });
-
-    // v1 顯示全部；分組只顯示自己的
-    options.DocInclusionPredicate((docName, apiDesc) =>
-    {
-        if (docName == "v1") return true; // 全部 API
-        return string.Equals(apiDesc.GroupName, docName, StringComparison.OrdinalIgnoreCase);
-    });
-});
-
-// ---- Options / Cache / Config ----
-builder.Services.AddOptions(); // 啟用選項模式
-builder.Services.Configure<CacheOptions>(builder.Configuration.GetSection("Cache")); // 綁定快取設定
-builder.Services.AddScoped<ICacheService, RedisCacheService>(); // 註冊 Redis 快取服務
-builder.Services.Configure<JwtSettings>(builder.Configuration.GetSection("JwtSettings")); // 綁定 JWT 設定
-
-// ---- DI 註冊 ----
-
-builder.Services.Configure<DbOptions>( builder.Configuration.GetSection("ConnectionStrings"));
-
-// SqlConnectionFactory 負責建立 SqlConnection，本身無狀態 (stateless)，
-// 所以在整個應用程式中共用一個實例，用 Singleton。
-builder.Services.AddSingleton<ISqlConnectionFactory, SqlConnectionFactory>();
-
-// DbExecutor 負責執行查詢/交易，需要維持在單一 HTTP Request 的範圍內，
-// 保證同一個 Request 共用同一個 Executor，但不會跨 Request 共用 → 使用 Scoped。
-builder.Services.AddScoped<IDbExecutor, DbExecutor>();
-builder.Services.AddScoped<ILogService, LogService>();
-
-// 用完立即 Dispose() 歸還池子，其他請求可馬上用，吞吐量高
+// -------------------- 連線字串 --------------------
 builder.Services.AddScoped<SqlConnection, SqlConnection>(_ =>
 {
     var conn = new SqlConnection();
@@ -136,11 +59,16 @@ builder.Services.AddScoped<SqlConnection, SqlConnection>(_ =>
     return conn;
 });
 
-// Authorization（避免重複註冊）
-builder.Services.AddSingleton<IAuthorizationPolicyProvider, PermissionPolicyProvider>();
-builder.Services.AddScoped<IAuthorizationHandler, PermissionAuthorizationHandler>();
+// -------------------- 基礎服務 --------------------
+builder.Services.AddHttpContextAccessor();
+builder.Services.AddOptions();
 
-// Services
+// Db 工具（你既有的抽象）
+builder.Services.AddSingleton<ISqlConnectionFactory, SqlConnectionFactory>();
+builder.Services.AddScoped<IDbExecutor, DbExecutor>();
+
+// 業務服務
+builder.Services.AddScoped<ILogService, LogService>();
 builder.Services.AddScoped<IEnumListService, EnumListService>();
 builder.Services.AddScoped<IFormDesignerService, FormDesignerService>();
 builder.Services.AddScoped<IAuthenticationService, AuthenticationService>();
@@ -155,20 +83,28 @@ builder.Services.AddScoped<IFormService, FormService>();
 builder.Services.AddScoped<IPermissionService, PermissionService>();
 builder.Services.AddScoped<ITransactionService, TransactionService>();
 
-// ---- CORS ----
+// 快取服務（你自訂的包裝）
+builder.Services.AddScoped<ICacheService, RedisCacheService>();
+
+// 授權（自訂 Policy/Handler）
+builder.Services.AddSingleton<IAuthorizationPolicyProvider, PermissionPolicyProvider>();
+builder.Services.AddScoped<IAuthorizationHandler, PermissionAuthorizationHandler>();
+
+// -------------------- CORS（開發寬鬆；正式請收斂網域） --------------------
+const string CorsPolicy = "AllowAll";
 builder.Services.AddCors(options =>
 {
-    options.AddPolicy("AllowAll", policy =>
-        policy.AllowAnyOrigin()
-              .AllowAnyMethod()
-              .AllowAnyHeader());
+    options.AddPolicy(CorsPolicy, p =>
+        p.AllowAnyOrigin()
+         .AllowAnyMethod()
+         .AllowAnyHeader());
 });
 
-// ---- AuthN / AuthZ ----
-builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
+// -------------------- AuthN / AuthZ（JWT） --------------------
+builder.Services
+    .AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
     .AddJwtBearer(options =>
     {
-        var jwt = builder.Configuration.GetSection("JwtSettings").Get<JwtSettings>()!;
         options.MapInboundClaims = false;
         options.TokenValidationParameters = new TokenValidationParameters
         {
@@ -182,44 +118,108 @@ builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
             ClockSkew = TimeSpan.Zero
         };
     });
-
 builder.Services.AddAuthorization();
+
 builder.Services.AddControllers()
-    .ConfigureApiBehaviorOptions(opt =>
+    .ConfigureApiBehaviorOptions(_ =>
     {
-        // 讓 400 維持 RFC 7807 ProblemDetails（可在此客製化）
-        // opt.InvalidModelStateResponseFactory = ...
+        // 可在此客製 400 行為
     });
 
-// 健康檢查（給 Nginx 用）
+// -------------------- 健康檢查（給 LB/Nginx） --------------------
 builder.Services.AddHealthChecks()
     .AddCheck("self", () => HealthCheckResult.Healthy());
 
+// -------------------- Swagger（分組 + Bearer） --------------------
+var swaggerGroups = new[]
+{
+    SwaggerGroups.Form,
+    SwaggerGroups.Permission,
+    SwaggerGroups.Security,
+    SwaggerGroups.Enum,
+    SwaggerGroups.ApiStats,
+    SwaggerGroups.Log
+};
+
+builder.Services.AddEndpointsApiExplorer();
+builder.Services.AddSwaggerGen(options =>
+{
+    options.SwaggerDoc("v1", new OpenApiInfo
+    {
+        Title = "API (All)",
+        Version = "v1",
+        Description = "右上角可切換分組"
+    });
+
+    foreach (var g in swaggerGroups)
+    {
+        options.SwaggerDoc(g, new OpenApiInfo
+        {
+            Title = $"{SwaggerGroups.DisplayNames[g]} API",
+            Version = "v1",
+            Description = $"DcMateH5Api - {g} endpoints"
+        });
+    }
+
+    var xml = $"{Assembly.GetExecutingAssembly().GetName().Name}.xml";
+    var xmlPath = Path.Combine(AppContext.BaseDirectory, xml);
+    if (File.Exists(xmlPath))
+        options.IncludeXmlComments(xmlPath, includeControllerXmlComments: true);
+
+    options.AddSecurityDefinition("Bearer", new OpenApiSecurityScheme
+    {
+        In = ParameterLocation.Header,
+        Description = "在此輸入 JWT：Bearer {token}",
+        Name = "Authorization",
+        Type = SecuritySchemeType.Http,
+        Scheme = "bearer",
+        BearerFormat = "JWT"
+    });
+    options.AddSecurityRequirement(new OpenApiSecurityRequirement
+    {
+        {
+            new OpenApiSecurityScheme {
+                Reference = new OpenApiReference { Type = ReferenceType.SecurityScheme, Id = "Bearer" }
+            },
+            Array.Empty<string>()
+        }
+    });
+
+    options.DocInclusionPredicate((doc, api) =>
+        doc == "v1" || string.Equals(api.GroupName, doc, StringComparison.OrdinalIgnoreCase));
+});
+
+// =====================================================================
+
 var app = builder.Build();
 
-// ---- Pipeline ----
-app.UseCors("AllowAll");
+// Pipeline
+app.UseCors(CorsPolicy);
 
-// 目前因docker維持 http://0.0.0.0:5000，先不要轉 https，否則會 307 轉到不存在的 https 連線
+// 不在這裡強制 https（你有 Nginx 統一處理 TLS）
 // app.UseHttpsRedirection();
 
 app.UseAuthentication();
 app.UseAuthorization();
 
+// Dev/Container 下開 Swagger（若 Prod 想關可用環境變數切）
 app.UseSwagger();
 app.UseSwaggerUI(options =>
 {
     options.SwaggerEndpoint("./swagger/v1/swagger.json", "All APIs v1");
-    foreach (var group in swaggerGroups)
-        options.SwaggerEndpoint($"./swagger/{group}/swagger.json", $"{group} API v1");
-
-    options.RoutePrefix = string.Empty;
+    foreach (var g in swaggerGroups)
+        options.SwaggerEndpoint($"./swagger/{g}/swagger.json", $"{g} API v1");
+    options.RoutePrefix = string.Empty; // 讓 / 直接是 Swagger UI
 });
 
-// Area 路由
+// Area + Controllers
 app.MapControllerRoute(
     name: "areas",
     pattern: "{area:exists}/{controller=Home}/{action=Index}/{id?}");
 
 app.MapControllers();
+
+// 健康檢查端點
+app.MapHealthChecks("/healthz");
+
 app.Run();

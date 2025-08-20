@@ -6,9 +6,9 @@ namespace DcMateH5Api.Areas.Log.Controllers
 {
     [Area("Log")]
     [ApiController]
-    [ApiExplorerSettings(GroupName = SwaggerGroups.Permission)]
+    [ApiExplorerSettings(GroupName = SwaggerGroups.Log)]
     [Route("[area]/[controller]")]
-    [Produces("application/json")]
+    // [Produces("application/json")]
     public class LogController : ControllerBase
     {
         private readonly ILogService _logService;
