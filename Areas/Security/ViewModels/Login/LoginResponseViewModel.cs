@@ -7,5 +7,9 @@ namespace DcMateH5Api.Areas.Security.ViewModels
     /// </summary>
     public class LoginResponseViewModel : TokenResult
     {
+        /// <summary>
+        /// 使用者完整資訊。
+        /// </summary>
+        public UserAccount User { get; set; } = null!;
     }
 }

@@ -12,5 +12,7 @@ public class FORM_FIELD_Master
     public Guid BASE_TABLE_ID { get; set; }
     public Guid VIEW_TABLE_ID { get; set; }
     public int STATUS { get; set; }  
-    public TableSchemaQueryType SCHEMA_TYPE { get; set; }  
+    public TableSchemaQueryType SCHEMA_TYPE { get; set; }
+    
+    public FormMaintenanceType DESIGN_MODE { get; set; }
 }

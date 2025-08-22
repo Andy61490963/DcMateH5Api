@@ -61,7 +61,8 @@ namespace DcMateH5Api.Areas.Security.Services
                 Token = tokenResult.Token,
                 Expiration = tokenResult.Expiration,
                 RefreshToken = tokenResult.RefreshToken,
-                RefreshTokenExpiration = tokenResult.RefreshTokenExpiration
+                RefreshTokenExpiration = tokenResult.RefreshTokenExpiration,
+                User = user // 全部直接帶出去
             };
         }
         

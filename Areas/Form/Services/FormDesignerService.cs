@@ -145,7 +145,7 @@ public class FormDesignerService : IFormDesignerService
     /// <returns>回傳多筆 FormFieldViewModel</returns>
     public FormFieldListViewModel GetFieldsByTableName(string tableName, Guid? formMasterId, TableSchemaQueryType schemaType)
     {
-        var columns = GetTableSchema(tableName, schemaType);
+        var columns = GetTableSchema(tableName);
         if (columns.Count == 0) return new();
 
         var configs = GetFieldConfigs(tableName, formMasterId);
@@ -245,7 +245,7 @@ public class FormDesignerService : IFormDesignerService
     /// <returns>包含欄位設定的 ViewModel</returns>
     public FormFieldListViewModel? EnsureFieldsSaved(string tableName, Guid? formMasterId, TableSchemaQueryType schemaType)
     {
-        var columns = GetTableSchema(tableName, schemaType);
+        var columns = GetTableSchema(tableName);
 
         if (columns.Count == 0) return null;
 
@@ -648,10 +648,10 @@ public class FormDesignerService : IFormDesignerService
     public Guid SaveFormHeader(FORM_FIELD_Master model)
     {
         // 確保主表與顯示用 View 皆能成功查詢，避免儲存無效設定
-        if (GetTableSchema(model.BASE_TABLE_NAME, TableSchemaQueryType.OnlyTable).Count == 0)
+        if (GetTableSchema(model.BASE_TABLE_NAME).Count == 0)
             throw new InvalidOperationException("主表名稱查無資料");
 
-        if (GetTableSchema(model.VIEW_TABLE_NAME, TableSchemaQueryType.OnlyView).Count == 0)
+        if (GetTableSchema(model.VIEW_TABLE_NAME).Count == 0)
             throw new InvalidOperationException("顯示用 View 名稱查無資料");
 
         // 若未指定 ID 則產生新 ID
@@ -680,10 +680,10 @@ public class FormDesignerService : IFormDesignerService
     /// </summary>
     /// <param name="tableName">資料表名稱</param>
     /// <returns>回傳欄位定義清單</returns>
-    private List<DbColumnInfo> GetTableSchema(string tableName, TableSchemaQueryType type)
+    private List<DbColumnInfo> GetTableSchema(string tableName)
     {
         var sql = Sql.TableSchemaSelect;
-        var columns = _con.Query<DbColumnInfo>(sql, new { TableName = tableName, Type = (int)type }).ToList();
+        var columns = _con.Query<DbColumnInfo>(sql, new { TableName = tableName }).ToList();
         
         return columns;
     }
