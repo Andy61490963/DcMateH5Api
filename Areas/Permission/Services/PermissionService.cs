@@ -8,6 +8,7 @@ using Microsoft.Data.SqlClient;
 using DcMateH5Api.Services.Cache;
 using DcMateH5Api.SqlHelper;
 using DcMateH5Api.Areas.Permission.Mappers;
+using System.Linq;
 
 namespace DcMateH5Api.Areas.Permission.Services
 {
@@ -216,24 +217,11 @@ namespace DcMateH5Api.Areas.Permission.Services
         /// <summary>
         /// 建立新選單項目。
         /// </summary>
-        public async Task<Guid> CreateMenuAsync(Menu menu, CancellationToken ct)
+        public async Task<Guid> CreateMenuAsync(CreateMenuRequest request, CancellationToken ct)
         {
-            var id = Guid.NewGuid();
-            const string sql =
-                @"INSERT INTO SYS_MENU (ID, PARENT_ID, SYS_FUNCTION_ID, NAME, SORT, IS_SHARE, IS_DELETE)
-                  VALUES (@Id, @ParentId, @FuncId, @Name, @Sort, @IsShare, 0)";
-            await _db.ExecuteAsync(sql, new
-            {
-                Id = id,
-                menu.ParentId,
-                FuncId = menu.SysFunctionId,
-                menu.Name,
-                menu.Sort,
-                menu.IsShare
-            },  
-            timeoutSeconds: 30,
-            ct: ct);
-            return id;
+            var model = MenuMapper.MapperCreate(request);
+            await _sqlHelper.InsertAsync(model, ct);
+            return model.Id;
         }
 
         /// <summary>
@@ -241,40 +229,19 @@ namespace DcMateH5Api.Areas.Permission.Services
         /// </summary>
         public Task<Menu?> GetMenuAsync(Guid id, CancellationToken ct)
         {
-            const string sql =
-                @"SELECT ID, PARENT_ID AS ParentId, SYS_FUNCTION_ID AS SysFunctionId,
-                         NAME, SORT, IS_SHARE, IS_DELETE
-                  FROM SYS_MENU
-                  WHERE ID = @Id AND IS_DELETE = 0";
-            return _db.QuerySingleOrDefaultAsync<Menu?>(sql, new { Id = id },  
-                timeoutSeconds: 30,
-                ct: ct);
+            var where = new WhereBuilder<Menu>()
+                .AndEq(x => x.Id, id)
+                .AndNotDeleted();
+            return _sqlHelper.SelectFirstOrDefaultAsync(where, ct);
         }
 
         /// <summary>
         /// 更新選單資訊。
         /// </summary>
-        public Task UpdateMenuAsync(Menu menu, CancellationToken ct)
+        public Task UpdateMenuAsync(Guid id, UpdateMenuRequest request, CancellationToken ct)
         {
-            const string sql =
-                @"UPDATE SYS_MENU
-                  SET PARENT_ID = @ParentId,
-                      SYS_FUNCTION_ID = @FuncId,
-                      NAME = @Name,
-                      SORT = @Sort,
-                      IS_SHARE = @IsShare
-                  WHERE ID = @Id AND IS_DELETE = 0";
-            return _db.ExecuteAsync(sql, new
-            {
-                menu.Id,
-                menu.ParentId,
-                FuncId = menu.SysFunctionId,
-                menu.Name,
-                menu.Sort,
-                menu.IsShare
-            },  
-            timeoutSeconds: 30,
-            ct: ct);
+            var model = MenuMapper.MapperUpdate(id, request);
+            return _sqlHelper.UpdateAllByIdAsync(model, UpdateNullBehavior.IgnoreNulls, ct);
         }
 
         /// <summary>
@@ -282,10 +249,9 @@ namespace DcMateH5Api.Areas.Permission.Services
         /// </summary>
         public Task DeleteMenuAsync(Guid id, CancellationToken ct)
         {
-            const string sql = @"UPDATE SYS_MENU SET IS_DELETE = 1 WHERE ID = @Id";
-            return _db.ExecuteAsync(sql, new { Id = id },  
-                timeoutSeconds: 30,
-                ct: ct);
+            var where = new WhereBuilder<Menu>()
+                .AndEq(x => x.Id, id);
+            return _sqlHelper.DeleteWhereAsync(where, ct);
         }
 
         /// <summary>
@@ -293,19 +259,16 @@ namespace DcMateH5Api.Areas.Permission.Services
         /// </summary>
         public async Task<bool> MenuNameExistsAsync(string name, Guid? parentId, CancellationToken ct, Guid? excludeId = null)
         {
-            const string sql =
-                @"SELECT COUNT(1)
-                    FROM SYS_MENU
-                    WHERE NAME = @Name AND IS_DELETE = 0
-                      AND ((@ParentId IS NULL AND PARENT_ID IS NULL) OR PARENT_ID = @ParentId)
-                      AND (@ExcludeId IS NULL OR ID <> @ExcludeId)";
-            var count = await _db.ExecuteScalarAsync<int>(sql, new { Name = name, ParentId = parentId, ExcludeId = excludeId },  
-                timeoutSeconds: 30,
-                ct: ct);
-            return count > 0;
+            var where = new WhereBuilder<Menu>()
+                .AndEq(x => x.Name, name)
+                .AndEq(x => x.ParentId, parentId)
+                .AndNotDeleted();
+            var list = await _sqlHelper.SelectWhereAsync(where, ct);
+            return list.Any(m => !excludeId.HasValue || m.Id != excludeId.Value);
         }
 
-        /// <summary>
+        #endregion
+/// <summary>
         /// 取得指定使用者可見的選單樹。
         /// </summary>
         public async Task<IEnumerable<MenuTreeItem>> GetUserMenuTreeAsync(Guid userId, CancellationToken ct) // 依使用者取得選單樹狀結構

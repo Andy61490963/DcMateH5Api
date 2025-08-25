@@ -32,9 +32,9 @@ namespace DcMateH5Api.Areas.Permission.Interfaces
         Task<bool> FunctionNameExistsAsync(string name, CancellationToken ct, Guid? excludeId = null);
 
         // 選單
-        Task<Guid> CreateMenuAsync(Menu menu, CancellationToken ct);
+        Task<Guid> CreateMenuAsync(CreateMenuRequest request, CancellationToken ct);
         Task<Menu?> GetMenuAsync(Guid id, CancellationToken ct);
-        Task UpdateMenuAsync(Menu menu, CancellationToken ct);
+        Task UpdateMenuAsync(Guid id, UpdateMenuRequest request, CancellationToken ct);
         Task DeleteMenuAsync(Guid id, CancellationToken ct);
         Task<bool> MenuNameExistsAsync(string name, Guid? parentId, CancellationToken ct, Guid? excludeId = null);
         Task<IEnumerable<MenuTreeItem>> GetUserMenuTreeAsync(Guid userId, CancellationToken ct);
