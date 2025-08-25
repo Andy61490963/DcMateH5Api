@@ -15,7 +15,6 @@ namespace DcMateH5Api.Areas.Security.Controllers
     public class LoginController : ControllerBase
     {
         private readonly IAuthenticationService _authService;
-        private const string AccountExistsMessage = "Account already exists.";
         
         /// <summary>
         /// 建構函式注入驗證服務。
@@ -37,26 +36,32 @@ namespace DcMateH5Api.Areas.Security.Controllers
             var result = await _authService.AuthenticateAsync(request.Account, request.Password, ct);
             if (result == null)
             {
-                return Unauthorized();
+                return StatusCode(StatusCodes.Status401Unauthorized, "查無帳號"); 
             }
 
-            return Ok(result);
+            return StatusCode(StatusCodes.Status200OK, result); 
         }
         
         /// <summary>
         /// 註冊新帳號。
         /// </summary>
         /// <param name="request">帳號、密碼、角色。</param>
-        /// <returns>註冊成功的帳號資訊。</returns>
         [HttpPost("register")]
         public async Task<IActionResult> Register([FromBody] RegisterRequestViewModel request, CancellationToken ct)
         {
-            var result = await _authService.RegisterAsync(request.Account, request.Password, ct);
-            if (result == null)
+            var rows = await _authService.RegisterAsync(request, ct);
+
+            if (rows == -1)
             {
-                return BadRequest(AccountExistsMessage);
+                return Conflict("帳號已存在"); 
             }
-            return Ok(result);
+
+            if (rows > 0)
+            {
+                return StatusCode(StatusCodes.Status201Created, "註冊成功"); 
+            }
+
+            return StatusCode(StatusCodes.Status500InternalServerError, "註冊失敗，請稍後再試"); 
         }
 
     }

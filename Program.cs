@@ -22,9 +22,12 @@ using DcMateH5Api.Areas.Permission.Services;
 using DcMateH5Api.Areas.Security.Interfaces;
 using DcMateH5Api.Areas.Security.Models;
 using DcMateH5Api.Areas.Security.Services;
+using DcMateH5Api.Areas.Test.Interfaces;
+using DcMateH5Api.Areas.Test.Services;
 using DcMateH5Api.DbExtensions;
 using DcMateH5Api.Helper;
 using DcMateH5Api.Services.Cache;
+using DcMateH5Api.SqlHelper;
 using Microsoft.Data.SqlClient;
 
 var builder = WebApplication.CreateBuilder(args);
@@ -63,11 +66,13 @@ builder.Services.AddScoped<SqlConnection, SqlConnection>(_ =>
 builder.Services.AddHttpContextAccessor();
 builder.Services.AddOptions();
 
-// Db 工具（你既有的抽象）
+// Db 工具
 builder.Services.AddSingleton<ISqlConnectionFactory, SqlConnectionFactory>();
 builder.Services.AddScoped<IDbExecutor, DbExecutor>();
+builder.Services.AddScoped<SQLGenerateHelper>();    
 
 // 業務服務
+builder.Services.AddScoped<ITestService, TestService>();
 builder.Services.AddScoped<ILogService, LogService>();
 builder.Services.AddScoped<IEnumListService, EnumListService>();
 builder.Services.AddScoped<IFormDesignerService, FormDesignerService>();
@@ -196,7 +201,7 @@ var app = builder.Build();
 // Pipeline
 app.UseCors(CorsPolicy);
 
-// 不在這裡強制 https（你有 Nginx 統一處理 TLS）
+// 不在這裡強制 https（有 Nginx 統一處理 TLS）
 // app.UseHttpsRedirection();
 
 app.UseAuthentication();

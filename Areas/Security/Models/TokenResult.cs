@@ -16,15 +16,15 @@ namespace DcMateH5Api.Areas.Security.Models
         /// Token 到期時間。
         /// </summary>
         public DateTime Expiration { get; set; }
-
-        /// <summary>
-        /// Refresh Token 字串（若有）。
-        /// </summary>
-        public string? RefreshToken { get; set; }
-
-        /// <summary>
-        /// Refresh Token 到期時間（若有）。
-        /// </summary>
-        public DateTime? RefreshTokenExpiration { get; set; }
+        //
+        // /// <summary>
+        // /// Refresh Token 字串（若有）。
+        // /// </summary>
+        // public string? RefreshToken { get; set; }
+        //
+        // /// <summary>
+        // /// Refresh Token 到期時間（若有）。
+        // /// </summary>
+        // public DateTime? RefreshTokenExpiration { get; set; }
     }
 }

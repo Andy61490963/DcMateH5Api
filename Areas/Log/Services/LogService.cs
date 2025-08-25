@@ -2,8 +2,8 @@
 using System.Data;
 using Dapper;
 using DcMateH5Api.Areas.Log.Interfaces;
+using DcMateH5Api.Areas.Log.Models;
 using DcMateH5Api.DbExtensions;
-using DcMateH5Api.Logging;
 
 namespace DcMateH5Api.Areas.Log.Services
 {

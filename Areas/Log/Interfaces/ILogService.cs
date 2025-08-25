@@ -1,6 +1,6 @@
 
 
-using DcMateH5Api.Logging;
+using DcMateH5Api.Areas.Log.Models;
 
 namespace DcMateH5Api.Areas.Log.Interfaces
 {

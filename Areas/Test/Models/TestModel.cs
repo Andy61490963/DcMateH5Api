@@ -1,8 +1,7 @@
-using System;
 using System.ComponentModel.DataAnnotations;
 using System.ComponentModel.DataAnnotations.Schema;
 
-namespace DcMateH5Api.Areas.Security.Models
+namespace DcMateH5Api.Areas.Test.Models
 {
     /// <summary>
     /// 使用者帳號資訊
@@ -13,7 +12,7 @@ namespace DcMateH5Api.Areas.Security.Models
         /// <summary>
         /// 使用者唯一識別碼
         /// </summary>
-        [Key]
+        [Key]                
         [Column("ID")]
         public Guid Id { get; set; }
 

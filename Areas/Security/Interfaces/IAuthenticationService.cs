@@ -16,6 +16,6 @@ namespace DcMateH5Api.Areas.Security.Interfaces
         /// <returns>登入結果，失敗則回傳 null。</returns>
         Task<LoginResponseViewModel?> AuthenticateAsync(string account, string password, CancellationToken ct = default);
 
-        Task<RegisterResponseViewModel?> RegisterAsync(string account, string password, CancellationToken ct = default);
+        Task<int> RegisterAsync(RegisterRequestViewModel request, CancellationToken ct = default);
     }
 }

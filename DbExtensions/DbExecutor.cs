@@ -5,8 +5,8 @@ using System.Security.Claims;
 using System.Text.Json;
 using Dapper;
 using DcMateH5Api.Areas.Log.Interfaces;
+using DcMateH5Api.Areas.Log.Models;
 using Microsoft.Data.SqlClient;
-using DcMateH5Api.Logging;
 
 namespace DcMateH5Api.DbExtensions;
 

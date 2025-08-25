@@ -1,6 +1,6 @@
-using System;
+﻿namespace DcMateH5Api.Areas.Log.Models;
 
-namespace DcMateH5Api.Logging;
+using System;
 
 /// <summary>
 /// Represents a single SQL execution log entry.

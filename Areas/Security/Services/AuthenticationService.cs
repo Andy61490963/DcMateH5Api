@@ -1,8 +1,8 @@
-using System.Threading.Tasks;
-using Dapper;
 using DcMateH5Api.Areas.Security.Models;
 using DcMateH5Api.Areas.Security.Interfaces;
 using DcMateH5Api.Areas.Security.ViewModels;
+using DcMateH5Api.Areas.Security.Mappers;
+using DcMateH5Api.SqlHelper;
 using Microsoft.Data.SqlClient;
 
 namespace DcMateH5Api.Areas.Security.Services
@@ -12,6 +12,7 @@ namespace DcMateH5Api.Areas.Security.Services
     /// </summary>
     public class AuthenticationService : IAuthenticationService
     {
+        private readonly SQLGenerateHelper _sqlHelper;
         private readonly IDbExecutor _db;
         private readonly SqlConnection _connection;
         private readonly IPasswordHasher _passwordHasher;
@@ -24,26 +25,33 @@ namespace DcMateH5Api.Areas.Security.Services
         /// <param name="passwordHasher">密碼雜湊器。</param>
         /// <param name="tokenGenerator">Token 產生器。</param>
         public AuthenticationService(
+            SQLGenerateHelper sqlHelper,
             IDbExecutor db,
             SqlConnection connection,
             IPasswordHasher passwordHasher,
             ITokenGenerator tokenGenerator)
         {
+            _sqlHelper = sqlHelper;
             _db = db;
             _connection = connection;
             _passwordHasher = passwordHasher;
             _tokenGenerator = tokenGenerator;
         }
 
-        /// <inheritdoc />
+        /// <summary>
+        /// 登入檢查流程
+        /// </summary>
+        /// <param name="account"></param>
+        /// <param name="password"></param>
+        /// <param name="ct"></param>
+        /// <returns></returns>
         public async Task<LoginResponseViewModel?> AuthenticateAsync(string account, string password, CancellationToken ct = default)
         {
-            var user = await _db.QueryFirstOrDefaultAsync<UserAccount>(
-                Sql.GetUser,
-                new { Account = account },
-                timeoutSeconds: 30,
-                ct: ct
-            );
+            var where = new WhereBuilder<UserAccount>()
+                .AndEq(x => x.Account, account)
+                .AndNotDeleted();
+            
+            var user = await _sqlHelper.SelectFirstOrDefaultAsync(where, ct);
             
             if (user == null)
             {
@@ -56,66 +64,30 @@ namespace DcMateH5Api.Areas.Security.Services
             }
 
             var tokenResult = _tokenGenerator.GenerateToken(user);
-            return new LoginResponseViewModel
-            {
-                Token = tokenResult.Token,
-                Expiration = tokenResult.Expiration,
-                RefreshToken = tokenResult.RefreshToken,
-                RefreshTokenExpiration = tokenResult.RefreshTokenExpiration,
-                User = user // 全部直接帶出去
-            };
+            return new LoginResponseViewModel(user, tokenResult);
         }
         
-        public async Task<RegisterResponseViewModel?> RegisterAsync(string account, string password, CancellationToken ct = default)
+        /// <summary>
+        /// 註冊帳號
+        /// </summary>
+        public async Task<int> RegisterAsync(RegisterRequestViewModel request, CancellationToken ct = default)
         {
-            // 1. 檢查帳號是否已存在
-            var exists = await _db.ExecuteScalarAsync<int>(
-                Sql.CheckSql,   
-                new { Account = account },
-                timeoutSeconds: 30,
-                ct: ct
-            );
-            
-            if (exists > 0)
+            var where = new WhereBuilder<UserAccount>()
+                .AndEq(x => x.Account, request.Account)
+                .AndNotDeleted();
+
+            var user = await _sqlHelper.SelectFirstOrDefaultAsync(where, ct);
+
+            if (user != null)
             {
-                return null; // 帳號已存在
+                return -1; // -1 代表帳號已存在
             }
 
-            // 2. 生成鹽與雜湊
             var salt = _passwordHasher.GenerateSalt();
-            var hash = _passwordHasher.HashPassword(password, salt);
+            var model = UserAccountMapper.MapperRegisterAndDto(request, salt, _passwordHasher);
 
-            // 3. 寫入資料庫
-            var userId = Guid.NewGuid();
-            var role = "ADMIN";
-
-            await _db.ExecuteAsync(Sql.InsertSql, new
-            {
-                Id = userId,
-                AC = account,
-                Name = account,
-                Hash = hash,
-                Salt = salt,
-                Role = role
-            },
-            timeoutSeconds: 30,
-            ct: ct);
-
-            return new RegisterResponseViewModel
-            {
-                UserId = userId,
-                Account = account,
-                Role = role
-            };
-        }
-
-        private static class Sql
-        {
-            public const string GetUser = @"/**/SELECT ID, NAME AS Account, SWD AS PasswordHash, SWD_SALT AS PasswordSalt FROM SYS_USER WHERE NAME = @Account AND IS_DELETE = 0";
-            public const string CheckSql = @"/**/SELECT COUNT(1) FROM SYS_USER WHERE NAME = @Account AND IS_DELETE = 0";
-            public const string InsertSql = @"/**/
-        INSERT INTO SYS_USER (ID, AC, NAME, SWD, SWD_SALT, ROLE, IS_DELETE)
-        VALUES (@Id, @AC, @Name, @Hash, @Salt, @Role, 0)";
+            var rows = await _sqlHelper.InsertAsync(model, ct);
+            return rows; // >0 = 成功, 0 = 失敗
         }
     }
 }
