@@ -13,14 +13,14 @@ namespace DcMateH5Api.Areas.Permission.Interfaces
         // 群組
         Task<Guid> CreateGroupAsync(CreateGroupRequest request, CancellationToken ct);
         Task<Group?> GetGroupAsync(Guid id, CancellationToken ct);
-        Task UpdateGroupAsync(Group group, CancellationToken ct);
+        Task UpdateGroupAsync(Guid id, UpdateGroupRequest request, CancellationToken ct);
         Task DeleteGroupAsync(Guid id, CancellationToken ct);
         Task<bool> GroupNameExistsAsync(string name, CancellationToken ct, Guid? excludeId = null);
 
         // 權限
-        Task<Guid> CreatePermissionAsync(ActionType code, CancellationToken ct);
+        Task<Guid> CreatePermissionAsync(CreatePermissionRequest request, CancellationToken ct);
         Task<PermissionModel?> GetPermissionAsync(Guid id, CancellationToken ct);
-        Task UpdatePermissionAsync(PermissionModel permission, CancellationToken ct);
+        Task UpdatePermissionAsync(Guid id, UpdatePermissionRequest request, CancellationToken ct);
         Task DeletePermissionAsync(Guid id, CancellationToken ct);
         Task<bool> PermissionCodeExistsAsync(ActionType code, CancellationToken ct, Guid? excludeId = null);
 

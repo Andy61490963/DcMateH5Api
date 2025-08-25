@@ -92,7 +92,7 @@ namespace DcMateH5Api.Areas.Permission.Controllers
                 return Conflict($"群組名稱已存在: {request.Name}");
             }
 
-            await _permissionService.UpdateGroupAsync(new Group { Id = id, Name = request.Name }, ct);
+            await _permissionService.UpdateGroupAsync(id, request, ct);
             return NoContent();
         }
 
@@ -120,14 +120,18 @@ namespace DcMateH5Api.Areas.Permission.Controllers
         public async Task<ActionResult<PermissionModel>> CreatePermission([FromBody] CreatePermissionRequest request, CancellationToken ct)
         {
             if (!System.Enum.IsDefined(typeof(ActionType), request.Code))
-                return ValidationProblem($"Invalid ActionType: {request.Code}");
+            {
+                return ValidationProblem($"無效的列舉操作代碼: {request.Code}");
+            }
 
             if (await _permissionService.PermissionCodeExistsAsync(request.Code, ct))
+            {
                 return Conflict($"權限碼已存在: {request.Code}");
+            }
 
-            var id = await _permissionService.CreatePermissionAsync(request.Code, ct);
-            var result = new PermissionModel { Id = id, Code = request.Code };
-            return CreatedAtAction(nameof(GetPermission), new { id }, result);
+            var id = await _permissionService.CreatePermissionAsync(request, ct);
+            
+            return CreatedAtAction(nameof(GetPermission), new { id });
         }
 
         /// <summary>取得指定權限資訊。</summary>
@@ -156,7 +160,7 @@ namespace DcMateH5Api.Areas.Permission.Controllers
             if (await _permissionService.PermissionCodeExistsAsync(request.Code, ct, id))
                 return Conflict($"權限碼已存在: {request.Code}");
 
-            await _permissionService.UpdatePermissionAsync(new PermissionModel { Id = id, Code = request.Code }, ct);
+            await _permissionService.UpdatePermissionAsync(id, request, ct);
             return NoContent();
         }
 

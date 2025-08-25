@@ -43,7 +43,7 @@ namespace DcMateH5Api.Areas.Permission.Services
         /// <returns>群組識別碼</returns>
         public async Task<Guid> CreateGroupAsync(CreateGroupRequest request, CancellationToken ct)
         {
-            var model = GroupMapper.MapperGroupRequestAndDto(request);
+            var model = GroupMapper.MapperCreate(request);
             await _sqlHelper.InsertAsync(model, ct);
             return model.Id;
         }
@@ -66,9 +66,10 @@ namespace DcMateH5Api.Areas.Permission.Services
         /// <summary>
         /// 更新群組
         /// </summary>
-        public Task UpdateGroupAsync(Group group, CancellationToken ct)
+        public Task UpdateGroupAsync(Guid id, UpdateGroupRequest request, CancellationToken ct)
         {
-            return _sqlHelper.UpdateAllByIdAsync(group, UpdateNullBehavior.IgnoreNulls, ct);
+            var model = GroupMapper.MapperUpdate(id, request);
+            return _sqlHelper.UpdateAllByIdAsync(model, UpdateNullBehavior.IgnoreNulls, ct);
         }
 
         /// <summary>
@@ -101,18 +102,11 @@ namespace DcMateH5Api.Areas.Permission.Services
         /// <summary>
         /// 建立新的權限碼。
         /// </summary>
-        public async Task<Guid> CreatePermissionAsync(ActionType code, CancellationToken ct)
+        public async Task<Guid> CreatePermissionAsync(CreatePermissionRequest request, CancellationToken ct)
         {
-            var id = Guid.NewGuid();
-            const string sql =
-                @"INSERT INTO SYS_PERMISSION (ID, CODE, IS_ACTIVE)
-                  VALUES (@Id, @Code, 1)";
-            
-            await _db.ExecuteAsync(sql, new { Id = id, Code = code },  
-                timeoutSeconds: 30,
-                ct: ct);
-            
-            return id;
+            var model = PermissionMapper.MapperCreate(request);
+            await _sqlHelper.InsertAsync(model, ct);
+            return model.Id;
         }
 
         /// <summary>
@@ -120,21 +114,20 @@ namespace DcMateH5Api.Areas.Permission.Services
         /// </summary>
         public Task<PermissionModel?> GetPermissionAsync(Guid id, CancellationToken ct)
         {
-            const string sql = @"/**/SELECT ID, CODE FROM SYS_PERMISSION WHERE ID = @Id AND IS_ACTIVE = 1";
-            return _db.QuerySingleOrDefaultAsync<PermissionModel?>(sql, new { Id = id },  
-                timeoutSeconds: 30,
-                ct: ct);
+            var where = new WhereBuilder<PermissionModel>()
+                .AndEq(x => x.Id, id)
+                .AndEq(x => x.IsActive, true)
+                .AndNotDeleted();
+            return _sqlHelper.SelectFirstOrDefaultAsync(where, ct);
         }
 
         /// <summary>
         /// 更新權限碼。
         /// </summary>
-        public Task UpdatePermissionAsync(PermissionModel permission, CancellationToken ct)
+        public Task UpdatePermissionAsync(Guid id, UpdatePermissionRequest request, CancellationToken ct)
         {
-            const string sql = @"/**/UPDATE SYS_PERMISSION SET CODE = @Code WHERE ID = @Id";
-            return _db.ExecuteAsync(sql, new { Id = permission.Id, Code = permission.Code },  
-                timeoutSeconds: 30,
-                ct: ct);
+            var model = PermissionMapper.MapperUpdate(id, request);
+            return _sqlHelper.UpdateAllByIdAsync(model, UpdateNullBehavior.IgnoreNulls, ct);
         }
 
         /// <summary>
@@ -142,10 +135,9 @@ namespace DcMateH5Api.Areas.Permission.Services
         /// </summary>
         public Task DeletePermissionAsync(Guid id, CancellationToken ct)
         {
-            const string sql = @"/**/UPDATE SYS_PERMISSION SET IS_ACTIVE = 0 WHERE ID = @Id";
-            return _db.ExecuteAsync(sql, new { Id = id },  
-                timeoutSeconds: 30,
-                ct: ct);
+            var where = new WhereBuilder<Group>()
+                .AndEq(x => x.Id, id);
+            return _sqlHelper.DeleteWhereAsync(where, ct);
         }
 
         /// <summary>
@@ -153,16 +145,11 @@ namespace DcMateH5Api.Areas.Permission.Services
         /// </summary>
         public async Task<bool> PermissionCodeExistsAsync(ActionType code, CancellationToken ct, Guid? excludeId = null)
         {
-            const string sql =
-                @"/**/SELECT COUNT(1)
-                    FROM SYS_PERMISSION
-                    WHERE CODE = @Code AND IS_ACTIVE = 1
-                      AND (@ExcludeId IS NULL OR ID <> @ExcludeId)";
-            var count = await _db.ExecuteScalarAsync<int>(sql, new { Code = code, ExcludeId = excludeId },  
-                timeoutSeconds: 30,
-                ct: ct);
-            
-            return count > 0;
+            var where = new WhereBuilder<PermissionModel>()
+                .AndEq(x => x.Code, code)
+                .AndEq(x => x.IsActive, true);
+            var list = await _sqlHelper.SelectWhereAsync(where, ct);
+            return list.Any(p => !excludeId.HasValue || p.Id != excludeId.Value);
         }
 
         #endregion

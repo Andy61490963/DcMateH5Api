@@ -8,6 +8,8 @@ namespace DcMateH5Api.Areas.Permission.ViewModels.PermissionManagement
     public class UpdatePermissionRequest
     {
         public ActionType Code { get; set; }
+        
+        public bool IsActive { get; set; }
     }
 }
 
