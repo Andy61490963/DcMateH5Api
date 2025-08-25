@@ -1,6 +1,7 @@
 using ClassLibrary;
 using DcMateH5Api.Areas.Permission.Models;
 using DcMateH5Api.Areas.Permission.ViewModels.Menu;
+using DcMateH5Api.Areas.Permission.ViewModels.PermissionManagement;
 
 namespace DcMateH5Api.Areas.Permission.Interfaces
 {
@@ -10,7 +11,7 @@ namespace DcMateH5Api.Areas.Permission.Interfaces
     public interface IPermissionService
     {
         // 群組
-        Task<Guid> CreateGroupAsync(string name, CancellationToken ct);
+        Task<Guid> CreateGroupAsync(CreateGroupRequest request, CancellationToken ct);
         Task<Group?> GetGroupAsync(Guid id, CancellationToken ct);
         Task UpdateGroupAsync(Group group, CancellationToken ct);
         Task DeleteGroupAsync(Guid id, CancellationToken ct);

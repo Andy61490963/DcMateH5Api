@@ -247,7 +247,7 @@ namespace DcMateH5Api.SqlHelper
         {
             var (table, _, _, _, _) = Reflect<T>();
             var (whereSql, param) = where.Build();
-            var sql = $"DELETE FROM {table} {whereSql};";
+            var sql = $"UPDATE {table} SET IS_DELETE = 1 {whereSql};"; 
             return await _db.ExecuteAsync(sql, param, ct: ct);
         }
 

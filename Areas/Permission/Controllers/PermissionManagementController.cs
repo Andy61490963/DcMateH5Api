@@ -54,15 +54,15 @@ namespace DcMateH5Api.Areas.Permission.Controllers
         [ProducesResponseType(StatusCodes.Status400BadRequest)]
         public async Task<ActionResult<Group>> CreateGroup([FromBody] CreateGroupRequest request, CancellationToken ct)
         {
-            // 基礎驗證由 [ApiController] 自動處理；此處直入業務流程
             if (await _permissionService.GroupNameExistsAsync(request.Name, ct))
+            {
                 return Conflict($"群組名稱已存在: {request.Name}");
+            }
 
-            var id = await _permissionService.CreateGroupAsync(request.Name, ct);
-            var result = new Group { Id = id, Name = request.Name };
+            var id = await _permissionService.CreateGroupAsync(request, ct);
 
             // 201 + Location
-            return CreatedAtAction(nameof(GetGroup), new { id }, result);
+            return CreatedAtAction(nameof(GetGroup), new { id });
         }
 
         /// <summary>取得指定群組資訊。</summary>
@@ -83,10 +83,14 @@ namespace DcMateH5Api.Areas.Permission.Controllers
         {
             // 前置檢查：不存在就 404，避免「成功但其實沒更新」
             if (await _permissionService.GetGroupAsync(id, ct) is null)
+            {
                 return NotFound();
+            }
 
             if (await _permissionService.GroupNameExistsAsync(request.Name, ct, id))
+            {
                 return Conflict($"群組名稱已存在: {request.Name}");
+            }
 
             await _permissionService.UpdateGroupAsync(new Group { Id = id, Name = request.Name }, ct);
             return NoContent();

@@ -3,8 +3,11 @@ using Dapper;
 using DcMateH5Api.Areas.Permission.Interfaces;
 using DcMateH5Api.Areas.Permission.Models;
 using DcMateH5Api.Areas.Permission.ViewModels.Menu;
+using DcMateH5Api.Areas.Permission.ViewModels.PermissionManagement;
 using Microsoft.Data.SqlClient;
-using DcMateH5Api.Services.Cache; // 引入自訂快取服務
+using DcMateH5Api.Services.Cache;
+using DcMateH5Api.SqlHelper;
+using DcMateH5Api.Areas.Permission.Mappers;
 
 namespace DcMateH5Api.Areas.Permission.Services
 {
@@ -14,6 +17,7 @@ namespace DcMateH5Api.Areas.Permission.Services
     /// </summary>
     public class PermissionService : IPermissionService
     {
+        private readonly SQLGenerateHelper _sqlHelper;
         private readonly IDbExecutor _db;
         private readonly SqlConnection _con;
         private readonly ICacheService _cache; // Redis 快取服務
@@ -21,8 +25,9 @@ namespace DcMateH5Api.Areas.Permission.Services
         /// <summary>
         /// 建構函式，注入資料庫連線與快取服務。
         /// </summary>
-        public PermissionService(IDbExecutor db, SqlConnection con, ICacheService cache)
+        public PermissionService(SQLGenerateHelper sqlHelper, IDbExecutor db, SqlConnection con, ICacheService cache)
         {
+            _sqlHelper = sqlHelper;
             _db = db;
             _con = con;
             _cache = cache;
@@ -33,54 +38,47 @@ namespace DcMateH5Api.Areas.Permission.Services
         /// <summary>
         /// 建立新群組。
         /// </summary>
-        /// <param name="name">群組名稱。</param>
-        /// <returns>回傳新群組的唯一識別碼 (GUID)。</returns>
-        public async Task<Guid> CreateGroupAsync(string name, CancellationToken ct)
+        /// <param name="request">群組名稱</param>
+        /// <param name="ct"></param>
+        /// <returns>群組識別碼</returns>
+        public async Task<Guid> CreateGroupAsync(CreateGroupRequest request, CancellationToken ct)
         {
-            var id = Guid.NewGuid();
-            const string sql =
-                @"/**/INSERT INTO SYS_GROUP (ID, NAME, IS_ACTIVE)
-                  VALUES (@Id, @Name, 1)";
-            await _db.ExecuteAsync(sql, new { Id = id, Name = name },  
-                timeoutSeconds: 30,
-                ct: ct);
-            
-            return id;
+            var model = GroupMapper.MapperGroupRequestAndDto(request);
+            await _sqlHelper.InsertAsync(model, ct);
+            return model.Id;
         }
 
         /// <summary>
-        /// 取得指定群組資訊（僅限啟用中）。
+        /// 取得指定群組資訊（僅限啟用中）
         /// </summary>
-        /// <param name="id">群組 ID。</param>
-        /// <returns>群組資料，若不存在則回傳 null。</returns>
+        /// <param name="id">群組id</param>
+        /// <param name="ct"></param>
+        /// <returns>找不到</returns>
         public Task<Group?> GetGroupAsync(Guid id, CancellationToken ct)
         {
-            const string sql = @"SELECT ID, NAME FROM SYS_GROUP WHERE ID = @Id AND IS_ACTIVE = 1";
-            return _db.QueryFirstOrDefaultAsync<Group>(sql, new { Id = id },  
-                timeoutSeconds: 30,
-                ct: ct);
+            var where = new WhereBuilder<Group>()
+                .AndEq(x => x.Id, id)
+                .AndEq(x => x.IsActive, true)
+                .AndNotDeleted();
+            return _sqlHelper.SelectFirstOrDefaultAsync(where, ct);
         }
 
         /// <summary>
-        /// 更新群組名稱。
+        /// 更新群組
         /// </summary>
         public Task UpdateGroupAsync(Group group, CancellationToken ct)
         {
-            const string sql = @"UPDATE SYS_GROUP SET NAME = @Name WHERE ID = @Id";
-            return _db.ExecuteAsync(sql, new { group.Id, group.Name },  
-                timeoutSeconds: 30,
-                ct: ct);
+            return _sqlHelper.UpdateAllByIdAsync(group, UpdateNullBehavior.IgnoreNulls, ct);
         }
 
         /// <summary>
-        /// 停用（軟刪除）群組。
+        /// 停用群組。
         /// </summary>
         public Task DeleteGroupAsync(Guid id, CancellationToken ct)
         {
-            const string sql = @"UPDATE SYS_GROUP SET IS_ACTIVE = 0 WHERE ID = @Id";
-            return _db.ExecuteAsync(sql, new { Id = id },  
-                timeoutSeconds: 30,
-                ct: ct);
+            var where = new WhereBuilder<Group>()
+                .AndEq(x => x.Id, id);
+            return _sqlHelper.DeleteWhereAsync(where, ct);
         }
 
         /// <summary>
@@ -88,16 +86,12 @@ namespace DcMateH5Api.Areas.Permission.Services
         /// </summary>
         public async Task<bool> GroupNameExistsAsync(string name, CancellationToken ct, Guid? excludeId = null)
         {
-            const string sql =
-                @"SELECT COUNT(1)
-                    FROM SYS_GROUP
-                    WHERE NAME = @Name AND IS_ACTIVE = 1
-                      AND (@ExcludeId IS NULL OR ID <> @ExcludeId)";
-            
-            var count = await _db.ExecuteScalarAsync<int>(sql, new { Name = name, ExcludeId = excludeId },  
-                timeoutSeconds: 30,
-                ct: ct);
-            return count > 0;
+            var where = new WhereBuilder<Group>()
+                .AndEq(x => x.Name, name)
+                .AndEq(x => x.IsActive, true);
+
+            var list = await _sqlHelper.SelectWhereAsync(where, ct);
+            return list.Any(g => !excludeId.HasValue || g.Id != excludeId.Value);
         }
 
         #endregion
