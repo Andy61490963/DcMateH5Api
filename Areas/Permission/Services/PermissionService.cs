@@ -89,8 +89,8 @@ namespace DcMateH5Api.Areas.Permission.Services
         {
             var where = new WhereBuilder<Group>()
                 .AndEq(x => x.Name, name)
-                .AndEq(x => x.IsActive, true);
-
+                .AndEq(x => x.IsActive, true)
+                .AndNotDeleted();
             var list = await _sqlHelper.SelectWhereAsync(where, ct);
             return list.Any(g => !excludeId.HasValue || g.Id != excludeId.Value);
         }
@@ -135,7 +135,7 @@ namespace DcMateH5Api.Areas.Permission.Services
         /// </summary>
         public Task DeletePermissionAsync(Guid id, CancellationToken ct)
         {
-            var where = new WhereBuilder<Group>()
+            var where = new WhereBuilder<PermissionModel>()
                 .AndEq(x => x.Id, id);
             return _sqlHelper.DeleteWhereAsync(where, ct);
         }
@@ -147,7 +147,8 @@ namespace DcMateH5Api.Areas.Permission.Services
         {
             var where = new WhereBuilder<PermissionModel>()
                 .AndEq(x => x.Code, code)
-                .AndEq(x => x.IsActive, true);
+                .AndEq(x => x.IsActive, true)
+                .AndNotDeleted();
             var list = await _sqlHelper.SelectWhereAsync(where, ct);
             return list.Any(p => !excludeId.HasValue || p.Id != excludeId.Value);
         }
@@ -159,23 +160,11 @@ namespace DcMateH5Api.Areas.Permission.Services
         /// <summary>
         /// 建立新功能。
         /// </summary>
-        public async Task<Guid> CreateFunctionAsync(Function function, CancellationToken ct)
+        public async Task<Guid> CreateFunctionAsync(CreateFunctionRequest request, CancellationToken ct)
         {
-            var id = Guid.NewGuid();
-            const string sql =
-                @"/**/INSERT INTO SYS_FUNCTION (ID, NAME, AREA, CONTROLLER, DEFAULT_ENDPOINT, IS_DELETE)
-                  VALUES (@Id, @Name, @Area, @Controller, @Default_endpoint, 0)";
-            await _db.ExecuteAsync(sql, new
-            {
-                Id = id,
-                function.Name,
-                function.Area,
-                function.Controller,
-                Default_endpoint = function.DEFAULT_ENDPOINT
-            },  
-            timeoutSeconds: 30,
-            ct: ct);
-            return id;
+            var model = FunctionMapper.MapperCreate(request);
+            await _sqlHelper.InsertAsync(model, ct);
+            return model.Id;
         }
 
         /// <summary>
@@ -183,34 +172,19 @@ namespace DcMateH5Api.Areas.Permission.Services
         /// </summary>
         public Task<Function?> GetFunctionAsync(Guid id, CancellationToken ct)
         {
-            const string sql =
-                @"/**/SELECT ID, NAME, AREA, CONTROLLER, DEFAULT_ENDPOINT, IS_DELETE
-                  FROM SYS_FUNCTION
-                  WHERE ID = @Id AND IS_DELETE = 0";
-            return _db.QuerySingleOrDefaultAsync<Function?>(sql, new { Id = id },  
-                timeoutSeconds: 30,
-                ct: ct);
+            var where = new WhereBuilder<Function>()
+                .AndEq(x => x.Id, id)
+                .AndNotDeleted();
+            return _sqlHelper.SelectFirstOrDefaultAsync(where, ct);
         }
 
         /// <summary>
         /// 更新功能資訊。
         /// </summary>
-        public Task UpdateFunctionAsync(Function function, CancellationToken ct)
+        public Task UpdateFunctionAsync(Guid id, UpdateFunctionRequest request, CancellationToken ct)
         {
-            const string sql =
-                @"UPDATE SYS_FUNCTION
-                  SET NAME = @Name, AREA = @Area, CONTROLLER = @Controller, DEFAULT_ENDPOINT = @Default_endpoint
-                  WHERE ID = @Id AND IS_DELETE = 0";
-            return _db.ExecuteAsync(sql, new
-            {
-                function.Id,
-                function.Name,
-                function.Area,
-                function.Controller,
-                Default_endpoint = function.DEFAULT_ENDPOINT
-            },  
-            timeoutSeconds: 30,
-            ct: ct);
+            var model = FunctionMapper.MapperUpdate(id, request);
+            return _sqlHelper.UpdateAllByIdAsync(model, UpdateNullBehavior.IgnoreNulls, ct);
         }
 
         /// <summary>
@@ -218,10 +192,9 @@ namespace DcMateH5Api.Areas.Permission.Services
         /// </summary>
         public Task DeleteFunctionAsync(Guid id, CancellationToken ct)
         {
-            const string sql = @"UPDATE SYS_FUNCTION SET IS_DELETE = 1 WHERE ID = @Id";
-            return _db.ExecuteAsync(sql, new { Id = id },  
-                timeoutSeconds: 30,
-                ct: ct);
+            var where = new WhereBuilder<Function>()
+                .AndEq(x => x.Id, id);
+            return _sqlHelper.DeleteWhereAsync(where, ct);
         }
 
         /// <summary>
@@ -229,15 +202,11 @@ namespace DcMateH5Api.Areas.Permission.Services
         /// </summary>
         public async Task<bool> FunctionNameExistsAsync(string name, CancellationToken ct, Guid? excludeId = null)
         {
-            const string sql =
-                @"SELECT COUNT(1)
-                    FROM SYS_FUNCTION
-                    WHERE NAME = @Name AND IS_DELETE = 0
-                      AND (@ExcludeId IS NULL OR ID <> @ExcludeId)";
-            var count = await _db.ExecuteScalarAsync<int>(sql, new { Name = name, ExcludeId = excludeId },  
-                timeoutSeconds: 30,
-                ct: ct);
-            return count > 0;
+            var where = new WhereBuilder<Function>()
+                .AndEq(x => x.Name, name)
+                .AndNotDeleted();
+            var list = await _sqlHelper.SelectWhereAsync(where, ct);
+            return list.Any(p => !excludeId.HasValue || p.Id != excludeId.Value);
         }
 
         #endregion

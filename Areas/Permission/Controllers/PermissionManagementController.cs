@@ -190,15 +190,9 @@ namespace DcMateH5Api.Areas.Permission.Controllers
             if (await _permissionService.FunctionNameExistsAsync(request.Name, ct))
                 return Conflict($"功能名稱已存在: {request.Name}");
 
-            var id = await _permissionService.CreateFunctionAsync(new Function
-            {
-                Name = request.Name,
-                Area = request.Area,
-                Controller = request.Controller
-            }, ct);
-
-            var result = new Function { Id = id, Name = request.Name, Area = request.Area, Controller = request.Controller };
-            return CreatedAtAction(nameof(GetFunction), new { id }, result);
+            var id = await _permissionService.CreateFunctionAsync(request, ct);
+            
+            return CreatedAtAction(nameof(GetFunction), new { id });
         }
 
         /// <summary>取得指定功能資訊。</summary>
@@ -223,13 +217,7 @@ namespace DcMateH5Api.Areas.Permission.Controllers
             if (await _permissionService.FunctionNameExistsAsync(request.Name, ct, id))
                 return Conflict($"功能名稱已存在: {request.Name}");
 
-            await _permissionService.UpdateFunctionAsync(new Function
-            {
-                Id = id,
-                Name = request.Name,
-                Area = request.Area,
-                Controller = request.Controller
-            }, ct);
+            await _permissionService.UpdateFunctionAsync(id, request, ct);
 
             return NoContent();
         }

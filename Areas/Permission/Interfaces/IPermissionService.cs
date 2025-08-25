@@ -25,9 +25,9 @@ namespace DcMateH5Api.Areas.Permission.Interfaces
         Task<bool> PermissionCodeExistsAsync(ActionType code, CancellationToken ct, Guid? excludeId = null);
 
         // 功能
-        Task<Guid> CreateFunctionAsync(Function function, CancellationToken ct);
+        Task<Guid> CreateFunctionAsync(CreateFunctionRequest request, CancellationToken ct);
         Task<Function?> GetFunctionAsync(Guid id, CancellationToken ct);
-        Task UpdateFunctionAsync(Function function, CancellationToken ct);
+        Task UpdateFunctionAsync(Guid id, UpdateFunctionRequest function, CancellationToken ct);
         Task DeleteFunctionAsync(Guid id, CancellationToken ct);
         Task<bool> FunctionNameExistsAsync(string name, CancellationToken ct, Guid? excludeId = null);
 

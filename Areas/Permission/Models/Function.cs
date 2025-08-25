@@ -1,29 +1,37 @@
 using System;
+using System.ComponentModel.DataAnnotations;
+using System.ComponentModel.DataAnnotations.Schema;
 
 namespace DcMateH5Api.Areas.Permission.Models
 {
     /// <summary>
     /// 系統功能。
     /// </summary>
+    [Table("SYS_FUNCTION")]
     public class Function
     {
-        /// <summary>唯一識別碼。</summary>
+        /// <summary>
+        /// 唯一識別碼
+        /// </summary>
+        [Key]
+        [Column("ID")]
         public Guid Id { get; set; }
 
         /// <summary>功能名稱。</summary>
-        public string? Name { get; set; }
+        [Column("NAME")]
+        public string Name { get; set; } = string.Empty;
 
         /// <summary>區域名稱。</summary>
-        public string? Area { get; set; }
+        [Column("AREA")]
+        public string Area { get; set; } = string.Empty;
 
         /// <summary>控制器名稱。</summary>
-        public string? Controller { get; set; }
+        [Column("CONTROLLER")]
+        public string Controller { get; set; } = string.Empty;
         
         /// <summary>預設端點</summary>
-        public string? DEFAULT_ENDPOINT { get; set; }
-
-        /// <summary>是否刪除。</summary>
-        public bool IsDelete { get; set; }
+        [Column("DEFAULT_ENDPOINT")]
+        public string? DefaultEndpoint { get; set; }
     }
 }
 

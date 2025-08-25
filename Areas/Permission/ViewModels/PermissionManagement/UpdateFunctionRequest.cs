@@ -8,6 +8,8 @@ namespace DcMateH5Api.Areas.Permission.ViewModels.PermissionManagement
         public string Name { get; set; }
         public string Area { get; set; }
         public string Controller { get; set; }
+        
+        public string DefaultEndpoint { get; set; }
     }
 }
 
