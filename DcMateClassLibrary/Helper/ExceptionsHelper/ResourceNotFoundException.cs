@@ -1,4 +1,6 @@
-﻿namespace DcMateH5Api.Helper.ExceptionsHelper;
+﻿using System;
+
+namespace DcMateH5Api.Helper.ExceptionsHelper;
 
 public sealed class DuplicateResourceException : Exception
 {

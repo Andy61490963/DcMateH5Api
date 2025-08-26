@@ -55,6 +55,9 @@
     <_ContentIncludedByDefault Remove="TelegramNotify\obj\project.packagespec.json" />
     <_ContentIncludedByDefault Remove="TelegramNotify\obj\TelegramNotify.csproj.nuget.dgspec.json" />
     <_ContentIncludedByDefault Remove="TelegramNotify\bin\Debug\net10.0\TelegramNotify.deps.json" />
+    <_ContentIncludedByDefault Remove="DcMateClassLibrary\obj\DcMateClassLibrary.csproj.nuget.dgspec.json" />
+    <_ContentIncludedByDefault Remove="DcMateClassLibrary\obj\project.assets.json" />
+    <_ContentIncludedByDefault Remove="DcMateClassLibrary\obj\project.packagespec.json" />
   </ItemGroup>
 
 </Project>

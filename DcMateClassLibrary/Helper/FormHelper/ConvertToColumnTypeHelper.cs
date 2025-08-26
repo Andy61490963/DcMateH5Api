@@ -1,4 +1,6 @@
-﻿namespace DcMateH5Api.Helper;
+﻿using System;
+
+namespace DcMateH5Api.Helper;
 
 public static class ConvertToColumnTypeHelper
 {
