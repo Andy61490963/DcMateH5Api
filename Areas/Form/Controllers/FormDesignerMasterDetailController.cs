@@ -5,6 +5,7 @@ using DcMateH5Api.Areas.Form.ViewModels;
 using DcMateH5Api.Areas.Security.Interfaces;
 using Microsoft.AspNetCore.Mvc;
 using DcMateH5Api.Helper;
+using System.Threading;
 
 namespace DcMateH5Api.Areas.Form.Controllers;
 
@@ -59,9 +60,9 @@ public class FormDesignerMasterDetailController : ControllerBase
     /// </summary>
     // [RequirePermission(ActionAuthorizeHelper.View)]
     [HttpGet("{id:guid}")]
-    public IActionResult GetDesigner(Guid id)
+    public async Task<IActionResult> GetDesigner(Guid id, CancellationToken ct)
     {
-        var model = _formDesignerService.GetFormDesignerIndexViewModel(id);
+        var model = await _formDesignerService.GetFormDesignerIndexViewModel(id, ct);
         return Ok(model);
     }
 
