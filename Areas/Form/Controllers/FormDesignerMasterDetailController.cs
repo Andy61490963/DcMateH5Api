@@ -28,18 +28,18 @@ public class FormDesignerMasterDetailController : ControllerBase
     /// </summary>
     /// <param name="q">可選的搜尋關鍵字，將比對 FORM_NAME</param>
     /// <returns>符合條件的表單主檔列表</returns>
-    [HttpGet]
-    public IActionResult GetFormMasters(string? q)
-    {
-        var list = _formDesignerService.GetFormMasters();
-        if (!string.IsNullOrWhiteSpace(q))
-        {
-            list = list
-                .Where(x => x.FORM_NAME.Contains(q, StringComparison.OrdinalIgnoreCase))
-                .ToList();
-        }
-        return Ok(list);
-    }
+    // [HttpGet]
+    // public IActionResult GetFormMasters(string? q)
+    // {
+    //     var list = _formDesignerService.GetFormMasters();
+    //     if (!string.IsNullOrWhiteSpace(q))
+    //     {
+    //         list = list
+    //             .Where(x => x.FORM_NAME.Contains(q, StringComparison.OrdinalIgnoreCase))
+    //             .ToList();
+    //     }
+    //     return Ok(list);
+    // }
 
     /// <summary>
     /// 刪除指定的表單主檔資料。

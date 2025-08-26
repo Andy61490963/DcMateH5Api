@@ -30,9 +30,9 @@ public class FormDesignerController : ControllerBase
     /// <param name="q">可選的搜尋關鍵字，將比對 FORM_NAME</param>
     /// <returns>符合條件的表單主檔列表</returns>
     [HttpGet]
-    public IActionResult GetFormMasters(string? q)
+    public async Task<ActionResult<List<FORM_FIELD_Master>>> GetFormMasters(string? q, CancellationToken ct)
     {
-        var list = _formDesignerService.GetFormMasters();
+        var list = await _formDesignerService.GetFormMasters(ct);
         if (!string.IsNullOrWhiteSpace(q))
         {
             list = list

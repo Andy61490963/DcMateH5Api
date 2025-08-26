@@ -7,6 +7,8 @@ using System.Net;
 using System.Text.RegularExpressions;
 using DcMateH5Api.Areas.Form.Interfaces.FormLogic;
 using DcMateH5Api.Areas.Form.ViewModels;
+using DcMateH5Api.Areas.Permission.Mappers;
+using DcMateH5Api.SqlHelper;
 using Microsoft.Data.SqlClient;
 
 namespace DcMateH5Api.Areas.Form.Services;
@@ -16,12 +18,14 @@ public class FormDesignerService : IFormDesignerService
     private readonly SqlConnection _con;
     private readonly IConfiguration _configuration;
     private readonly ISchemaService _schemaService;
+    private readonly SQLGenerateHelper _sqlHelper;
 
-    public FormDesignerService(SqlConnection connection, IConfiguration configuration, ISchemaService schemaService)
+    public FormDesignerService(SQLGenerateHelper sqlHelper, SqlConnection connection, IConfiguration configuration, ISchemaService schemaService)
     {
         _con = connection;
         _configuration = configuration;
         _schemaService = schemaService;
+        _sqlHelper = sqlHelper;
         _excludeColumns = _configuration.GetSection("DropdownSqlSettings:ExcludeColumns").Get<List<string>>() ?? new();
         _requiredColumns = _configuration.GetSection("FormDesignerSettings:RequiredColumns").Get<List<string>>() ?? new();
     }
@@ -35,10 +39,15 @@ public class FormDesignerService : IFormDesignerService
     /// 取得 列表
     /// </summary>
     /// <returns></returns>
-    public List<FORM_FIELD_Master> GetFormMasters()
+    public Task<List<FORM_FIELD_Master>> GetFormMasters(CancellationToken ct)
     {
         var statusList = new[] { TableStatusType.Active, TableStatusType.Disabled };
-        return _con.Query<FORM_FIELD_Master>(Sql.FormMasterSelect, new{ STATUS = statusList }).ToList();
+        var where = new WhereBuilder<FORM_FIELD_Master>()
+            .AndIn(x => x.STATUS, statusList)
+            .AndNotDeleted();
+        
+        var result = _sqlHelper.SelectWhereAsync(where, ct);
+        return result;
     }
 
     /// <summary>

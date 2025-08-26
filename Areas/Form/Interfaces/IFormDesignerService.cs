@@ -6,7 +6,7 @@ namespace DcMateH5Api.Areas.Form.Interfaces;
 
 public interface IFormDesignerService
 {
-    List<FORM_FIELD_Master> GetFormMasters();
+    Task<List<FORM_FIELD_Master>> GetFormMasters(CancellationToken ct);
     void DeleteFormMaster(Guid id);
     
     FormDesignerIndexViewModel GetFormDesignerIndexViewModel(Guid? id);

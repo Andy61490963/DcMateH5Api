@@ -22,8 +22,6 @@ using DcMateH5Api.Areas.Permission.Services;
 using DcMateH5Api.Areas.Security.Interfaces;
 using DcMateH5Api.Areas.Security.Models;
 using DcMateH5Api.Areas.Security.Services;
-using DcMateH5Api.Areas.Test.Interfaces;
-using DcMateH5Api.Areas.Test.Services;
 using DcMateH5Api.DbExtensions;
 using DcMateH5Api.Helper;
 using DcMateH5Api.Services.Cache;
@@ -32,7 +30,7 @@ using Microsoft.Data.SqlClient;
 
 var builder = WebApplication.CreateBuilder(args);
 
-// 容器內對外開 5000（你有 Nginx 在前面做 8081 反代）
+// 容器內對外開 5000（有 Nginx 在前面做 8081 反代）
 builder.WebHost.UseUrls("http://0.0.0.0:5000");
 
 // -------------------- Config 讀取（有 fallback） --------------------
@@ -72,7 +70,6 @@ builder.Services.AddScoped<IDbExecutor, DbExecutor>();
 builder.Services.AddScoped<SQLGenerateHelper>();    
 
 // 業務服務
-builder.Services.AddScoped<ITestService, TestService>();
 builder.Services.AddScoped<ILogService, LogService>();
 builder.Services.AddScoped<IEnumListService, EnumListService>();
 builder.Services.AddScoped<IFormDesignerService, FormDesignerService>();
@@ -88,14 +85,14 @@ builder.Services.AddScoped<IFormService, FormService>();
 builder.Services.AddScoped<IPermissionService, PermissionService>();
 builder.Services.AddScoped<ITransactionService, TransactionService>();
 
-// 快取服務（你自訂的包裝）
+// 快取服務
 builder.Services.AddScoped<ICacheService, RedisCacheService>();
 
 // 授權（自訂 Policy/Handler）
 builder.Services.AddSingleton<IAuthorizationPolicyProvider, PermissionPolicyProvider>();
 builder.Services.AddScoped<IAuthorizationHandler, PermissionAuthorizationHandler>();
 
-// -------------------- CORS（開發寬鬆；正式請收斂網域） --------------------
+// -------------------- CORS --------------------
 const string CorsPolicy = "AllowAll";
 builder.Services.AddCors(options =>
 {

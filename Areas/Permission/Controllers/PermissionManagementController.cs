@@ -248,26 +248,9 @@ namespace DcMateH5Api.Areas.Permission.Controllers
             if (await _permissionService.MenuNameExistsAsync(request.Name, request.ParentId, ct))
                 return Conflict($"選單名稱已存在: {request.Name}");
 
-            var id = await _permissionService.CreateMenuAsync(new Menu
-            {
-                ParentId = request.ParentId,
-                SysFunctionId = request.SysFunctionId,
-                Name = request.Name,
-                Sort = request.Sort,
-                IsShare = request.IsShare
-            }, ct);
+            var id = await _permissionService.CreateMenuAsync(request, ct);
 
-            var result = new Menu
-            {
-                Id = id,
-                ParentId = request.ParentId,
-                SysFunctionId = request.SysFunctionId,
-                Name = request.Name,
-                Sort = request.Sort,
-                IsShare = request.IsShare
-            };
-
-            return CreatedAtAction(nameof(GetMenu), new { id }, result);
+            return CreatedAtAction(nameof(GetMenu), new { id });
         }
 
         /// <summary>取得指定選單資訊。</summary>
@@ -292,15 +275,7 @@ namespace DcMateH5Api.Areas.Permission.Controllers
             if (await _permissionService.MenuNameExistsAsync(request.Name, request.ParentId, ct, id))
                 return Conflict($"選單名稱已存在: {request.Name}");
 
-            await _permissionService.UpdateMenuAsync(new Menu
-            {
-                Id = id,
-                ParentId = request.ParentId,
-                SysFunctionId = request.SysFunctionId,
-                Name = request.Name,
-                Sort = request.Sort,
-                IsShare = request.IsShare
-            }, ct);
+            await _permissionService.UpdateMenuAsync(id, request, ct);
 
             return NoContent();
         }

@@ -27,7 +27,7 @@ public class EnumListController : ControllerBase
     }
     
     /// <summary>
-    /// 1) 不用反射全掃，只暴露你想給前端用的 enum（安全、直覺）
+    /// 1) 不用反射全掃，只暴露想給前端用的 enum（安全、直覺）
     /// 2) StringComparer.OrdinalIgnoreCase -> 路由大小寫不敏感
     /// </summary>
     private static readonly Dictionary<string, Type> EnumMap =
