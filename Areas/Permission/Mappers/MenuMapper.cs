@@ -17,8 +17,7 @@ public static class MenuMapper
             SysFunctionId = request.SysFunctionId,
             Name = request.Name,
             Sort = request.Sort,
-            IsShare = request.IsShare,
-            IsDelete = false
+            IsShare = request.IsShare
         };
     }
 

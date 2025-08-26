@@ -268,7 +268,8 @@ namespace DcMateH5Api.Areas.Permission.Services
         }
 
         #endregion
-/// <summary>
+        
+        /// <summary>
         /// 取得指定使用者可見的選單樹。
         /// </summary>
         public async Task<IEnumerable<MenuTreeItem>> GetUserMenuTreeAsync(Guid userId, CancellationToken ct) // 依使用者取得選單樹狀結構
@@ -322,12 +323,11 @@ LEFT JOIN SYS_FUNCTION f ON f.ID = t.SYS_FUNCTION_ID -- 關聯功能表取得路
 ORDER BY t.SORT, t.NAME -- 依排序與名稱排序
 OPTION (MAXRECURSION 32);"; // 限制遞迴層級避免無限迴圈
 
-            var rows = (await _db.QueryAsync<MenuTreeItem>( // 執行 SQL 取得平面選單資料
+            var rows = (await _db.QueryAsync<MenuTreeItem>( 
                 sql, new { UserId = userId }, // 傳入使用者參數
-                timeoutSeconds: 30, // 設定逾時秒數
-                ct: ct // 取消權杖
-                )).ToList(); // 轉成清單以便處理
-
+                timeoutSeconds: 30, 
+                ct: ct 
+                )).ToList(); 
             var lookup = rows.ToLookup(r => r.PARENT_ID); // 依父節點ID分組
 
             foreach (var item in rows) // 逐一處理每個節點
@@ -345,13 +345,12 @@ OPTION (MAXRECURSION 32);"; // 限制遞迴層級避免無限迴圈
                 .Where(x => x.PARENT_ID == null || !idSet.Contains(x.PARENT_ID.Value)) // 找出根節點或孤兒節點
                 .OrderBy(x => x.SORT) // 依排序欄位排序
                 .ThenBy(x => x.NAME) // 再以名稱排序
-                .ToList(); // 轉成清單
+                .ToList(); 
 
             await _cache.SetUserMenuAsync(userId, result, ct: ct); // 將結果寫入快取，使用統一鍵值命名
-            return result; // 回傳樹狀結果
+            return result; 
         }
-
-        #endregion
+        
 
         #region 使用者與群組關聯
 

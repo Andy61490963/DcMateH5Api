@@ -34,10 +34,6 @@ namespace DcMateH5Api.Areas.Permission.Models
         /// <summary>是否共用。</summary>
         [Column("IS_SHARE")]
         public bool IsShare { get; set; }
-
-        /// <summary>是否刪除。</summary>
-        [Column("IS_DELETE")]
-        public bool IsDelete { get; set; }
     }
 }
 
