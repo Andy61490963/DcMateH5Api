@@ -10,6 +10,7 @@ using DcMateH5Api.Areas.Form.ViewModels;
 using DcMateH5Api.Areas.Permission.Mappers;
 using DcMateH5Api.SqlHelper;
 using Microsoft.Data.SqlClient;
+using System.Threading;
 
 namespace DcMateH5Api.Areas.Form.Services;
 
@@ -51,13 +52,19 @@ public class FormDesignerService : IFormDesignerService
     }
 
     /// <summary>
-    /// 取得 單一
+    /// 取得單一主表設定
     /// </summary>
-    /// <param name="id"></param>
+    /// <param name="id">主表ID</param>
+    /// <param name="ct">取消權杖</param>
     /// <returns></returns>
-    public FORM_FIELD_Master? GetFormMaster(Guid? id)
+    private Task<FORM_FIELD_Master?> GetFormMasterAsync(Guid? id, CancellationToken ct)
     {
-        return _con.QueryFirstOrDefault<FORM_FIELD_Master>(Sql.FormMasterById, new { id });
+        if (id == null) return Task.FromResult<FORM_FIELD_Master?>(null);
+
+        var where = new WhereBuilder<FORM_FIELD_Master>()
+            .AndEq(x => x.ID, id)
+            .AndNotDeleted();
+        return _sqlHelper.SelectFirstOrDefaultAsync(where, ct);
     }
 
     /// <summary>
@@ -69,21 +76,21 @@ public class FormDesignerService : IFormDesignerService
         _con.Execute(Sql.DeleteFormMaster, new { id });
     }
     
-    /// <summary>
     /// 取得 所有資料 給前端長樹
     /// </summary>
     /// <param name="id"></param>
+    /// <param name="ct"></param>
     /// <returns></returns>
-    public FormDesignerIndexViewModel GetFormDesignerIndexViewModel(Guid? id)
+    public async Task<FormDesignerIndexViewModel> GetFormDesignerIndexViewModel(Guid? id, CancellationToken ct)
     {
-        var master = GetFormMaster(id) ?? new();
+        var master = await GetFormMasterAsync(id, ct) ?? new();
 
         var result = new FormDesignerIndexViewModel
         {
             FormHeader = master,
             BaseFields = null!,
             ViewFields = null!,
-            FieldSetting = null!
+            FieldSetting = null!,
         };
 
         // 主表欄位

@@ -7,6 +7,7 @@ using Microsoft.AspNetCore.Mvc;
 using Moq;
 using DcMateH5Api.Helper;
 using System.Net;
+using System.Threading;
 
 namespace DcMateH5Api.Tests.ApiControllerTest;
 
@@ -22,14 +23,16 @@ public class FormDesignerControllerTests
         => new FormDesignerController(_designerMock.Object);
 
     [Fact]
-    public void GetDesigner_ReturnsViewModel()
+    public async Task GetDesigner_ReturnsViewModel()
     {
         var id = Guid.NewGuid();
         var vm = new FormDesignerIndexViewModel();
-        _designerMock.Setup(s => s.GetFormDesignerIndexViewModel(id)).Returns(vm);
+        _designerMock
+            .Setup(s => s.GetFormDesignerIndexViewModel(id, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(vm);
         var controller = CreateController();
 
-        var result = controller.GetDesigner(id) as OkObjectResult;
+        var result = await controller.GetDesigner(id, CancellationToken.None) as OkObjectResult;
 
         Assert.NotNull(result);
         Assert.Equal(vm, result.Value);
