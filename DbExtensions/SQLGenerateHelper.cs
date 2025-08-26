@@ -5,6 +5,7 @@ using System.Linq.Expressions;
 using System.Reflection;
 using System.Security.Claims;
 using Dapper;
+using Microsoft.AspNetCore.Http;
 
 namespace DcMateH5Api.SqlHelper
 {

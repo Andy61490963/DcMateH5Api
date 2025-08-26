@@ -9,7 +9,8 @@
 	    <GenerateDocumentationFile>true</GenerateDocumentationFile>
 	    <NoWarn>$(NoWarn);1591</NoWarn> <!-- 避免每個未標註 <summary> 都報警告 -->
 		
-		<!-- <generateassemblyinfo>false</generateassemblyinfo> -->
+		<GenerateAssemblyInfo>false</GenerateAssemblyInfo>
+		<GenerateTargetFrameworkAttribute>false</GenerateTargetFrameworkAttribute>
 		<!-- 組件資訊交給 SDK 產生 -->
 	    <Company>DcMateH5Api</Company>
 	    <Product>DcMateH5Api</Product>
@@ -43,6 +44,17 @@
 
   <ItemGroup>
     <Folder Include="Areas\Log\ViewModels\" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <_ContentIncludedByDefault Remove="DbExtensions\obj\DbExtensions.csproj.nuget.dgspec.json" />
+    <_ContentIncludedByDefault Remove="DbExtensions\obj\project.assets.json" />
+    <_ContentIncludedByDefault Remove="DbExtensions\obj\project.packagespec.json" />
+    <_ContentIncludedByDefault Remove="TelegramNotify\obj\Debug\net10.0\TelegramNotify.sourcelink.json" />
+    <_ContentIncludedByDefault Remove="TelegramNotify\obj\project.assets.json" />
+    <_ContentIncludedByDefault Remove="TelegramNotify\obj\project.packagespec.json" />
+    <_ContentIncludedByDefault Remove="TelegramNotify\obj\TelegramNotify.csproj.nuget.dgspec.json" />
+    <_ContentIncludedByDefault Remove="TelegramNotify\bin\Debug\net10.0\TelegramNotify.deps.json" />
   </ItemGroup>
 
 </Project>

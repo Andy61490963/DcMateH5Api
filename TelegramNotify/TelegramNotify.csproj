@@ -6,4 +6,14 @@
     <Nullable>enable</Nullable>
   </PropertyGroup>
 
+<ItemGroup>
+  <!-- 絕對不要編譯 obj/bin 產物 -->
+  <Compile Remove="obj\**\*.cs" />
+  <Compile Remove="bin\**\*.cs" />
+
+  <!-- 保險排除任何手寫的 AssemblyInfo 類檔（就算未來不小心加了也不會編進來） -->
+  <Compile Remove="**\Properties\AssemblyInfo.cs" />
+  <Compile Remove="**\CommonAssemblyInfo.cs" />
+</ItemGroup>
+
 </Project>

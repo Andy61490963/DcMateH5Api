@@ -6,6 +6,13 @@ Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "DcMateH5Api.Tests", "DcMate
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "TelegramNotify", "TelegramNotify\TelegramNotify.csproj", "{7024693B-7406-4875-92DB-9750436234E2}"
 EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "DbExtensions", "DbExtensions\DbExtensions.csproj", "{0E3218F3-9588-44EF-B153-973B9059B233}"
+	ProjectSection(ProjectDependencies) = postProject
+		{7711266C-0080-4A91-B47E-DA28FEDAB1B2} = {7711266C-0080-4A91-B47E-DA28FEDAB1B2}
+	EndProjectSection
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "DcMateClassLibrary", "DcMateClassLibrary\DcMateClassLibrary.csproj", "{537FAD65-DD14-4456-9B64-4F1EDB61C7BF}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
@@ -52,6 +59,30 @@ Global
 		{7024693B-7406-4875-92DB-9750436234E2}.Release|x64.Build.0 = Release|Any CPU
 		{7024693B-7406-4875-92DB-9750436234E2}.Release|x86.ActiveCfg = Release|Any CPU
 		{7024693B-7406-4875-92DB-9750436234E2}.Release|x86.Build.0 = Release|Any CPU
+		{0E3218F3-9588-44EF-B153-973B9059B233}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{0E3218F3-9588-44EF-B153-973B9059B233}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{0E3218F3-9588-44EF-B153-973B9059B233}.Debug|x64.ActiveCfg = Debug|Any CPU
+		{0E3218F3-9588-44EF-B153-973B9059B233}.Debug|x64.Build.0 = Debug|Any CPU
+		{0E3218F3-9588-44EF-B153-973B9059B233}.Debug|x86.ActiveCfg = Debug|Any CPU
+		{0E3218F3-9588-44EF-B153-973B9059B233}.Debug|x86.Build.0 = Debug|Any CPU
+		{0E3218F3-9588-44EF-B153-973B9059B233}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{0E3218F3-9588-44EF-B153-973B9059B233}.Release|Any CPU.Build.0 = Release|Any CPU
+		{0E3218F3-9588-44EF-B153-973B9059B233}.Release|x64.ActiveCfg = Release|Any CPU
+		{0E3218F3-9588-44EF-B153-973B9059B233}.Release|x64.Build.0 = Release|Any CPU
+		{0E3218F3-9588-44EF-B153-973B9059B233}.Release|x86.ActiveCfg = Release|Any CPU
+		{0E3218F3-9588-44EF-B153-973B9059B233}.Release|x86.Build.0 = Release|Any CPU
+		{537FAD65-DD14-4456-9B64-4F1EDB61C7BF}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{537FAD65-DD14-4456-9B64-4F1EDB61C7BF}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{537FAD65-DD14-4456-9B64-4F1EDB61C7BF}.Debug|x64.ActiveCfg = Debug|Any CPU
+		{537FAD65-DD14-4456-9B64-4F1EDB61C7BF}.Debug|x64.Build.0 = Debug|Any CPU
+		{537FAD65-DD14-4456-9B64-4F1EDB61C7BF}.Debug|x86.ActiveCfg = Debug|Any CPU
+		{537FAD65-DD14-4456-9B64-4F1EDB61C7BF}.Debug|x86.Build.0 = Debug|Any CPU
+		{537FAD65-DD14-4456-9B64-4F1EDB61C7BF}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{537FAD65-DD14-4456-9B64-4F1EDB61C7BF}.Release|Any CPU.Build.0 = Release|Any CPU
+		{537FAD65-DD14-4456-9B64-4F1EDB61C7BF}.Release|x64.ActiveCfg = Release|Any CPU
+		{537FAD65-DD14-4456-9B64-4F1EDB61C7BF}.Release|x64.Build.0 = Release|Any CPU
+		{537FAD65-DD14-4456-9B64-4F1EDB61C7BF}.Release|x86.ActiveCfg = Release|Any CPU
+		{537FAD65-DD14-4456-9B64-4F1EDB61C7BF}.Release|x86.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE
