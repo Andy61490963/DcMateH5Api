@@ -138,10 +138,10 @@ public class FormDesignerControllerTests
     {
         var controller = CreateController();
         _designerMock
-            .Setup(s => s.EnsureFieldsSaved("T", null, TableSchemaQueryType.OnlyTable))
+            .Setup(s => s.EnsureFieldsSaved("T", null, TableSchemaQueryType.OnlyTable, "F"))
             .Throws(new HttpStatusCodeException(HttpStatusCode.BadRequest, "缺少必要欄位"));
 
-        var result = controller.GetFields("T", null, TableSchemaQueryType.OnlyTable);
+        var result = controller.GetFields("T", null, "F", TableSchemaQueryType.OnlyTable);
 
         var obj = Assert.IsType<ObjectResult>(result);
         Assert.Equal((int)HttpStatusCode.BadRequest, obj.StatusCode);

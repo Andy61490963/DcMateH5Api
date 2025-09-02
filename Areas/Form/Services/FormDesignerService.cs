@@ -160,13 +160,15 @@ public class FormDesignerService : IFormDesignerService
 
         var insertId = model.ID == Guid.Empty ? Guid.NewGuid() : model.ID;
         _con.Execute(@"
-        INSERT INTO FORM_FIELD_Master (ID, FORM_NAME, STATUS, SCHEMA_TYPE)
-        VALUES (@ID, @FORM_NAME, @STATUS, @SCHEMA_TYPE)", new
+        INSERT INTO FORM_FIELD_Master (ID, FORM_NAME, STATUS, SCHEMA_TYPE, BASE_TABLE_NAME, VIEW_TABLE_NAME)
+        VALUES (@ID, @FORM_NAME, @STATUS, @SCHEMA_TYPE, @BASE_TABLE_NAME, @VIEW_TABLE_NAME)", new
         {
             ID = insertId,
             model.FORM_NAME,
             model.STATUS,
-            model.SCHEMA_TYPE
+            model.SCHEMA_TYPE,
+            model.BASE_TABLE_NAME,
+            model.VIEW_TABLE_NAME
         });
 
         return insertId;
@@ -277,7 +279,7 @@ public class FormDesignerService : IFormDesignerService
     /// </summary>
     /// <param name="tableName">資料表名稱</param>
     /// <returns>包含欄位設定的 ViewModel</returns>
-    public FormFieldListViewModel? EnsureFieldsSaved(string tableName, Guid? formMasterId, TableSchemaQueryType schemaType)
+    public FormFieldListViewModel? EnsureFieldsSaved(string tableName, Guid? formMasterId, TableSchemaQueryType schemaType, string? formName = null)
     {
         var columns = GetTableSchema(tableName);
 
@@ -293,18 +295,20 @@ public class FormDesignerService : IFormDesignerService
 
         FORM_FIELD_Master model = new FORM_FIELD_Master
         {
-            FORM_NAME = tableName,
+            FORM_NAME = string.IsNullOrWhiteSpace(formName) ? tableName : formName,
+            BASE_TABLE_NAME = schemaType == TableSchemaQueryType.OnlyView ? string.Empty : tableName,
+            VIEW_TABLE_NAME = schemaType == TableSchemaQueryType.OnlyTable ? string.Empty : tableName,
             STATUS = (int)TableStatusType.Draft,
             SCHEMA_TYPE = schemaType
         };
-        
+
         // 根據傳進來的formMasterId判斷為哪次操作的資料
         var configs = GetFieldConfigs(tableName, formMasterId);
         var masterId = formMasterId
                        ?? configs.Values.FirstOrDefault()?.FORM_FIELD_Master_ID
                        ?? GetOrCreateFormMasterId(model);
 
-        
+
         var maxOrder = configs.Values.Any() ? configs.Values.Max(x => x.FIELD_ORDER) : 0;
         var order = maxOrder;
         // 新增還沒存過的欄位

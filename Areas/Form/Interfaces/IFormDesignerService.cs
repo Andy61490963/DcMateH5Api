@@ -23,7 +23,11 @@ public interface IFormDesignerService
     
     Guid GetOrCreateFormMasterId(FORM_FIELD_Master model);
     
-    FormFieldListViewModel? EnsureFieldsSaved(string tableName, Guid? formMasterId, TableSchemaQueryType type);
+    FormFieldListViewModel? EnsureFieldsSaved(
+        string tableName,
+        Guid? formMasterId,
+        TableSchemaQueryType type,
+        string? formName = null);
     FormFieldListViewModel GetFieldsByTableName(string tableName, Guid? formMasterId, TableSchemaQueryType schemaType);
 
     /// <summary>
