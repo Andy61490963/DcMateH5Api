@@ -72,8 +72,8 @@ public class FormDesignerController : ControllerBase
     /// <summary>
     /// 依表名稱關鍵字搜尋實表或檢視表，並回傳欄位設定清單。
     /// </summary>
-    [HttpGet("tables/{tableName}")]
-    public IActionResult SearchTables(string tableName, [FromQuery] TableSchemaQueryType schemaType)
+    [HttpGet("tables/tableName")]
+    public IActionResult SearchTables(string? tableName, [FromQuery] TableSchemaQueryType schemaType)
     {
         try
         {

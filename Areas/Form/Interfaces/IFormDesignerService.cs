@@ -19,7 +19,7 @@ public interface IFormDesignerService
     /// <param name="tableNamePattern">表名稱關鍵字或樣式</param>
     /// <param name="schemaType">欲搜尋的資料來源類型（主表或檢視表）</param>
     /// <returns>符合條件的表名稱集合</returns>
-    List<string> SearchTables(string tableNamePattern, TableSchemaQueryType schemaType);
+    List<string> SearchTables(string? tableNamePattern, TableSchemaQueryType schemaType);
     
     Guid GetOrCreateFormMasterId(FORM_FIELD_Master model);
     

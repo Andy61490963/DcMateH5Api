@@ -114,22 +114,40 @@ public class FormDesignerService : IFormDesignerService
     /// <param name="tableName">表名稱關鍵字或樣式</param>
     /// <param name="schemaType">搜尋目標類型（主表或檢視表）</param>
     /// <returns>符合條件的表名稱集合</returns>
-    public List<string> SearchTables(string tableName, TableSchemaQueryType schemaType)
+    public List<string> SearchTables(string? tableName, TableSchemaQueryType schemaType)
     {
-        if (string.IsNullOrWhiteSpace(tableName))
-            return new List<string>();
-
-        // 白名單：只允許英數與底線，避免注入/奇怪字元；要支援 schema 再放點.
-        if (!Regex.IsMatch(tableName, @"^[A-Za-z0-9_\.]+$"))
+        // 白名單檢查：只允許英數、底線、點
+        if (!string.IsNullOrWhiteSpace(tableName) &&
+            !Regex.IsMatch(tableName, @"^[A-Za-z0-9_\.]+$"))
+        {
             throw new ArgumentException("tableName 含非法字元");
-        
-        tableName = $"%{tableName}%";
-        
-        // TODO: 之後確認有沒有需要用關鍵字區分
-        var tableType = schemaType == TableSchemaQueryType.OnlyView ? "VIEW" : "BASE TABLE";
-        const string sql = @"/**/SELECT TABLE_NAME FROM INFORMATION_SCHEMA.TABLES WHERE TABLE_NAME LIKE @tableName";
+        }
 
-        return _con.Query<string>(sql, new { tableName }).ToList();
+        // 判斷要查 VIEW 還是 TABLE
+        var tableType = schemaType == TableSchemaQueryType.OnlyView ? "VIEW" : "BASE TABLE";
+
+        string sql;
+        object param;
+
+        if (string.IsNullOrWhiteSpace(tableName))
+        {
+            // 沒輸入 tableName，就撈所有符合 schemaType 的表
+            sql = @"SELECT TABLE_NAME 
+                FROM INFORMATION_SCHEMA.TABLES
+                WHERE TABLE_TYPE = @tableType;";
+            param = new { tableType };
+        }
+        else
+        {
+            // 模糊搜尋
+            sql = @"SELECT TABLE_NAME 
+                FROM INFORMATION_SCHEMA.TABLES
+                WHERE TABLE_NAME LIKE @tableName
+                AND TABLE_TYPE = @tableType;";
+            param = new { tableName = $"%{tableName}%", tableType };
+        }
+
+        return _con.Query<string>(sql, param).ToList();
     }
     
     public Guid GetOrCreateFormMasterId(FORM_FIELD_Master model)
