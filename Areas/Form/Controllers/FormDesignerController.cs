@@ -265,6 +265,15 @@ public class FormDesignerController : ControllerBase
     [HttpGet("fields/{fieldId:guid}/dropdown")]
     public IActionResult GetDropdownSetting(Guid fieldId)
     {
+        var field = _formDesignerService.GetFieldById(fieldId);
+        if (field == null)
+        {
+            return BadRequest("查無此設定檔，請確認ID是否正確。");
+        }
+        if (field.SchemaType != TableSchemaQueryType.OnlyView)
+        {
+            return BadRequest("查詢條件僅支援View表。");
+        }
         _formDesignerService.EnsureDropdownCreated(fieldId);
         var setting = _formDesignerService.GetDropdownSetting(fieldId);
         return Ok(setting);

@@ -624,61 +624,124 @@ public class FormDesignerService : IFormDesignerService
         return result;
     }
 
+    /// <summary>
+    /// 從 SQL 匯入下拉選項：要求結果欄位別名為 ID 與 NAME
+    /// 1) 先 Validate SQL
+    /// 2) 解析來源表名（optionTable）
+    /// 3) 使用交易確保全有/全無
+    /// 4) 強型別讀取，明確檢查 NULL/空字串，錯誤時回傳第 N 筆
+    /// 5) 安全的參數化寫入（忽略重複）
+    /// </summary>
     public ValidateSqlResultViewModel ImportDropdownOptionsFromSql(string sql, Guid dropdownId)
     {
-        var match = Regex.Match(sql, @"from\s+([a-zA-Z0-9_]+)", RegexOptions.IgnoreCase);
-        var optionTable = match.Success ? match.Groups[1].Value : string.Empty;
-        
+        const string ColId   = "ID";
+        const string ColName = "NAME";
+
         var validation = ValidateDropdownSql(sql);
         if (!validation.Success)
             return validation;
 
+        // 解析來源表名：先用較穩健的 regex（容許 [dbo].[Table] / dbo.Table / Table）
+        var optionTable = TryExtractTableName(sql);
         if (string.IsNullOrWhiteSpace(optionTable))
         {
-            validation.Success = false;
-            validation.Message = "無法解析來源表名稱";
-            return validation;
+            return Fail("無法解析來源表名稱（請使用單一 FROM，並避免子查詢/CTE/多表 JOIN）。");
         }
 
         var wasClosed = _con.State != System.Data.ConnectionState.Open;
         if (wasClosed) _con.Open();
 
+        using var tx = _con.BeginTransaction();
         try
         {
-            var rows = _con.Query(sql);
-            foreach (var row in rows)
+            // 要求 SQL 結果一定有兩個別名：ID、NAME
+            var rows = _con.Query<DropdownOptionRow>(sql, transaction: tx);
+
+            int i = 0;
+            foreach (var r in rows)
             {
-                var dict = (IDictionary<string, object>)row;
-                
-                if (!dict.ContainsKey("ID") || !dict.ContainsKey("NAME"))
+                i++;
+
+                // 明確檢查 NULL 與空白
+                if (r.ID is null)
                 {
-                    return new ValidateSqlResultViewModel
-                    {
-                        Success = false,
-                        Message = "SQL 查詢結果必須使用別名命名欄位為 ID 與 NAME（例如：SELECT A AS ID, B AS NAME）"
-                    };
+                    tx.Rollback();
+                    return Fail($"第 {i} 筆資料的 {ColId} 為 NULL，請修正來源 SQL 或清理資料。");
+                }
+                if (r.NAME is null)
+                {
+                    tx.Rollback();
+                    return Fail($"第 {i} 筆資料的 {ColName} 為 NULL，請修正來源 SQL 或清理資料。");
                 }
 
-                var optionValue = dict["ID"].ToString() ?? string.Empty;
-                var optionText  = dict["NAME"].ToString() ?? string.Empty;
-                
+                var optionValue = r.ID.Trim();
+                var optionText  = r.NAME.Trim();
+
+                if (optionValue.Length == 0)
+                {
+                    tx.Rollback();
+                    return Fail($"第 {i} 筆資料的 {ColId} 為空字串。");
+                }
+                if (optionText.Length == 0)
+                {
+                    tx.Rollback();
+                    return Fail($"第 {i} 筆資料的 {ColName} 為空字串。");
+                }
+
+                // 參數化寫入（忽略重複）
                 _con.Execute(Sql.InsertOptionIgnoreDuplicate, new
                 {
-                    DropdownId = dropdownId,
+                    DropdownId  = dropdownId,
                     OptionTable = optionTable,
                     OptionValue = optionValue,
                     OptionText  = optionText
-                });
+                }, transaction: tx);
             }
+
+            tx.Commit();
+            return new ValidateSqlResultViewModel
+            {
+                Success = true,
+                Message = "匯入完成。"
+            };
+        }
+        catch (Exception ex)
+        {
+            tx.Rollback();
+            return Fail($"匯入失敗：{ex.Message}");
         }
         finally
         {
             if (wasClosed) _con.Close();
         }
 
-        return validation;
+        // local helpers
+        static string? TryExtractTableName(string sql)
+        {
+            // 支援 [dbo].[X]、dbo.X、[X]、X，取實際表名那段
+            var m = Regex.Match(sql,
+                @"from\s+(?:\[(?<schema>[^\]]+)\]\.)?\[?(?<table>[A-Za-z0-9_]+)\]?",
+                RegexOptions.IgnoreCase);
+            return m.Success ? m.Groups["table"].Value : null;
+        }
+
+        static ValidateSqlResultViewModel Fail(string msg) => new()
+        {
+            Success = false,
+            Message = msg
+        };
     }
 
+    /// <summary>
+    /// 強型別承接查詢結果，避免 dynamic 與魔法字串
+    /// </summary>
+    public sealed class DropdownOptionRow
+    {
+        // 欄位名需匹配 SQL 別名：SELECT A AS ID, B AS NAME
+        public string? ID   { get; set; }
+        public string? NAME { get; set; }
+    }
+    
     public Guid SaveFormHeader(FORM_FIELD_Master model)
     {
         // 確保主表與顯示用 View 皆能成功查詢，避免儲存無效設定
