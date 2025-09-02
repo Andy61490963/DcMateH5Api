@@ -94,14 +94,14 @@ public interface IFormDesignerService
     /// <param name="dropdownId">目標下拉選單 ID</param>
     /// <returns>SQL 驗證與匯入結果</returns>
     ValidateSqlResultViewModel ImportDropdownOptionsFromSql(string sql, Guid dropdownId);
-    Guid SaveFormHeader(FORM_FIELD_Master model);
+    Guid SaveFormHeader( FormHeaderViewModel model );
 
     /// <summary>
     /// 檢查表格名稱與 View 名稱的組合是否已存在於 FORM_FIELD_Master
     /// </summary>
-    /// <param name="baseTableName">資料表名稱</param>
-    /// <param name="viewTableName">View 表名稱</param>
+    /// <param name="baseTableId">資料表名稱</param>
+    /// <param name="viewTableId">View 表名稱</param>
     /// <param name="excludeId">編輯時排除自身 ID</param>
     /// <returns>若存在相同組合則回傳 true</returns>
-    bool CheckFormMasterExists(string baseTableName, string viewTableName, Guid? excludeId = null);
+    bool CheckFormMasterExists(Guid baseTableId, Guid viewTableId, Guid? excludeId = null);
 }

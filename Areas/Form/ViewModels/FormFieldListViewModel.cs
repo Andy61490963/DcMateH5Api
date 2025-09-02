@@ -9,6 +9,8 @@ public class FormFieldListViewModel
     /// FORM_FIELD_Master
     /// </summary>
     public Guid ID { get; set; }
+    
+    public string? formName { get; set; } = string.Empty;
     public string TableName { get; set; } = string.Empty;
 
     public TableSchemaQueryType SchemaQueryType { get; set; }

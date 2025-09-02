@@ -160,8 +160,8 @@ public class FormDesignerService : IFormDesignerService
 
         var insertId = model.ID == Guid.Empty ? Guid.NewGuid() : model.ID;
         _con.Execute(@"
-        INSERT INTO FORM_FIELD_Master (ID, FORM_NAME, STATUS, SCHEMA_TYPE, BASE_TABLE_NAME, VIEW_TABLE_NAME)
-        VALUES (@ID, @FORM_NAME, @STATUS, @SCHEMA_TYPE, @BASE_TABLE_NAME, @VIEW_TABLE_NAME)", new
+        INSERT INTO FORM_FIELD_Master (ID, FORM_NAME, STATUS, SCHEMA_TYPE, BASE_TABLE_NAME, VIEW_TABLE_NAME, IS_DELETE)
+        VALUES (@ID, @FORM_NAME, @STATUS, @SCHEMA_TYPE, @BASE_TABLE_NAME, @VIEW_TABLE_NAME, 0)", new
         {
             ID = insertId,
             model.FORM_NAME,
@@ -324,6 +324,8 @@ public class FormDesignerService : IFormDesignerService
 
         // 重新查一次所有欄位，確保資料同步
         var result = GetFieldsByTableName(tableName, masterId, schemaType);
+
+        result.formName = formName;
         
         // 對於檢視表，先預設有下拉選單的設定，創建的ISUSESQL欄位會為NULL
         if (schemaType == TableSchemaQueryType.OnlyView)
@@ -746,13 +748,21 @@ public class FormDesignerService : IFormDesignerService
         public string? NAME { get; set; }
     }
     
-    public Guid SaveFormHeader(FORM_FIELD_Master model)
+    public Guid SaveFormHeader( FormHeaderViewModel model )
     {
+        var baseField = _con.QueryFirst<FORM_FIELD_Master>(
+            Sql.FormMasterById, new { id = model.BASE_TABLE_ID }) ?? throw new InvalidOperationException("主表查無資料");
+        var viewField = _con.QueryFirst<FORM_FIELD_Master>(
+            Sql.FormMasterById, new { id = model.VIEW_TABLE_ID }) ?? throw new InvalidOperationException("檢視表查無資料");
+
+        var baseTableName = baseField.BASE_TABLE_NAME;
+        var viewTableName = viewField.VIEW_TABLE_NAME;
+        
         // 確保主表與顯示用 View 皆能成功查詢，避免儲存無效設定
-        if (GetTableSchema(model.BASE_TABLE_NAME).Count == 0)
+        if (GetTableSchema(baseTableName).Count == 0)
             throw new InvalidOperationException("主表名稱查無資料");
 
-        if (GetTableSchema(model.VIEW_TABLE_NAME).Count == 0)
+        if (GetTableSchema(viewTableName).Count == 0)
             throw new InvalidOperationException("顯示用 View 名稱查無資料");
 
         // 若未指定 ID 則產生新 ID
@@ -761,14 +771,24 @@ public class FormDesignerService : IFormDesignerService
             model.ID = Guid.NewGuid();
         }
 
-        var id = _con.ExecuteScalar<Guid>(Sql.UpsertFormMaster, model);
+        var id = _con.ExecuteScalar<Guid>(Sql.UpsertFormMaster, new
+        {
+            model.ID,
+            model.FORM_NAME,
+            model.BASE_TABLE_ID,
+            model.VIEW_TABLE_ID,
+            BASE_TABLE_NAME = baseTableName,
+            VIEW_TABLE_NAME = viewTableName,
+            STATUS = (int)TableStatusType.Active,
+            SCHEMA_TYPE = TableSchemaQueryType.All
+        });
         return id;
     }
 
-    public bool CheckFormMasterExists(string baseTableName, string viewTableName, Guid? excludeId = null)
+    public bool CheckFormMasterExists(Guid baseTableId, Guid viewTableId, Guid? excludeId = null)
     {
         var count = _con.ExecuteScalar<int>(Sql.CheckFormMasterExists,
-            new { baseTableName, viewTableName, excludeId });
+            new { baseTableId, viewTableId, excludeId });
         return count > 0;
     }
     
@@ -883,16 +903,16 @@ WHEN MATCHED THEN
 WHEN NOT MATCHED THEN
     INSERT (
         ID, FORM_NAME, BASE_TABLE_NAME, VIEW_TABLE_NAME,
-        BASE_TABLE_ID, VIEW_TABLE_ID, STATUS, SCHEMA_TYPE)
+        BASE_TABLE_ID, VIEW_TABLE_ID, STATUS, SCHEMA_TYPE, IS_DELETE)
     VALUES (
         @ID, @FORM_NAME, @BASE_TABLE_NAME, @VIEW_TABLE_NAME,
-        @BASE_TABLE_ID, @VIEW_TABLE_ID, @STATUS, @SCHEMA_TYPE)
+        @BASE_TABLE_ID, @VIEW_TABLE_ID, @STATUS, @SCHEMA_TYPE, 0)
 OUTPUT INSERTED.ID;";
 
         public const string CheckFormMasterExists = @"/**/
 SELECT COUNT(1) FROM FORM_FIELD_Master
-WHERE BASE_TABLE_NAME = @baseTableName
-  AND VIEW_TABLE_NAME = @viewTableName
+WHERE BASE_TABLE_ID = @baseTableId
+  AND VIEW_TABLE_ID = @viewTableId
   AND (@excludeId IS NULL OR ID <> @excludeId)";
         
         public const string UpsertField = @"

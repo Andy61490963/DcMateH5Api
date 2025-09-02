@@ -362,25 +362,13 @@ public class FormDesignerController : ControllerBase
     [HttpPost("headers")]
     public IActionResult SaveFormHeader([FromBody] FormHeaderViewModel model)
     {
-        if (string.IsNullOrWhiteSpace(model.TABLE_NAME) || string.IsNullOrWhiteSpace(model.VIEW_TABLE_NAME))
-            return BadRequest("BASE_TABLE_NAME / VIEW_TABLE_NAME 不可為空");
+        if (model.BASE_TABLE_ID == Guid.Empty || model.VIEW_TABLE_ID == Guid.Empty)
+            return BadRequest("BASE_TABLE_ID / VIEW_TABLE_ID 不可為空");
 
-        if (_formDesignerService.CheckFormMasterExists(model.TABLE_NAME, model.VIEW_TABLE_NAME, model.ID))
+        if (_formDesignerService.CheckFormMasterExists(model.BASE_TABLE_ID, model.VIEW_TABLE_ID, model.ID))
             return Conflict("相同的表格及 View 組合已存在");
 
-        var master = new FORM_FIELD_Master
-        {
-            ID = model.ID,
-            FORM_NAME = model.FORM_NAME,
-            BASE_TABLE_NAME = model.TABLE_NAME,
-            VIEW_TABLE_NAME = model.VIEW_TABLE_NAME,
-            BASE_TABLE_ID = model.BASE_TABLE_ID,
-            VIEW_TABLE_ID = model.VIEW_TABLE_ID,
-            STATUS = (int)TableStatusType.Active,
-            SCHEMA_TYPE = TableSchemaQueryType.All
-        };
-
-        var id = _formDesignerService.SaveFormHeader(master);
+        var id = _formDesignerService.SaveFormHeader(model);
         return Ok(new { id });
     }
 
