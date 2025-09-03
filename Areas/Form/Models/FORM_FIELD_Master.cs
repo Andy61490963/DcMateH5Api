@@ -23,10 +23,10 @@ public class FORM_FIELD_Master
     public string VIEW_TABLE_NAME { get; set; }
     
     [Column("BASE_TABLE_ID")]
-    public Guid BASE_TABLE_ID { get; set; }
+    public Guid? BASE_TABLE_ID { get; set; }
     
     [Column("VIEW_TABLE_ID")]
-    public Guid VIEW_TABLE_ID { get; set; }
+    public Guid? VIEW_TABLE_ID { get; set; }
     
     [Column("STATUS")]
     public int STATUS { get; set; }  

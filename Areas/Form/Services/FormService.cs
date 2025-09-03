@@ -202,7 +202,7 @@ public class FormService : IFormService
     /// </summary>
     /// <param name="masterId"></param>
     /// <returns></returns>
-   private List<FormFieldInputViewModel> GetFields(Guid masterId, TableSchemaQueryType schemaType, string tableName)
+   private List<FormFieldInputViewModel> GetFields(Guid? masterId, TableSchemaQueryType schemaType, string tableName)
     {
         var columnTypes = _formDataService.LoadColumnTypes(tableName);
         var configData = _formFieldConfigService.LoadFieldConfigData(masterId);
@@ -248,7 +248,7 @@ public class FormService : IFormService
             CONTROL_TYPE = field.CONTROL_TYPE,
             QUERY_CONDITION_TYPE = field.QUERY_CONDITION_TYPE,
             CAN_QUERY = field.CAN_QUERY,
-            DefaultValue = field.DEFAULT_VALUE,
+            DefaultValue = field.QUERY_DEFAULT_VALUE,
             IS_REQUIRED = field.IS_REQUIRED,
             IS_EDITABLE = field.IS_EDITABLE,
             ValidationRules = rules,

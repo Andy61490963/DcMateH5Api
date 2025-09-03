@@ -35,7 +35,7 @@
 | `COLUMN_NAME` | NVARCHAR(100) | 欄位名稱 |
 | `DATA_TYPE` | NVARCHAR(100) | 資料型別 |
 | `CONTROL_TYPE` | NVARCHAR(50) | 控制項類型 |
-| `DEFAULT_VALUE` | NVARCHAR(255) | 預設值 |
+| `QUERY_DEFAULT_VALUE` | NVARCHAR(255) | 預設值 |
 | `IS_EDITABLE` | BIT | 是否可編輯 |
 | `IS_REQUIRED` | BIT | 是否必填 |
 | `FIELD_ORDER` | INT | 顯示順序 |

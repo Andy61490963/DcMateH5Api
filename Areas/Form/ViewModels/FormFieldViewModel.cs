@@ -37,7 +37,7 @@ public class FormFieldViewModel
     /// <summary>
     /// 預設值
     /// </summary>
-    public string DEFAULT_VALUE { get; set; } = string.Empty;
+    public string QUERY_DEFAULT_VALUE { get; set; } = string.Empty;
 
     /// <summary>
     /// 是否可以編輯

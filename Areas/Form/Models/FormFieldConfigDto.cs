@@ -33,7 +33,7 @@ public class FormFieldConfigDto
     /// </summary>
     public bool CAN_QUERY { get; set; }
     
-    public string? DEFAULT_VALUE { get; set; }
+    public string? QUERY_DEFAULT_VALUE { get; set; }
 
     public bool IS_REQUIRED { get; set; }
 

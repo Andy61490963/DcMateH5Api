@@ -7,5 +7,5 @@ public interface IFormFieldConfigService
 {
     List<FormFieldConfigDto> GetFormFieldConfig(Guid? id);
 
-    FieldConfigData LoadFieldConfigData(Guid masterId);
+    FieldConfigData LoadFieldConfigData(Guid? masterId);
 }

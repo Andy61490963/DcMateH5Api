@@ -7,7 +7,10 @@ namespace DcMateH5Api.Areas.Form.Interfaces;
 
 public interface IFormDesignerService
 {
-    Task<List<FORM_FIELD_Master>> GetFormMasters(CancellationToken ct);
+    Task<List<FORM_FIELD_Master>> GetFormMasters(TableSchemaQueryType schemaType, CancellationToken ct);
+
+    Task UpdateFormMaster(FORM_FIELD_Master model, CancellationToken ct);
+    
     void DeleteFormMaster(Guid id);
     
     Task<FormDesignerIndexViewModel> GetFormDesignerIndexViewModel(Guid? id, CancellationToken ct);

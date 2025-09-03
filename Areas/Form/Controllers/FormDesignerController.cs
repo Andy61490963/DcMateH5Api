@@ -28,21 +28,39 @@ public class FormDesignerController : ControllerBase
     /// <summary>
     /// 取得所有表單主檔清單，可透過關鍵字進行模糊搜尋。
     /// </summary>
+    /// <param name="schemaType">必填，表單 Schema 類型</param>
     /// <param name="q">可選的搜尋關鍵字，將比對 FORM_NAME</param>
-    /// <returns>符合條件的表單主檔列表</returns>
     [HttpGet]
-    public async Task<ActionResult<List<FORM_FIELD_Master>>> GetFormMasters(string? q, CancellationToken ct)
+    public async Task<ActionResult<List<FORM_FIELD_Master>>> GetFormMasters(
+        [FromQuery] TableSchemaQueryType schemaType,
+        [FromQuery] string? q,
+        CancellationToken ct)
     {
-        var list = await _formDesignerService.GetFormMasters(ct);
+        var list = await _formDesignerService.GetFormMasters(schemaType, ct);
+
         if (!string.IsNullOrWhiteSpace(q))
         {
             list = list
                 .Where(x => x.FORM_NAME.Contains(q, StringComparison.OrdinalIgnoreCase))
                 .ToList();
         }
+
         return Ok(list);
     }
-
+    
+    /// <summary>
+    /// 更新單筆主表or檢視表名稱
+    /// </summary>
+    /// <param name="model"></param>
+    /// <param name="ct"></param>
+    /// <returns></returns>
+    [HttpPut]
+    public async Task<IActionResult> UpdateFormMaster([FromBody] FORM_FIELD_Master model, CancellationToken ct)
+    {
+        await _formDesignerService.UpdateFormMaster(model, ct);
+        return Ok();
+    }
+    
     /// <summary>
     /// 刪除指定的表單主檔資料。
     /// </summary>
@@ -126,20 +144,20 @@ public class FormDesignerController : ControllerBase
     /// </summary>
     // [RequirePermission(ActionAuthorizeHelper.View)]
     [HttpPost("fields")]
-    public IActionResult UpsertField([FromBody] FormFieldViewModel model, [FromQuery] TableSchemaQueryType schemaType)
+    public IActionResult UpsertField([FromBody] FormFieldViewModel model)
     {
         try
         {
-            var ensure = _formDesignerService.EnsureFieldsSaved(
-                model.TableName,
-                model.FORM_FIELD_Master_ID == Guid.Empty ? null : model.FORM_FIELD_Master_ID,
-                schemaType);
-            if (ensure == null)
-            {
-                return NotFound();
-            }
+            // var ensure = _formDesignerService.EnsureFieldsSaved(
+            //     model.TableName,
+            //     model.FORM_FIELD_Master_ID == Guid.Empty ? null : model.FORM_FIELD_Master_ID,
+            //     schemaType);
+            // if (ensure == null)
+            // {
+            //     return NotFound();
+            // }
 
-            if (schemaType == TableSchemaQueryType.OnlyTable &&
+            if (model.SchemaType == TableSchemaQueryType.OnlyTable &&
                 (model.QUERY_CONDITION_TYPE != QueryConditionType.None ||
                  model.CAN_QUERY))
                 return Conflict("無法往主表寫入查詢條件");
@@ -153,9 +171,9 @@ public class FormDesignerController : ControllerBase
             var formMasterId = _formDesignerService.GetOrCreateFormMasterId(master);
 
             _formDesignerService.UpsertField(model, formMasterId);
-            var fields = _formDesignerService.GetFieldsByTableName(model.TableName, formMasterId, schemaType);
+            var fields = _formDesignerService.GetFieldsByTableName(model.TableName, formMasterId, model.SchemaType);
             fields.ID = formMasterId;
-            fields.SchemaQueryType = schemaType;
+            fields.SchemaQueryType = model.SchemaType;
             return Ok(fields);
         }
         catch (HttpStatusCodeException ex)
@@ -219,7 +237,7 @@ public class FormDesignerController : ControllerBase
 
         // var options = GetValidationTypeOptions(fieldId);
         var rules = _formDesignerService.GetValidationRulesByFieldId(fieldId);
-        return Ok(new { rules });
+        return Ok(new { rules });   
     }
 
     /// <summary>

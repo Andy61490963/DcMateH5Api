@@ -134,7 +134,7 @@ namespace DcMateH5Api.SqlHelper
         /// <param name="ct"></param>
         /// <typeparam name="T"></typeparam>
         /// <returns></returns>
-        public async Task<long?> InsertAndGetIdentityAsync<T>(T entity, CancellationToken ct = default)
+        public async Task<long?> InsertAndGetIdentityAsync<T>(T entity, bool enableAuditColumns = false, CancellationToken ct = default)
         {
             var (table, props, rowVersion, _, colByProp) = Reflect<T>();
 
@@ -143,7 +143,7 @@ namespace DcMateH5Api.SqlHelper
             var vals = new List<string>(toInsert.Select(p => "@" + p.Name));
             var dp = new DynamicParameters(entity);
 
-            if (EnableAuditColumns)
+            if (enableAuditColumns)
             {
                 var uid = CurrentUserIdOrEmpty();
                 var now = await GetDbUtcNowAsync(ct);
@@ -162,7 +162,7 @@ namespace DcMateH5Api.SqlHelper
         /// - 若有 [Timestamp]，會用它做樂觀鎖（WHERE 帶 RowVersion），被別人改過會回 0
         /// 目前還沒有實作 RowVersion 樂觀鎖
         /// </summary>
-        public async Task<int> UpdateAllByIdAsync<T>(T entity, UpdateNullBehavior mode = UpdateNullBehavior.IncludeNulls, CancellationToken ct = default)
+        public async Task<int> UpdateAllByIdAsync<T>(T entity, UpdateNullBehavior mode = UpdateNullBehavior.IncludeNulls, bool enableAuditColumns = false, CancellationToken ct = default)
         {
             var (table, props, rowVersion, key, colByProp) = Reflect<T>();
 
@@ -180,7 +180,7 @@ namespace DcMateH5Api.SqlHelper
             var sets = new List<string>(updatable.Select(p => $"[{colByProp[p.Name]}] = @{p.Name}"));
             var dp = new DynamicParameters(entity);
 
-            if (EnableAuditColumns)
+            if (enableAuditColumns)
             {
                 var uid = CurrentUserIdOrEmpty();
                 var now = await GetDbUtcNowAsync(ct);

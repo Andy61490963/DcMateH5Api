@@ -22,7 +22,7 @@ public class FormFieldConfigService : IFormFieldConfigService
             new { id }).ToList();
     }
     
-    public FieldConfigData LoadFieldConfigData(Guid masterId)
+    public FieldConfigData LoadFieldConfigData(Guid? masterId)
     {
         const string sql = @"SELECT FFC.*, FFM.FORM_NAME
                     FROM FORM_FIELD_CONFIG FFC

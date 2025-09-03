@@ -70,7 +70,7 @@ namespace DcMateH5Api.Areas.Permission.Services
         public Task UpdateGroupAsync(Guid id, UpdateGroupRequest request, CancellationToken ct)
         {
             var model = GroupMapper.MapperUpdate(id, request);
-            return _sqlHelper.UpdateAllByIdAsync(model, UpdateNullBehavior.IgnoreNulls, ct);
+            return _sqlHelper.UpdateAllByIdAsync(model, UpdateNullBehavior.IgnoreNulls, true, ct);
         }
 
         /// <summary>
@@ -128,7 +128,7 @@ namespace DcMateH5Api.Areas.Permission.Services
         public Task UpdatePermissionAsync(Guid id, UpdatePermissionRequest request, CancellationToken ct)
         {
             var model = PermissionMapper.MapperUpdate(id, request);
-            return _sqlHelper.UpdateAllByIdAsync(model, UpdateNullBehavior.IgnoreNulls, ct);
+            return _sqlHelper.UpdateAllByIdAsync(model, UpdateNullBehavior.IgnoreNulls, true, ct);
         }
 
         /// <summary>
@@ -185,7 +185,7 @@ namespace DcMateH5Api.Areas.Permission.Services
         public Task UpdateFunctionAsync(Guid id, UpdateFunctionRequest request, CancellationToken ct)
         {
             var model = FunctionMapper.MapperUpdate(id, request);
-            return _sqlHelper.UpdateAllByIdAsync(model, UpdateNullBehavior.IgnoreNulls, ct);
+            return _sqlHelper.UpdateAllByIdAsync(model, UpdateNullBehavior.IgnoreNulls, true, ct);
         }
 
         /// <summary>
@@ -241,7 +241,7 @@ namespace DcMateH5Api.Areas.Permission.Services
         public Task UpdateMenuAsync(Guid id, UpdateMenuRequest request, CancellationToken ct)
         {
             var model = MenuMapper.MapperUpdate(id, request);
-            return _sqlHelper.UpdateAllByIdAsync(model, UpdateNullBehavior.IgnoreNulls, ct);
+            return _sqlHelper.UpdateAllByIdAsync(model, UpdateNullBehavior.IgnoreNulls, true, ct);
         }
 
         /// <summary>

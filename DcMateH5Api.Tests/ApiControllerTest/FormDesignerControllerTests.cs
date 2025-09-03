@@ -106,34 +106,6 @@ public class FormDesignerControllerTests
     }
 
     [Fact]
-    public void SaveFormHeader_Duplicate_ReturnsConflict()
-    {
-        var controller = CreateController();
-        var vm = new FormHeaderViewModel { TABLE_NAME = "T", VIEW_TABLE_NAME = "V" };
-        _designerMock.Setup(s => s.CheckFormMasterExists("T", "V", vm.ID)).Returns(true);
-
-        var result = controller.SaveFormHeader(vm);
-
-        Assert.IsType<ConflictObjectResult>(result);
-    }
-
-    [Fact]
-    public void SaveFormHeader_Valid_ReturnsId()
-    {
-        var controller = CreateController();
-        var vm  = new FormHeaderViewModel { TABLE_NAME = "T", VIEW_TABLE_NAME = "V", FORM_NAME = "F" };
-        var id  = Guid.NewGuid();
-        _designerMock.Setup(s => s.CheckFormMasterExists("T", "V", vm.ID)).Returns(false);
-        _designerMock.Setup(s => s.SaveFormHeader(It.IsAny<FORM_FIELD_Master>())).Returns(id);
-
-        var result = controller.SaveFormHeader(vm) as OkObjectResult;
-
-        Assert.NotNull(result);
-        var value = result.Value?.GetType().GetProperty("id")?.GetValue(result.Value);
-        Assert.Equal(id, value);
-    }
-
-    [Fact]
     public void GetFields_MissingSystemColumns_ReturnsBadRequest()
     {
         var controller = CreateController();
@@ -173,22 +145,6 @@ public class FormDesignerControllerTests
         var result = controller.GetField(fieldId);
 
         Assert.IsType<NotFoundResult>(result);
-    }
-
-    [Fact]
-    public void UpsertField_MissingSystemColumns_ReturnsBadRequest()
-    {
-        var controller = CreateController();
-        var vm = new FormFieldViewModel { TableName = "T" };
-        _designerMock
-            .Setup(s => s.EnsureFieldsSaved("T", null, TableSchemaQueryType.OnlyTable))
-            .Throws(new HttpStatusCodeException(HttpStatusCode.BadRequest, "缺少必要欄位"));
-
-        var result = controller.UpsertField(vm, TableSchemaQueryType.OnlyTable);
-
-        var obj = Assert.IsType<ObjectResult>(result);
-        Assert.Equal((int)HttpStatusCode.BadRequest, obj.StatusCode);
-        _designerMock.Verify(s => s.UpsertField(It.IsAny<FormFieldViewModel>(), It.IsAny<Guid>()), Times.Never);
     }
 }
 

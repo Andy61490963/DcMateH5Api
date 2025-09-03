@@ -40,17 +40,23 @@ public class FormDesignerService : IFormDesignerService
     /// 取得 列表
     /// </summary>
     /// <returns></returns>
-    public Task<List<FORM_FIELD_Master>> GetFormMasters(CancellationToken ct)
+    public Task<List<FORM_FIELD_Master>> GetFormMasters(TableSchemaQueryType schemaType, CancellationToken ct)
     {
-        var statusList = new[] { TableStatusType.Active, TableStatusType.Disabled };
+        // var statusList = new[] { TableStatusType.Active };
         var where = new WhereBuilder<FORM_FIELD_Master>()
-            .AndIn(x => x.STATUS, statusList)
+            // .AndIn(x => x.STATUS, statusList)
+            .AndEq(x => x.SCHEMA_TYPE, schemaType)
             .AndNotDeleted();
         
         var result = _sqlHelper.SelectWhereAsync(where, ct);
         return result;
     }
 
+    public Task UpdateFormMaster(FORM_FIELD_Master model, CancellationToken ct)
+    {
+        return _sqlHelper.UpdateAllByIdAsync(model, UpdateNullBehavior.IgnoreNulls, false, ct);
+    }
+    
     /// <summary>
     /// 取得單一主表設定
     /// </summary>
@@ -94,13 +100,13 @@ public class FormDesignerService : IFormDesignerService
         };
 
         // 主表欄位
-        var baseFields = GetFieldsByTableName(master.BASE_TABLE_NAME, master.ID, TableSchemaQueryType.OnlyTable);
+        var baseFields = GetFieldsByTableName(master.BASE_TABLE_NAME, master.BASE_TABLE_ID, TableSchemaQueryType.OnlyTable);
         baseFields.ID = master.ID;
         baseFields.SchemaQueryType = TableSchemaQueryType.OnlyTable;
         result.BaseFields = baseFields;
 
         // View 欄位
-        var viewFields = GetFieldsByTableName(master.VIEW_TABLE_NAME, master.ID, TableSchemaQueryType.OnlyView);
+        var viewFields = GetFieldsByTableName(master.VIEW_TABLE_NAME, master.VIEW_TABLE_ID, TableSchemaQueryType.OnlyView);
         viewFields.ID = master.ID;
         viewFields.SchemaQueryType = TableSchemaQueryType.OnlyView;
         result.ViewFields = viewFields;
@@ -210,7 +216,7 @@ public class FormDesignerService : IFormDesignerService
                 IS_EDITABLE = cfg?.IS_EDITABLE ?? true,
                 IS_VALIDATION_RULE = requiredFieldIds.Contains(fieldId),
                 IS_PK = pk.Contains(col.COLUMN_NAME),
-                DEFAULT_VALUE = cfg?.DEFAULT_VALUE ?? string.Empty,
+                QUERY_DEFAULT_VALUE = cfg?.QUERY_DEFAULT_VALUE ?? string.Empty,
                 SchemaType = schemaType,
                 QUERY_CONDITION_TYPE = cfg?.QUERY_CONDITION_TYPE ?? QueryConditionType.None,
                 // QUERY_CONDITION_SQL = cfg?.QUERY_CONDITION_SQL ?? string.Empty,
@@ -265,7 +271,7 @@ public class FormDesignerService : IFormDesignerService
             IS_EDITABLE = cfg.IS_EDITABLE,
             IS_VALIDATION_RULE = HasValidationRules(cfg.ID),
             IS_PK = pk.Contains(cfg.COLUMN_NAME),
-            DEFAULT_VALUE = cfg.DEFAULT_VALUE ?? string.Empty,
+            QUERY_DEFAULT_VALUE = cfg.QUERY_DEFAULT_VALUE ?? string.Empty,
             FIELD_ORDER = cfg.FIELD_ORDER,
             QUERY_CONDITION_TYPE = cfg.QUERY_CONDITION_TYPE,
             // QUERY_CONDITION_SQL = cfg.QUERY_CONDITION_SQL ?? string.Empty,
@@ -359,7 +365,7 @@ public class FormDesignerService : IFormDesignerService
             CONTROL_TYPE = controlType,
             IS_REQUIRED = isRequired,
             model.IS_EDITABLE,
-            model.DEFAULT_VALUE,
+            model.QUERY_DEFAULT_VALUE,
             model.FIELD_ORDER,
             model.QUERY_CONDITION_TYPE,
             model.CAN_QUERY
@@ -591,7 +597,7 @@ public class FormDesignerService : IFormDesignerService
             if (columns.Count < 2)
             {
                 result.Success = false;
-                result.Message = "SQL 必須回傳至少兩個欄位。";
+                result.Message = "SQL 必須回傳至少兩個欄位，SELECT A AS ID, B AS NAME";
                 return result;
             }
 
@@ -845,7 +851,7 @@ public class FormDesignerService : IFormDesignerService
             IS_REQUIRED = false,
             IS_EDITABLE = true,
             FIELD_ORDER = index,
-            DEFAULT_VALUE = "",
+            QUERY_DEFAULT_VALUE = "",
             SchemaType = schemaType,
             QUERY_CONDITION_TYPE = QueryConditionType.None,
             // QUERY_CONDITION_SQL = string.Empty,
@@ -924,7 +930,7 @@ WHEN MATCHED THEN
         CONTROL_TYPE   = @CONTROL_TYPE,
         IS_REQUIRED     = @IS_REQUIRED,
         IS_EDITABLE    = @IS_EDITABLE,
-        DEFAULT_VALUE  = @DEFAULT_VALUE,
+        QUERY_DEFAULT_VALUE  = @QUERY_DEFAULT_VALUE,
         FIELD_ORDER    = @FIELD_ORDER,
         QUERY_CONDITION_TYPE = @QUERY_CONDITION_TYPE,
         CAN_QUERY      = @CAN_QUERY,
@@ -932,11 +938,11 @@ WHEN MATCHED THEN
 WHEN NOT MATCHED THEN
     INSERT (
         ID, FORM_FIELD_Master_ID, TABLE_NAME, COLUMN_NAME, DATA_TYPE,
-        CONTROL_TYPE, IS_REQUIRED, IS_EDITABLE, DEFAULT_VALUE, FIELD_ORDER, QUERY_CONDITION_TYPE, CAN_QUERY, CREATE_TIME
+        CONTROL_TYPE, IS_REQUIRED, IS_EDITABLE, QUERY_DEFAULT_VALUE, FIELD_ORDER, QUERY_CONDITION_TYPE, CAN_QUERY, CREATE_TIME
     )
     VALUES (
         @ID, @FORM_FIELD_Master_ID, @TABLE_NAME, @COLUMN_NAME, @DATA_TYPE,
-        @CONTROL_TYPE, @IS_REQUIRED, @IS_EDITABLE, @DEFAULT_VALUE, @FIELD_ORDER, @QUERY_CONDITION_TYPE, @CAN_QUERY, GETDATE()
+        @CONTROL_TYPE, @IS_REQUIRED, @IS_EDITABLE, @QUERY_DEFAULT_VALUE, @FIELD_ORDER, @QUERY_CONDITION_TYPE, @CAN_QUERY, GETDATE()
     );";
 
         public const string CheckFieldExists         = @"/**/
