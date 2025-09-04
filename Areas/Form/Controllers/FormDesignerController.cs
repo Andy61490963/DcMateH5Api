@@ -60,6 +60,16 @@ public class FormDesignerController : ControllerBase
         await _formDesignerService.UpdateFormMaster(model, ct);
         return Ok();
     }
+
+    /// <summary>
+    /// 更新表單名稱
+    /// </summary>
+    [HttpPut("form-name")]
+    public async Task<IActionResult> UpdateFormName([FromBody] UpdateFormNameViewModel model, CancellationToken ct)
+    {
+        await _formDesignerService.UpdateFormName(model.Id, model.FormName, ct);
+        return Ok();
+    }
     
     /// <summary>
     /// 刪除指定的表單主檔資料。
@@ -109,11 +119,11 @@ public class FormDesignerController : ControllerBase
     /// 取得資料表所有欄位設定(如果傳入空formMasterId，會創建一筆新的，如果有傳入，會取得舊的)
     /// </summary>
     [HttpGet("tables/{tableName}/fields")]
-    public IActionResult GetFields(string tableName, Guid? formMasterId, string formName, [FromQuery] TableSchemaQueryType schemaType)
+    public IActionResult GetFields(string tableName, Guid? formMasterId, [FromQuery] TableSchemaQueryType schemaType)
     {
         try
         {
-            var result = _formDesignerService.EnsureFieldsSaved(tableName, formMasterId, schemaType, formName);
+            var result = _formDesignerService.EnsureFieldsSaved(tableName, formMasterId, schemaType);
 
             if (result == null)
             {

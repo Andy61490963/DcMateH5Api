@@ -29,9 +29,10 @@ public interface IFormDesignerService
     FormFieldListViewModel? EnsureFieldsSaved(
         string tableName,
         Guid? formMasterId,
-        TableSchemaQueryType type,
-        string? formName = null);
+        TableSchemaQueryType type);
     FormFieldListViewModel GetFieldsByTableName(string tableName, Guid? formMasterId, TableSchemaQueryType schemaType);
+
+    Task UpdateFormName(Guid id, string formName, CancellationToken ct);
 
     /// <summary>
     /// 依欄位設定 ID 取得單一欄位設定。

@@ -56,6 +56,13 @@ public class FormDesignerService : IFormDesignerService
     {
         return _sqlHelper.UpdateAllByIdAsync(model, UpdateNullBehavior.IgnoreNulls, false, ct);
     }
+
+    public Task UpdateFormName(Guid id, string formName, CancellationToken ct)
+    {
+        const string sql = "UPDATE FORM_FIELD_Master SET FORM_NAME = @formName WHERE ID = @id";
+        _con.Execute(sql, new { id, formName });
+        return Task.CompletedTask;
+    }
     
     /// <summary>
     /// 取得單一主表設定
@@ -328,7 +335,7 @@ public class FormDesignerService : IFormDesignerService
     /// </summary>
     /// <param name="tableName">資料表名稱</param>
     /// <returns>包含欄位設定的 ViewModel</returns>
-    public FormFieldListViewModel? EnsureFieldsSaved(string tableName, Guid? formMasterId, TableSchemaQueryType schemaType, string? formName = null)
+    public FormFieldListViewModel? EnsureFieldsSaved(string tableName, Guid? formMasterId, TableSchemaQueryType schemaType)
     {
         var columns = GetTableSchema(tableName);
 
@@ -344,7 +351,7 @@ public class FormDesignerService : IFormDesignerService
 
         FORM_FIELD_Master model = new FORM_FIELD_Master
         {
-            FORM_NAME = string.IsNullOrWhiteSpace(formName) ? tableName : formName,
+            FORM_NAME = string.Empty,
             BASE_TABLE_NAME = schemaType == TableSchemaQueryType.OnlyView ? string.Empty : tableName,
             VIEW_TABLE_NAME = schemaType == TableSchemaQueryType.OnlyTable ? string.Empty : tableName,
             STATUS = (int)TableStatusType.Draft,
@@ -374,7 +381,8 @@ public class FormDesignerService : IFormDesignerService
         // 重新查一次所有欄位，確保資料同步
         var result = GetFieldsByTableName(tableName, masterId, schemaType);
 
-        result.formName = formName;
+        var master = _con.QueryFirst<FORM_FIELD_Master>(Sql.FormMasterById, new { id = masterId });
+        result.formName = master.FORM_NAME;
         
         // 對於檢視表，先預設有下拉選單的設定，創建的ISUSESQL欄位會為NULL
         if (schemaType == TableSchemaQueryType.OnlyView)
