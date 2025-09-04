@@ -7,13 +7,13 @@ namespace DcMateH5Api.Areas.Form.Interfaces;
 
 public interface IFormDesignerService
 {
-    Task<List<FORM_FIELD_Master>> GetFormMasters(TableSchemaQueryType schemaType, CancellationToken ct);
+    Task<List<FORM_FIELD_Master>> GetFormMasters(FormFunctionType functionType, string? q, CancellationToken ct);
 
     Task UpdateFormMaster(FORM_FIELD_Master model, CancellationToken ct);
     
     void DeleteFormMaster(Guid id);
     
-    Task<FormDesignerIndexViewModel> GetFormDesignerIndexViewModel(Guid? id, CancellationToken ct);
+    Task<FormDesignerIndexViewModel> GetFormDesignerIndexViewModel(FormFunctionType functionType, Guid? id, CancellationToken ct);
     
     /// <summary>
     /// 依名稱關鍵字查詢資料表或檢視表名稱清單。

@@ -136,6 +136,7 @@ builder.Services.AddHealthChecks()
 var swaggerGroups = new[]
 {
     SwaggerGroups.Form,
+    SwaggerGroups.FormWithMasterDetail,
     SwaggerGroups.Permission,
     SwaggerGroups.Security,
     SwaggerGroups.Enum,

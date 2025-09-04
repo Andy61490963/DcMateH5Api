@@ -12,6 +12,7 @@ public static class SwaggerGroups
     public const string Permission = nameof(Permission);
     public const string Enum = nameof(Enum);
     public const string Form = nameof(Form);
+    public const string FormWithMasterDetail = nameof(FormWithMasterDetail);
     public const string Log = nameof(Log);
     
     public static readonly Dictionary<string, string> DisplayNames = new()
@@ -21,6 +22,7 @@ public static class SwaggerGroups
         { Permission, "群組、功能、權限設定" },
         { Enum, "列舉" },
         { Form, "主檔維護" },
+        { FormWithMasterDetail, "主明細維護" },
         { Log, "系統紀錄" }
     };
 }

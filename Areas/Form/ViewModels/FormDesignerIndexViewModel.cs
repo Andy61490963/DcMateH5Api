@@ -10,18 +10,18 @@ public class FormDesignerIndexViewModel
     public FORM_FIELD_Master FormHeader { get; set; } = new();
 
     /// <summary>
-    /// 主表欄位設定清單
+    /// 主檔欄位設定清單
     /// </summary>
     public FormFieldListViewModel BaseFields { get; set; } = new();
+    
+    /// <summary>
+    /// 主檔欄位設定清單
+    /// </summary>
+    public FormFieldListViewModel DetailFields { get; set; } = new();
 
     /// <summary>
-    /// 檢視(View)欄位設定清單
+    /// 檢視表欄位設定清單
     /// </summary>
     public FormFieldListViewModel ViewFields { get; set; } = new();
-
-    /// <summary>
-    /// 右側欄位設定編輯區所需的資料
-    /// </summary>
-    public FormFieldViewModel FieldSetting { get; set; } = new();
 }
 

@@ -17,7 +17,8 @@ namespace DcMateH5Api.Areas.Form.Controllers;
 public class FormDesignerController : ControllerBase
 {
     private readonly IFormDesignerService _formDesignerService;
-
+    private readonly FormFunctionType _funcType = FormFunctionType.NotMasterDetail;
+    
     public FormDesignerController(
         IFormDesignerService formDesignerService)
     {
@@ -26,43 +27,36 @@ public class FormDesignerController : ControllerBase
 
     // ────────── Form Designer 列表 ──────────
     /// <summary>
-    /// 取得所有表單主檔清單，可透過關鍵字進行模糊搜尋。
+    /// 取得表單主檔 (FORM_FIELD_Master) 清單
     /// </summary>
-    /// <param name="schemaType">必填，表單 Schema 類型</param>
-    /// <param name="q">可選的搜尋關鍵字，將比對 FORM_NAME</param>
+    /// <param name="q">關鍵字 (模糊搜尋 FORM_NAME)</param>
+    /// <param name="ct">CancellationToken</param>
+    /// <returns>表單主檔清單</returns>
     [HttpGet]
     public async Task<ActionResult<List<FORM_FIELD_Master>>> GetFormMasters(
-        [FromQuery] TableSchemaQueryType schemaType,
         [FromQuery] string? q,
         CancellationToken ct)
     {
-        var list = await _formDesignerService.GetFormMasters(schemaType, ct);
+        var masters = await _formDesignerService.GetFormMasters(_funcType, q, ct);
 
-        if (!string.IsNullOrWhiteSpace(q))
-        {
-            list = list
-                .Where(x => x.FORM_NAME.Contains(q, StringComparison.OrdinalIgnoreCase))
-                .ToList();
-        }
-
-        return Ok(list);
+        return Ok(masters.ToList());
     }
     
-    /// <summary>
-    /// 更新單筆主表or檢視表名稱
-    /// </summary>
-    /// <param name="model"></param>
-    /// <param name="ct"></param>
-    /// <returns></returns>
-    [HttpPut]
-    public async Task<IActionResult> UpdateFormMaster([FromBody] FORM_FIELD_Master model, CancellationToken ct)
-    {
-        await _formDesignerService.UpdateFormMaster(model, ct);
-        return Ok();
-    }
+    // /// <summary>
+    // /// 更新單筆主表or檢視表名稱
+    // /// </summary>
+    // /// <param name="model"></param>
+    // /// <param name="ct"></param>
+    // /// <returns></returns>
+    // [HttpPut]
+    // public async Task<IActionResult> UpdateFormMaster([FromBody] FORM_FIELD_Master model, CancellationToken ct)
+    // {
+    //     await _formDesignerService.UpdateFormMaster(model, ct);
+    //     return Ok();
+    // }
 
     /// <summary>
-    /// 更新表單名稱
+    /// 更新主檔 or 明細 or 檢視表 名稱
     /// </summary>
     [HttpPut("form-name")]
     public async Task<IActionResult> UpdateFormName([FromBody] UpdateFormNameViewModel model, CancellationToken ct)
@@ -72,7 +66,7 @@ public class FormDesignerController : ControllerBase
     }
     
     /// <summary>
-    /// 刪除指定的表單主檔資料。
+    /// 刪除指定的主檔 or 明細 or 檢視表資料
     /// </summary>
     /// <param name="id">FORM_FIELD_Master 的唯一識別編號</param>
     /// <returns>NoContent 回應</returns>
@@ -85,13 +79,13 @@ public class FormDesignerController : ControllerBase
     
     // ────────── Form Designer 入口 ──────────
     /// <summary>
-    /// 取得指定表單的設計器主畫面資料(請傳入父節點 masterId)
+    /// 取得指定的 主檔 and 檢視表 主畫面資料(請傳入父節點 masterId)
     /// </summary>
     // [RequirePermission(ActionAuthorizeHelper.View)]
     [HttpGet("{id:guid}")]
     public async Task<IActionResult> GetDesigner(Guid id, CancellationToken ct)
     {
-        var model = await _formDesignerService.GetFormDesignerIndexViewModel(id, ct);
+        var model = await _formDesignerService.GetFormDesignerIndexViewModel(_funcType, id, ct);
         return Ok(model);
     }
 

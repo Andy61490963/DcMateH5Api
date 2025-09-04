@@ -37,19 +37,24 @@ public class FormDesignerService : IFormDesignerService
     #region Public API
     
     /// <summary>
-    /// 取得 列表
+    /// 取得 FORM_FIELD_Master 列表（可依 SchemaType 與關鍵字模糊查詢）
     /// </summary>
-    /// <returns></returns>
-    public Task<List<FORM_FIELD_Master>> GetFormMasters(TableSchemaQueryType schemaType, CancellationToken ct)
+    public Task<List<FORM_FIELD_Master>> GetFormMasters(
+        FormFunctionType functionType,
+        string? q,
+        CancellationToken ct)
     {
-        // var statusList = new[] { TableStatusType.Active };
         var where = new WhereBuilder<FORM_FIELD_Master>()
-            // .AndIn(x => x.STATUS, statusList)
-            .AndEq(x => x.SCHEMA_TYPE, schemaType)
+            .AndEq(x => x.IS_MASTER_DETAIL, functionType)
             .AndNotDeleted();
+
+        if (!string.IsNullOrWhiteSpace(q))
+        {
+            where.AndLike(x => x.FORM_NAME, q);
+        }
         
-        var result = _sqlHelper.SelectWhereAsync(where, ct);
-        return result;
+        var res = _sqlHelper.SelectWhereAsync(where, ct);
+        return res;
     }
 
     public Task UpdateFormMaster(FORM_FIELD_Master model, CancellationToken ct)
@@ -90,34 +95,51 @@ public class FormDesignerService : IFormDesignerService
     }
     
     /// <summary>
-    /// 取得 所有資料 給前端長樹
+    /// 根據 functionType 取得 主檔維護 或 主明細維護 畫面資料，提供前端建樹狀結構使用。
     /// </summary>
-    /// <param name="id"></param>
-    /// <param name="ct"></param>
-    /// <returns></returns>
-    public async Task<FormDesignerIndexViewModel> GetFormDesignerIndexViewModel(Guid? id, CancellationToken ct)
+    public async Task<FormDesignerIndexViewModel> GetFormDesignerIndexViewModel(
+        FormFunctionType functionType, 
+        Guid? id, 
+        CancellationToken ct)
     {
-        var master = await GetFormMasterAsync(id, ct) ?? new();
+        var master = await GetFormMasterAsync(id, ct) ?? new FORM_FIELD_Master();
 
         var result = new FormDesignerIndexViewModel
         {
-            FormHeader = master,
-            BaseFields = null!,
-            ViewFields = null!,
-            FieldSetting = null!,
+            FormHeader = master
         };
 
-        // 主表欄位
+        // 主檔欄位
         var baseFields = GetFieldsByTableName(master.BASE_TABLE_NAME, master.BASE_TABLE_ID, TableSchemaQueryType.OnlyTable);
         baseFields.ID = master.ID;
         baseFields.SchemaQueryType = TableSchemaQueryType.OnlyTable;
         result.BaseFields = baseFields;
 
-        // View 欄位
-        var viewFields = GetFieldsByTableName(master.VIEW_TABLE_NAME, master.VIEW_TABLE_ID, TableSchemaQueryType.OnlyView);
-        viewFields.ID = master.ID;
-        viewFields.SchemaQueryType = TableSchemaQueryType.OnlyView;
-        result.ViewFields = viewFields;
+        if (functionType == FormFunctionType.MasterDetail)
+        {
+            // 明細表 欄位
+            var detailFields = GetFieldsByTableName(master.DETAIL_TABLE_NAME, master.DETAIL_TABLE_ID, TableSchemaQueryType.OnlyDetail);
+            detailFields.ID = master.ID;
+            detailFields.SchemaQueryType = TableSchemaQueryType.OnlyDetail;
+            result.DetailFields = detailFields;
+
+            // 檢視表 欄位
+            var viewFields = GetFieldsByTableName(master.VIEW_TABLE_NAME, master.VIEW_TABLE_ID, TableSchemaQueryType.OnlyView);
+            viewFields.ID = master.ID;
+            viewFields.SchemaQueryType = TableSchemaQueryType.OnlyView;
+            result.ViewFields = viewFields;
+        }
+        else if (functionType == FormFunctionType.NotMasterDetail)
+        {
+            // 檢視表 欄位
+            var viewFields = GetFieldsByTableName(master.VIEW_TABLE_NAME, master.VIEW_TABLE_ID, TableSchemaQueryType.OnlyView);
+            viewFields.ID = master.ID;
+            viewFields.SchemaQueryType = TableSchemaQueryType.OnlyView;
+            result.ViewFields = viewFields;
+
+            // 明細表不需要 設成 null
+            result.DetailFields = null!;
+        }
 
         return result;
     }
@@ -175,7 +197,7 @@ public class FormDesignerService : IFormDesignerService
         var insertId = model.ID == Guid.Empty ? Guid.NewGuid() : model.ID;
         _con.Execute(@"
         INSERT INTO FORM_FIELD_Master (ID, FORM_NAME, STATUS, SCHEMA_TYPE, BASE_TABLE_NAME, VIEW_TABLE_NAME, DETAIL_TABLE_NAME, DETAIL_TABLE_ID, IS_MASTER_DETAIL, IS_DELETE)
-        VALUES (@ID, @FORM_NAME, @STATUS, @SCHEMA_TYPE, @BASE_TABLE_NAME, @VIEW_TABLE_NAME, @DETAIL_TABLE_NAME, @DETAIL_TABLE_ID, @IS_MASTER_DETAIL, 0)", new
+        VALUES (@ID, @FORM_NAME, @STATUS, @SCHEMA_TYPE, @BASE_TABLE_NAME, @VIEW_TABLE_NAME, @DETAIL_TABLE_NAME, @DETAIL_TABLE_ID, @IS_MASTER_DETAIL)", new
         {
             ID = insertId,
             model.FORM_NAME,
@@ -184,8 +206,7 @@ public class FormDesignerService : IFormDesignerService
             model.BASE_TABLE_NAME,
             model.VIEW_TABLE_NAME,
             model.DETAIL_TABLE_NAME,
-            model.DETAIL_TABLE_ID,
-            model.IS_MASTER_DETAIL
+            model.DETAIL_TABLE_ID
         });
 
         return insertId;
@@ -347,27 +368,40 @@ public class FormDesignerService : IFormDesignerService
         var missingColumns = _requiredColumns
             .Where(req => !columns.Any(c => c.COLUMN_NAME.Equals(req, StringComparison.OrdinalIgnoreCase)))
             .ToList();
-        if (missingColumns.Count > 0 && schemaType == TableSchemaQueryType.OnlyTable)
+        if ((missingColumns.Count > 0 && schemaType == TableSchemaQueryType.OnlyTable) || missingColumns.Count > 0 && schemaType == TableSchemaQueryType.OnlyDetail)
             throw new HttpStatusCodeException(
                 HttpStatusCode.BadRequest,
                 $"缺少必要欄位：{string.Join(", ", missingColumns)}");
 
-        FORM_FIELD_Master model = new FORM_FIELD_Master
+        var master = new FORM_FIELD_Master
         {
             FORM_NAME = string.Empty,
-            BASE_TABLE_NAME = schemaType == TableSchemaQueryType.OnlyView ? string.Empty : tableName,
-            VIEW_TABLE_NAME = schemaType == TableSchemaQueryType.OnlyTable ? string.Empty : tableName,
             STATUS = (int)TableStatusType.Draft,
-            SCHEMA_TYPE = schemaType
+            SCHEMA_TYPE = schemaType,
+            BASE_TABLE_NAME   = null,
+            DETAIL_TABLE_NAME = null,
+            VIEW_TABLE_NAME   = null,
         };
 
+        switch (schemaType)
+        {
+            case TableSchemaQueryType.OnlyTable:
+                master.BASE_TABLE_NAME = tableName;
+                break;
+            case TableSchemaQueryType.OnlyView:
+                master.VIEW_TABLE_NAME = tableName;
+                break;
+            case TableSchemaQueryType.OnlyDetail:
+                master.DETAIL_TABLE_NAME = tableName;
+                break;
+        }
+        
         // 根據傳進來的formMasterId判斷為哪次操作的資料
         var configs = GetFieldConfigs(tableName, formMasterId);
         var masterId = formMasterId
                        ?? configs.Values.FirstOrDefault()?.FORM_FIELD_Master_ID
-                       ?? GetOrCreateFormMasterId(model);
-
-
+                       ?? GetOrCreateFormMasterId(master);
+        
         var maxOrder = configs.Values.Any() ? configs.Values.Max(x => x.FIELD_ORDER) : 0;
         var order = maxOrder;
         // 新增還沒存過的欄位
@@ -854,7 +888,7 @@ public class FormDesignerService : IFormDesignerService
         var viewField = _con.QueryFirst<FORM_FIELD_Master>(Sql.FormMasterById, new { id = model.VIEW_TABLE_ID }) ?? throw new InvalidOperationException("檢視表查無資料");
 
         var masterTableName = masterField.BASE_TABLE_NAME;
-        var detailTableName = detailField.BASE_TABLE_NAME;
+        var detailTableName = detailField.DETAIL_TABLE_NAME;
         var viewTableName = viewField.VIEW_TABLE_NAME;
 
         if (GetTableSchema(masterTableName).Count == 0)
@@ -875,9 +909,9 @@ public class FormDesignerService : IFormDesignerService
         {
             model.ID,
             model.FORM_NAME,
-            MASTER_TABLE_ID = model.MASTER_TABLE_ID,
-            DETAIL_TABLE_ID = model.DETAIL_TABLE_ID,
-            VIEW_TABLE_ID = model.VIEW_TABLE_ID,
+            model.MASTER_TABLE_ID,
+            model.DETAIL_TABLE_ID,
+            model.VIEW_TABLE_ID,
             MASTER_TABLE_NAME = masterTableName,
             DETAIL_TABLE_NAME = detailTableName,
             VIEW_TABLE_NAME = viewTableName,

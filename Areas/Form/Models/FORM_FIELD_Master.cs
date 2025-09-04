@@ -16,26 +16,32 @@ public class FORM_FIELD_Master
     [Column("FORM_NAME")]
     public string FORM_NAME { get; set; }  
     
+    
+    
     [Column("BASE_TABLE_NAME")]
-    public string BASE_TABLE_NAME { get; set; }  
+    public string? BASE_TABLE_NAME { get; set; }  
+    
+    [Column("DETAIL_TABLE_NAME")]
+    public string? DETAIL_TABLE_NAME { get; set; }
     
     [Column("VIEW_TABLE_NAME")]
-    public string VIEW_TABLE_NAME { get; set; }
+    public string? VIEW_TABLE_NAME { get; set; }
+    
+    
     
     [Column("BASE_TABLE_ID")]
     public Guid? BASE_TABLE_ID { get; set; }
     
-    [Column("VIEW_TABLE_ID")]
-    public Guid? VIEW_TABLE_ID { get; set; }
-
-    [Column("DETAIL_TABLE_NAME")]
-    public string? DETAIL_TABLE_NAME { get; set; }
-
     [Column("DETAIL_TABLE_ID")]
     public Guid? DETAIL_TABLE_ID { get; set; }
+    
+    [Column("VIEW_TABLE_ID")]
+    public Guid? VIEW_TABLE_ID { get; set; }
+    
+    
 
     [Column("IS_MASTER_DETAIL")]
-    public bool IS_MASTER_DETAIL { get; set; }
+    public bool? IS_MASTER_DETAIL { get; set; }
     
     [Column("STATUS")]
     public int STATUS { get; set; }  
