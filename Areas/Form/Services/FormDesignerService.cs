@@ -82,6 +82,7 @@ public class FormDesignerService : IFormDesignerService
         _con.Execute(Sql.DeleteFormMaster, new { id });
     }
     
+    /// <summary>
     /// 取得 所有資料 給前端長樹
     /// </summary>
     /// <param name="id"></param>
@@ -196,33 +197,43 @@ public class FormDesignerService : IFormDesignerService
         // 查 PK
         var pk = _schemaService.GetPrimaryKeyColumns(tableName);
         
-        var res = columns.Select(col =>
+        // 4) 逐欄位組裝 ViewModel
+        var fields = new List<FormFieldViewModel>(columns.Count);
+        foreach (var col in columns)
         {
-            var hasConfig = configs.TryGetValue(col.COLUMN_NAME, out var cfg);
-                var fieldId = hasConfig ? cfg!.ID : Guid.NewGuid();
-                var dataType = col.DATA_TYPE;
+            var columnName = col.COLUMN_NAME;
+            var dataType   = col.DATA_TYPE;
 
-                return new FormFieldViewModel
-                {
-                ID = fieldId,
-                FORM_FIELD_Master_ID = cfg?.FORM_FIELD_Master_ID ?? formMasterId ?? Guid.Empty,
-                TableName = tableName,
-                COLUMN_NAME = col.COLUMN_NAME,
-                DATA_TYPE = dataType,
-                CONTROL_TYPE = cfg?.CONTROL_TYPE,
-                CONTROL_TYPE_WHITELIST = FormFieldHelper.GetControlTypeWhitelist(dataType),
-                QUERY_CONDITION_TYPE_WHITELIST = FormFieldHelper.GetQueryConditionTypeWhitelist(dataType),
-                IS_REQUIRED = cfg?.IS_REQUIRED ?? false,
-                IS_EDITABLE = cfg?.IS_EDITABLE ?? true,
-                IS_VALIDATION_RULE = requiredFieldIds.Contains(fieldId),
-                IS_PK = pk.Contains(col.COLUMN_NAME),
-                QUERY_DEFAULT_VALUE = cfg?.QUERY_DEFAULT_VALUE ?? string.Empty,
-                SchemaType = schemaType,
-                QUERY_CONDITION_TYPE = cfg?.QUERY_CONDITION_TYPE ?? QueryConditionType.None,
-                // QUERY_CONDITION_SQL = cfg?.QUERY_CONDITION_SQL ?? string.Empty,
-                CAN_QUERY = cfg?.CAN_QUERY ?? false,
+            // 4-1) 取對應設定（有就用設定 ID，沒有就產新的暫時 ID）
+            var hasCfg  = configs.TryGetValue(columnName, out var cfg);
+            var fieldId = hasCfg ? cfg!.ID : Guid.NewGuid();
+
+            var vm = new FormFieldViewModel
+            {
+                ID                          = fieldId,
+                FORM_FIELD_Master_ID        = formMasterId ?? Guid.Empty,
+                TableName                   = tableName,
+                COLUMN_NAME                 = columnName,
+                DATA_TYPE                   = dataType,
+                CONTROL_TYPE                = cfg?.CONTROL_TYPE, // 可能被 policy 改為 null
+                CONTROL_TYPE_WHITELIST      = FormFieldHelper.GetControlTypeWhitelist(dataType),
+                QUERY_COMPONENT_TYPE_WHITELIST = FormFieldHelper.GetQueryConditionTypeWhitelist(dataType),
+                IS_REQUIRED                 = cfg?.IS_REQUIRED ?? false, // bool 不可 null，用預設
+                IS_EDITABLE                 = cfg?.IS_EDITABLE ?? true,  // bool 不可 null，用預設
+                IS_VALIDATION_RULE          = requiredFieldIds.Contains(fieldId),
+                IS_PK                       = pk.Contains(columnName),
+                QUERY_DEFAULT_VALUE         = cfg?.QUERY_DEFAULT_VALUE,
+                SchemaType                  = schemaType,
+                QUERY_COMPONENT             = cfg?.QUERY_COMPONENT ?? QueryComponentType.None,
+                QUERY_CONDITION             = cfg?.QUERY_CONDITION,
+                CAN_QUERY                   = cfg?.CAN_QUERY ?? false
             };
-        }).ToList();
+
+            // 4-2) 依 schemaType 做欄位「置空/預設化」策略
+            ApplySchemaPolicy(vm, schemaType);
+
+            fields.Add(vm);
+        }
         // 用設定檔過濾
         // .Where(f => !_excludeColumns.Any(ex => 
         //     f.COLUMN_NAME.Contains(ex, StringComparison.OrdinalIgnoreCase)))
@@ -234,13 +245,44 @@ public class FormDesignerService : IFormDesignerService
         {
             ID = masterId,
             TableName = tableName,
-            Fields = res,
+            Fields = fields,
             SchemaQueryType = schemaType
         };
 
         return result;
     }
 
+    /// <summary>
+    /// 依 SchemaType 套用欄位置空/預設化策略：
+    /// - OnlyView：視為純查詢，不允許編輯 → 把編輯相關設為不可編輯/無控制型態
+    /// - OnlyTable：視為純維運，不提供查詢條件 → 把查詢相關清空/關閉
+    /// - Both/Default：保留原設定
+    /// </summary>
+    private static void ApplySchemaPolicy(FormFieldViewModel f, TableSchemaQueryType schemaType)
+    {
+        switch (schemaType)
+        {
+            case TableSchemaQueryType.OnlyTable:
+                // 純表維運：查詢相關關閉/清空
+                f.CAN_QUERY = null;
+                f.QUERY_COMPONENT = null;
+                f.QUERY_CONDITION = null;
+                f.QUERY_COMPONENT_TYPE_WHITELIST = null;
+                f.QUERY_DEFAULT_VALUE = null;
+                break;
+            
+            case TableSchemaQueryType.OnlyView:
+                // 只查不改：編輯控制改為 null、不可編輯、必填關閉
+                f.IS_EDITABLE = null;
+                f.IS_REQUIRED = null;
+                f.IS_VALIDATION_RULE = null;
+                f.FIELD_ORDER = null;
+                f.CONTROL_TYPE = null;
+                f.CONTROL_TYPE_WHITELIST = null;
+                break;
+        }
+    }
+    
     /// <summary>
     /// 依欄位設定 ID 取得單一欄位設定。
     /// </summary>
@@ -266,14 +308,15 @@ public class FormDesignerService : IFormDesignerService
             DATA_TYPE = cfg.DATA_TYPE,
             CONTROL_TYPE = cfg.CONTROL_TYPE,
             CONTROL_TYPE_WHITELIST = FormFieldHelper.GetControlTypeWhitelist(cfg.DATA_TYPE),
-            QUERY_CONDITION_TYPE_WHITELIST = FormFieldHelper.GetQueryConditionTypeWhitelist(cfg.DATA_TYPE),
+            QUERY_COMPONENT_TYPE_WHITELIST = FormFieldHelper.GetQueryConditionTypeWhitelist(cfg.DATA_TYPE),
             IS_REQUIRED = cfg.IS_REQUIRED,
             IS_EDITABLE = cfg.IS_EDITABLE,
             IS_VALIDATION_RULE = HasValidationRules(cfg.ID),
             IS_PK = pk.Contains(cfg.COLUMN_NAME),
-            QUERY_DEFAULT_VALUE = cfg.QUERY_DEFAULT_VALUE ?? string.Empty,
+            QUERY_DEFAULT_VALUE = cfg.QUERY_DEFAULT_VALUE,
             FIELD_ORDER = cfg.FIELD_ORDER,
-            QUERY_CONDITION_TYPE = cfg.QUERY_CONDITION_TYPE,
+            QUERY_COMPONENT = cfg.QUERY_COMPONENT,
+            QUERY_CONDITION = cfg.QUERY_CONDITION,
             // QUERY_CONDITION_SQL = cfg.QUERY_CONDITION_SQL ?? string.Empty,
             CAN_QUERY = cfg.CAN_QUERY,
             SchemaType = master.SCHEMA_TYPE
@@ -353,7 +396,7 @@ public class FormDesignerService : IFormDesignerService
         var controlType = model.CONTROL_TYPE ?? FormFieldHelper.GetDefaultControlType(model.DATA_TYPE);
 
         // 只有在欄位可編輯時才允許設定必填
-        var isRequired = model.IS_EDITABLE && model.IS_REQUIRED;
+        var isRequired = model.IS_EDITABLE == true && model.IS_REQUIRED == true;
 
         var param = new
         {
@@ -367,7 +410,8 @@ public class FormDesignerService : IFormDesignerService
             model.IS_EDITABLE,
             model.QUERY_DEFAULT_VALUE,
             model.FIELD_ORDER,
-            model.QUERY_CONDITION_TYPE,
+            model.QUERY_COMPONENT,
+            model.QUERY_CONDITION,
             model.CAN_QUERY
         };
 
@@ -851,9 +895,10 @@ public class FormDesignerService : IFormDesignerService
             IS_REQUIRED = false,
             IS_EDITABLE = true,
             FIELD_ORDER = index,
-            QUERY_DEFAULT_VALUE = "",
+            QUERY_DEFAULT_VALUE = null,
             SchemaType = schemaType,
-            QUERY_CONDITION_TYPE = QueryConditionType.None,
+            QUERY_COMPONENT = QueryComponentType.None,
+            QUERY_CONDITION = ConditionType.None,
             // QUERY_CONDITION_SQL = string.Empty,
             CAN_QUERY = false
         };
@@ -932,17 +977,18 @@ WHEN MATCHED THEN
         IS_EDITABLE    = @IS_EDITABLE,
         QUERY_DEFAULT_VALUE  = @QUERY_DEFAULT_VALUE,
         FIELD_ORDER    = @FIELD_ORDER,
-        QUERY_CONDITION_TYPE = @QUERY_CONDITION_TYPE,
+        QUERY_COMPONENT = @QUERY_COMPONENT,
+        QUERY_CONDITION = @QUERY_CONDITION,
         CAN_QUERY      = @CAN_QUERY,
         EDIT_TIME      = GETDATE()
 WHEN NOT MATCHED THEN
     INSERT (
         ID, FORM_FIELD_Master_ID, TABLE_NAME, COLUMN_NAME, DATA_TYPE,
-        CONTROL_TYPE, IS_REQUIRED, IS_EDITABLE, QUERY_DEFAULT_VALUE, FIELD_ORDER, QUERY_CONDITION_TYPE, CAN_QUERY, CREATE_TIME
+        CONTROL_TYPE, IS_REQUIRED, IS_EDITABLE, QUERY_DEFAULT_VALUE, FIELD_ORDER, QUERY_COMPONENT, QUERY_CONDITION, CAN_QUERY, CREATE_TIME
     )
     VALUES (
         @ID, @FORM_FIELD_Master_ID, @TABLE_NAME, @COLUMN_NAME, @DATA_TYPE,
-        @CONTROL_TYPE, @IS_REQUIRED, @IS_EDITABLE, @QUERY_DEFAULT_VALUE, @FIELD_ORDER, @QUERY_CONDITION_TYPE, @CAN_QUERY, GETDATE()
+        @CONTROL_TYPE, @IS_REQUIRED, @IS_EDITABLE, @QUERY_DEFAULT_VALUE, @FIELD_ORDER, @QUERY_COMPONENT, @QUERY_CONDITION, @CAN_QUERY, GETDATE()
     );";
 
         public const string CheckFieldExists         = @"/**/

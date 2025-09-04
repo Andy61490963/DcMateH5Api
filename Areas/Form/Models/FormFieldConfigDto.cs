@@ -21,8 +21,13 @@ public class FormFieldConfigDto
     /// <summary>
     /// 查詢元件類型，決定該欄位在搜尋介面上的呈現方式。
     /// </summary>
-    public QueryConditionType QUERY_CONDITION_TYPE { get; set; }
+    public QueryComponentType QUERY_COMPONENT { get; set; }
 
+    /// <summary>
+    /// 實際查詢 SQL 條件
+    /// </summary>
+    public ConditionType QUERY_CONDITION { get; set; }
+    
     /// <summary>
     /// 若為下拉選單查詢條件，使用此 SQL 取得選項資料。
     /// </summary>

@@ -96,7 +96,8 @@ public class FormService : IFormService
                         DATA_TYPE = f.DATA_TYPE,
                         CONTROL_TYPE = f.CONTROL_TYPE,
                         CAN_QUERY = f.CAN_QUERY,
-                        QUERY_CONDITION_TYPE = f.QUERY_CONDITION_TYPE,
+                        QUERY_COMPONENT = f.QUERY_COMPONENT,
+                        QUERY_CONDITION = f.QUERY_CONDITION,
                         DefaultValue = f.DefaultValue,
                         IS_REQUIRED = f.IS_REQUIRED,
                         IS_EDITABLE = f.IS_EDITABLE,
@@ -246,7 +247,8 @@ public class FormService : IFormService
             FieldConfigId = field.ID,
             Column = field.COLUMN_NAME,
             CONTROL_TYPE = field.CONTROL_TYPE,
-            QUERY_CONDITION_TYPE = field.QUERY_CONDITION_TYPE,
+            QUERY_COMPONENT = field.QUERY_COMPONENT,
+            QUERY_CONDITION = field.QUERY_CONDITION,
             CAN_QUERY = field.CAN_QUERY,
             DefaultValue = field.QUERY_DEFAULT_VALUE,
             IS_REQUIRED = field.IS_REQUIRED,
@@ -298,7 +300,7 @@ public class FormService : IFormService
             // 查欄位設定
             // 取得欄位設定並帶出 IS_EDITABLE 欄位，後續用於權限檢查
             var configs = _con.Query<FormFieldConfigDto>(
-                "SELECT ID, COLUMN_NAME, CONTROL_TYPE, DATA_TYPE, IS_EDITABLE, QUERY_CONDITION_TYPE FROM FORM_FIELD_CONFIG WHERE FORM_FIELD_Master_ID = @Id",
+                "SELECT ID, COLUMN_NAME, CONTROL_TYPE, DATA_TYPE, IS_EDITABLE, QUERY_COMPONENT, QUERY_CONDITION FROM FORM_FIELD_CONFIG WHERE FORM_FIELD_Master_ID = @Id",
                 new { Id = master.BASE_TABLE_ID },
                 transaction: tx).ToDictionary(x => x.ID);
 

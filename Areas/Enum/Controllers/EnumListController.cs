@@ -37,7 +37,7 @@ public class EnumListController : ControllerBase
             ["tableSchemaQueryType"] = typeof(TableSchemaQueryType),
             ["tableStatusType"] = typeof(TableStatusType),
             ["formControlType"] = typeof(FormControlType),
-            ["queryConditionType"] = typeof(QueryConditionType),
+            ["queryConditionType"] = typeof(QueryComponentType),
             ["validationType"] = typeof(ValidationType),
             // 以後加一行就好：["yourEnumName"] = typeof(YourEnum)
         };

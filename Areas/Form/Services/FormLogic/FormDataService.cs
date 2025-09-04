@@ -36,26 +36,81 @@ public class FormDataService : IFormDataService
                     continue;
 
                 // 前端提供 QueryConditionType，映射為 ConditionType
-                var condType = c.QueryConditionType.Value.ToConditionType();
+                // var condType = c.QueryConditionType.Value.ToConditionType();
                 
                 var p1 = $"p{i++}";
 
-                switch (condType)
+                switch (c.ConditionType)
                 {
                     case ConditionType.Equal:
                         whereList.Add($"[{column}] = @{p1}");
                         param.Add(p1, ConvertToColumnTypeHelper.Convert(c.DataType, c.Value));
                         break;
+                        
+                    case ConditionType.NotEqual:
+                        whereList.Add($"[{column}] <> @{p1}");
+                        param.Add(p1, ConvertToColumnTypeHelper.Convert(c.DataType, c.Value));
+                        break;
+                        
                     case ConditionType.Like:
                         whereList.Add($"[{column}] LIKE @{p1}");
                         var val = c.Value != null ? $"%{c.Value}%" : null;
                         param.Add(p1, ConvertToColumnTypeHelper.Convert(c.DataType, val));
                         break;
+                        
                     case ConditionType.Between:
                         var p2 = $"p{i++}";
                         whereList.Add($"[{column}] BETWEEN @{p1} AND @{p2}");
                         param.Add(p1, ConvertToColumnTypeHelper.Convert(c.DataType, c.Value));
                         param.Add(p2, ConvertToColumnTypeHelper.Convert(c.DataType, c.Value2));
+                        break;
+                        
+                    case ConditionType.GreaterThan:
+                        whereList.Add($"[{column}] > @{p1}");
+                        param.Add(p1, ConvertToColumnTypeHelper.Convert(c.DataType, c.Value));
+                        break;
+                        
+                    case ConditionType.GreaterThanOrEqual:
+                        whereList.Add($"[{column}] >= @{p1}");
+                        param.Add(p1, ConvertToColumnTypeHelper.Convert(c.DataType, c.Value));
+                        break;
+                        
+                    case ConditionType.LessThan:
+                        whereList.Add($"[{column}] < @{p1}");
+                        param.Add(p1, ConvertToColumnTypeHelper.Convert(c.DataType, c.Value));
+                        break;
+                        
+                    case ConditionType.LessThanOrEqual:
+                        whereList.Add($"[{column}] <= @{p1}");
+                        param.Add(p1, ConvertToColumnTypeHelper.Convert(c.DataType, c.Value));
+                        break;
+                        
+                    case ConditionType.In:
+                        if (c.Values != null && c.Values.Count > 0)
+                        {
+                            var inParams = new List<string>();
+                            foreach (var value in c.Values)
+                            {
+                                var pIn = $"p{i++}";
+                                inParams.Add($"@{pIn}");
+                                param.Add(pIn, ConvertToColumnTypeHelper.Convert(c.DataType, value));
+                            }
+                            whereList.Add($"[{column}] IN ({string.Join(", ", inParams)})");
+                        }
+                        break;
+                        
+                    case ConditionType.NotIn:
+                        if (c.Values != null && c.Values.Count > 0)
+                        {
+                            var notInParams = new List<string>();
+                            foreach (var value in c.Values)
+                            {
+                                var pNotIn = $"p{i++}";
+                                notInParams.Add($"@{pNotIn}");
+                                param.Add(pNotIn, ConvertToColumnTypeHelper.Convert(c.DataType, value));
+                            }
+                            whereList.Add($"[{column}] NOT IN ({string.Join(", ", notInParams)})");
+                        }
                         break;
                 }
             }

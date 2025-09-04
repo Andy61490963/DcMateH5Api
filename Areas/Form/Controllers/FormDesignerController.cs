@@ -75,7 +75,7 @@ public class FormDesignerController : ControllerBase
     
     // ────────── Form Designer 入口 ──────────
     /// <summary>
-    /// 取得指定表單的設計器主畫面資料
+    /// 取得指定表單的設計器主畫面資料(請傳入父節點 masterId)
     /// </summary>
     // [RequirePermission(ActionAuthorizeHelper.View)]
     [HttpGet("{id:guid}")]
@@ -88,7 +88,7 @@ public class FormDesignerController : ControllerBase
     // ────────── 欄位相關 ──────────
 
     /// <summary>
-    /// 依表名稱關鍵字搜尋實表或檢視表，並回傳欄位設定清單。
+    /// 依表名稱關鍵字搜尋實表或檢視表，並回傳列表。
     /// </summary>
     [HttpGet("tables/tableName")]
     public IActionResult SearchTables(string? tableName, [FromQuery] TableSchemaQueryType schemaType)
@@ -158,9 +158,18 @@ public class FormDesignerController : ControllerBase
             // }
 
             if (model.SchemaType == TableSchemaQueryType.OnlyTable &&
-                (model.QUERY_CONDITION_TYPE != QueryConditionType.None ||
-                 model.CAN_QUERY))
+                (model.QUERY_COMPONENT != QueryComponentType.None ||
+                 model.CAN_QUERY == true))
                 return Conflict("無法往主表寫入查詢條件");
+            
+            if (model.SchemaType == TableSchemaQueryType.OnlyTable &&
+                (model.QUERY_DEFAULT_VALUE != null ||
+                 model.CAN_QUERY == true))
+                return Conflict("無法往主表寫入查詢預設值");
+            
+            if (model.SchemaType == TableSchemaQueryType.OnlyView &&
+                (model.CAN_QUERY == false && model.QUERY_COMPONENT != QueryComponentType.None))
+                return Conflict("無法更改未開放查詢條件的查詢元件");
             
             if (model.ID != Guid.Empty &&
                 _formDesignerService.HasValidationRules(model.ID) &&

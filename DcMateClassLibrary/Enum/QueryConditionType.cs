@@ -5,7 +5,7 @@ namespace ClassLibrary;
 /// <summary>
 /// 查詢條件元件類型，用於決定搜尋介面所使用的輸入元件。
 /// </summary>
-public enum QueryConditionType
+public enum QueryComponentType
 {
     /// <summary>
     /// 無
@@ -35,5 +35,17 @@ public enum QueryConditionType
     /// 下拉選單條件。
     /// </summary>
     [Display(Name = "下拉選單", Description = "以下拉選單作為條件")]
-    Dropdown = 4
+    Dropdown = 4,
+    
+    /// <summary>
+    /// 數值比較條件（支援大於、小於等）
+    /// </summary>
+    [Display(Name = "數值比較", Description = "支援大於、小於等比較運算")]
+    NumberComparison = 5,
+    
+    /// <summary>
+    /// 日期比較條件（支援大於、小於等）
+    /// </summary>
+    [Display(Name = "日期比較", Description = "支援日期的大於、小於等比較運算")]
+    DateComparison = 6,
 }

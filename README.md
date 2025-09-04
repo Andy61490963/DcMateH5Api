@@ -40,7 +40,7 @@
 | `IS_REQUIRED` | BIT | 是否必填 |
 | `FIELD_ORDER` | INT | 顯示順序 |
 | `CAN_QUERY` | BIT | 是否查詢條件 |
-| `QUERY_CONDITION_TYPE` | NVARCHAR(50) | 查詢型別 |
+| `QUERY_COMPONENT` | NVARCHAR(50) | 查詢型別 |
 | `CREATE_USER` | NVARCHAR(50) | 建立人 |
 | `CREATE_TIME` | DATETIME | 建立時間 |
 | `EDIT_USER` | NVARCHAR(50) | 修改人 |
