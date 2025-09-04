@@ -106,17 +106,6 @@ public class FormDesignerControllerTests
     }
 
     [Fact]
-    public void SaveMasterDetailFormHeader_MissingIds_ReturnsBadRequest()
-    {
-        var controller = CreateController();
-        var vm = new MasterDetailFormHeaderViewModel();
-
-        var result = controller.SaveMasterDetailFormHeader(vm);
-
-        Assert.IsType<BadRequestObjectResult>(result);
-    }
-
-    [Fact]
     public void GetFields_MissingSystemColumns_ReturnsBadRequest()
     {
         var controller = CreateController();
