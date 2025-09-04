@@ -100,6 +100,8 @@ public interface IFormDesignerService
     ValidateSqlResultViewModel ImportDropdownOptionsFromSql(string sql, Guid dropdownId);
     Guid SaveFormHeader( FormHeaderViewModel model );
 
+    Guid SaveMasterDetailFormHeader(MasterDetailFormHeaderViewModel model);
+
     /// <summary>
     /// 檢查表格名稱與 View 名稱的組合是否已存在於 FORM_FIELD_Master
     /// </summary>
@@ -108,4 +110,6 @@ public interface IFormDesignerService
     /// <param name="excludeId">編輯時排除自身 ID</param>
     /// <returns>若存在相同組合則回傳 true</returns>
     bool CheckFormMasterExists(Guid baseTableId, Guid viewTableId, Guid? excludeId = null);
+
+    bool CheckMasterDetailFormMasterExists(Guid masterTableId, Guid detailTableId, Guid viewTableId, Guid? excludeId = null);
 }

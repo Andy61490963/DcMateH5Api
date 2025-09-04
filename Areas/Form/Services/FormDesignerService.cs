@@ -174,15 +174,18 @@ public class FormDesignerService : IFormDesignerService
 
         var insertId = model.ID == Guid.Empty ? Guid.NewGuid() : model.ID;
         _con.Execute(@"
-        INSERT INTO FORM_FIELD_Master (ID, FORM_NAME, STATUS, SCHEMA_TYPE, BASE_TABLE_NAME, VIEW_TABLE_NAME, IS_DELETE)
-        VALUES (@ID, @FORM_NAME, @STATUS, @SCHEMA_TYPE, @BASE_TABLE_NAME, @VIEW_TABLE_NAME, 0)", new
+        INSERT INTO FORM_FIELD_Master (ID, FORM_NAME, STATUS, SCHEMA_TYPE, BASE_TABLE_NAME, VIEW_TABLE_NAME, DETAIL_TABLE_NAME, DETAIL_TABLE_ID, IS_MASTER_DETAIL, IS_DELETE)
+        VALUES (@ID, @FORM_NAME, @STATUS, @SCHEMA_TYPE, @BASE_TABLE_NAME, @VIEW_TABLE_NAME, @DETAIL_TABLE_NAME, @DETAIL_TABLE_ID, @IS_MASTER_DETAIL, 0)", new
         {
             ID = insertId,
             model.FORM_NAME,
             model.STATUS,
             model.SCHEMA_TYPE,
             model.BASE_TABLE_NAME,
-            model.VIEW_TABLE_NAME
+            model.VIEW_TABLE_NAME,
+            model.DETAIL_TABLE_NAME,
+            model.DETAIL_TABLE_ID,
+            model.IS_MASTER_DETAIL
         });
 
         return insertId;
@@ -838,9 +841,58 @@ public class FormDesignerService : IFormDesignerService
             BASE_TABLE_NAME = baseTableName,
             VIEW_TABLE_NAME = viewTableName,
             STATUS = (int)TableStatusType.Active,
-            SCHEMA_TYPE = TableSchemaQueryType.All
+            SCHEMA_TYPE = TableSchemaQueryType.All,
+            IS_MASTER_DETAIL = false
         });
         return id;
+    }
+
+    public Guid SaveMasterDetailFormHeader(MasterDetailFormHeaderViewModel model)
+    {
+        var masterField = _con.QueryFirst<FORM_FIELD_Master>(Sql.FormMasterById, new { id = model.MASTER_TABLE_ID }) ?? throw new InvalidOperationException("主表查無資料");
+        var detailField = _con.QueryFirst<FORM_FIELD_Master>(Sql.FormMasterById, new { id = model.DETAIL_TABLE_ID }) ?? throw new InvalidOperationException("明細表查無資料");
+        var viewField = _con.QueryFirst<FORM_FIELD_Master>(Sql.FormMasterById, new { id = model.VIEW_TABLE_ID }) ?? throw new InvalidOperationException("檢視表查無資料");
+
+        var masterTableName = masterField.BASE_TABLE_NAME;
+        var detailTableName = detailField.BASE_TABLE_NAME;
+        var viewTableName = viewField.VIEW_TABLE_NAME;
+
+        if (GetTableSchema(masterTableName).Count == 0)
+            throw new InvalidOperationException("主表名稱查無資料");
+
+        if (GetTableSchema(detailTableName).Count == 0)
+            throw new InvalidOperationException("明細表名稱查無資料");
+
+        if (GetTableSchema(viewTableName).Count == 0)
+            throw new InvalidOperationException("顯示用 View 名稱查無資料");
+
+        if (model.ID == Guid.Empty)
+        {
+            model.ID = Guid.NewGuid();
+        }
+
+        var id = _con.ExecuteScalar<Guid>(Sql.UpsertMasterDetailFormMaster, new
+        {
+            model.ID,
+            model.FORM_NAME,
+            MASTER_TABLE_ID = model.MASTER_TABLE_ID,
+            DETAIL_TABLE_ID = model.DETAIL_TABLE_ID,
+            VIEW_TABLE_ID = model.VIEW_TABLE_ID,
+            MASTER_TABLE_NAME = masterTableName,
+            DETAIL_TABLE_NAME = detailTableName,
+            VIEW_TABLE_NAME = viewTableName,
+            STATUS = (int)TableStatusType.Active,
+            SCHEMA_TYPE = TableSchemaQueryType.All,
+            IS_MASTER_DETAIL = true
+        });
+        return id;
+    }
+
+    public bool CheckMasterDetailFormMasterExists(Guid masterTableId, Guid detailTableId, Guid viewTableId, Guid? excludeId = null)
+    {
+        var count = _con.ExecuteScalar<int>(Sql.CheckMasterDetailFormMasterExists,
+            new { masterTableId, detailTableId, viewTableId, excludeId });
+        return count > 0;
     }
 
     public bool CheckFormMasterExists(Guid baseTableId, Guid viewTableId, Guid? excludeId = null)
@@ -958,19 +1010,50 @@ WHEN MATCHED THEN
         BASE_TABLE_NAME  = @BASE_TABLE_NAME,
         VIEW_TABLE_NAME  = @VIEW_TABLE_NAME,
         BASE_TABLE_ID    = @BASE_TABLE_ID,
-        VIEW_TABLE_ID    = @VIEW_TABLE_ID
+        VIEW_TABLE_ID    = @VIEW_TABLE_ID,
+        IS_MASTER_DETAIL = @IS_MASTER_DETAIL
 WHEN NOT MATCHED THEN
     INSERT (
         ID, FORM_NAME, BASE_TABLE_NAME, VIEW_TABLE_NAME,
-        BASE_TABLE_ID, VIEW_TABLE_ID, STATUS, SCHEMA_TYPE, IS_DELETE)
+        BASE_TABLE_ID, VIEW_TABLE_ID, STATUS, SCHEMA_TYPE, IS_MASTER_DETAIL, IS_DELETE)
     VALUES (
         @ID, @FORM_NAME, @BASE_TABLE_NAME, @VIEW_TABLE_NAME,
-        @BASE_TABLE_ID, @VIEW_TABLE_ID, @STATUS, @SCHEMA_TYPE, 0)
+        @BASE_TABLE_ID, @VIEW_TABLE_ID, @STATUS, @SCHEMA_TYPE, @IS_MASTER_DETAIL, 0)
 OUTPUT INSERTED.ID;";
 
         public const string CheckFormMasterExists = @"/**/
 SELECT COUNT(1) FROM FORM_FIELD_Master
 WHERE BASE_TABLE_ID = @baseTableId
+  AND VIEW_TABLE_ID = @viewTableId
+  AND (@excludeId IS NULL OR ID <> @excludeId)";
+
+        public const string UpsertMasterDetailFormMaster = @"/**/
+MERGE FORM_FIELD_Master AS target
+USING (SELECT @ID AS ID) AS src
+ON target.ID = src.ID
+WHEN MATCHED THEN
+    UPDATE SET
+        FORM_NAME         = @FORM_NAME,
+        BASE_TABLE_NAME   = @MASTER_TABLE_NAME,
+        DETAIL_TABLE_NAME = @DETAIL_TABLE_NAME,
+        VIEW_TABLE_NAME   = @VIEW_TABLE_NAME,
+        BASE_TABLE_ID     = @MASTER_TABLE_ID,
+        DETAIL_TABLE_ID   = @DETAIL_TABLE_ID,
+        VIEW_TABLE_ID     = @VIEW_TABLE_ID,
+        IS_MASTER_DETAIL  = @IS_MASTER_DETAIL
+WHEN NOT MATCHED THEN
+    INSERT (
+        ID, FORM_NAME, BASE_TABLE_NAME, DETAIL_TABLE_NAME, VIEW_TABLE_NAME,
+        BASE_TABLE_ID, DETAIL_TABLE_ID, VIEW_TABLE_ID, STATUS, SCHEMA_TYPE, IS_MASTER_DETAIL, IS_DELETE)
+    VALUES (
+        @ID, @FORM_NAME, @MASTER_TABLE_NAME, @DETAIL_TABLE_NAME, @VIEW_TABLE_NAME,
+        @MASTER_TABLE_ID, @DETAIL_TABLE_ID, @VIEW_TABLE_ID, @STATUS, @SCHEMA_TYPE, @IS_MASTER_DETAIL, 0)
+OUTPUT INSERTED.ID;";
+
+        public const string CheckMasterDetailFormMasterExists = @"/**/
+SELECT COUNT(1) FROM FORM_FIELD_Master
+WHERE BASE_TABLE_ID = @masterTableId
+  AND DETAIL_TABLE_ID = @detailTableId
   AND VIEW_TABLE_ID = @viewTableId
   AND (@excludeId IS NULL OR ID <> @excludeId)";
         

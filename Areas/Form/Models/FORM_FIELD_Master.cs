@@ -27,6 +27,15 @@ public class FORM_FIELD_Master
     
     [Column("VIEW_TABLE_ID")]
     public Guid? VIEW_TABLE_ID { get; set; }
+
+    [Column("DETAIL_TABLE_NAME")]
+    public string? DETAIL_TABLE_NAME { get; set; }
+
+    [Column("DETAIL_TABLE_ID")]
+    public Guid? DETAIL_TABLE_ID { get; set; }
+
+    [Column("IS_MASTER_DETAIL")]
+    public bool IS_MASTER_DETAIL { get; set; }
     
     [Column("STATUS")]
     public int STATUS { get; set; }  
