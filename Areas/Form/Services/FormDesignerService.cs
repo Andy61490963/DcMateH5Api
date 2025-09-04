@@ -381,8 +381,8 @@ public class FormDesignerService : IFormDesignerService
         // 重新查一次所有欄位，確保資料同步
         var result = GetFieldsByTableName(tableName, masterId, schemaType);
 
-        var master = _con.QueryFirst<FORM_FIELD_Master>(Sql.FormMasterById, new { id = masterId });
-        result.formName = master.FORM_NAME;
+        // var master = _con.QueryFirst<FORM_FIELD_Master>(Sql.FormMasterById, new { id = masterId });
+        // result.formName = master.FORM_NAME;
         
         // 對於檢視表，先預設有下拉選單的設定，創建的ISUSESQL欄位會為NULL
         if (schemaType == TableSchemaQueryType.OnlyView)

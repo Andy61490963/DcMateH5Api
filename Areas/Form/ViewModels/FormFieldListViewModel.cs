@@ -10,7 +10,7 @@ public class FormFieldListViewModel
     /// </summary>
     public Guid ID { get; set; }
     
-    public string? formName { get; set; } = string.Empty;
+    // public string? formName { get; set; } = string.Empty;
     public string TableName { get; set; } = string.Empty;
 
     public TableSchemaQueryType SchemaQueryType { get; set; }

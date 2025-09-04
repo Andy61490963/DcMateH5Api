@@ -67,7 +67,7 @@ public class FormDesignerController : ControllerBase
     [HttpPut("form-name")]
     public async Task<IActionResult> UpdateFormName([FromBody] UpdateFormNameViewModel model, CancellationToken ct)
     {
-        await _formDesignerService.UpdateFormName(model.Id, model.FormName, ct);
+        await _formDesignerService.UpdateFormName(model.ID, model.FORM_NAME, ct);
         return Ok();
     }
     

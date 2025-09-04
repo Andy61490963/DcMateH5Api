@@ -22,5 +22,4 @@ public class FormDesignerMasterDetailController : ControllerBase
     {
         _formDesignerService = formDesignerService;
     }
-  
 }
