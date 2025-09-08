@@ -6,6 +6,8 @@ using DcMateH5Api.Areas.Form.Interfaces.Transaction;
 using DcMateH5Api.Areas.Form.Models;
 using DcMateH5Api.Areas.Form.ViewModels;
 using Microsoft.Data.SqlClient;
+using Microsoft.Extensions.Configuration;
+using System.Linq;
 
 namespace DcMateH5Api.Areas.Form.Services;
 
@@ -20,6 +22,7 @@ public class FormMasterDetailService : IFormMasterDetailService
     private readonly IFormDataService _formDataService;
     private readonly ISchemaService _schemaService;
     private readonly ITransactionService _txService;
+    private readonly string _relationColumnSuffix;
 
     public FormMasterDetailService(
         SqlConnection connection,
@@ -27,7 +30,8 @@ public class FormMasterDetailService : IFormMasterDetailService
         IFormFieldMasterService formFieldMasterService,
         IFormDataService formDataService,
         ISchemaService schemaService,
-        ITransactionService txService)
+        ITransactionService txService,
+        IConfiguration configuration)
     {
         _con = connection;
         _formService = formService;
@@ -35,6 +39,19 @@ public class FormMasterDetailService : IFormMasterDetailService
         _formDataService = formDataService;
         _schemaService = schemaService;
         _txService = txService;
+        _relationColumnSuffix =
+            configuration.GetValue<string>("FormSettings:RelationColumnSuffix") ?? "_NO";
+    }
+
+    private string GetRelationColumn(string masterTable, string detailTable)
+    {
+        var masterCols = _schemaService.GetFormFieldMaster(masterTable);
+        var detailCols = _schemaService.GetFormFieldMaster(detailTable);
+        var common = masterCols.Intersect(detailCols, StringComparer.OrdinalIgnoreCase);
+        var col = common.FirstOrDefault(c =>
+            c.EndsWith(_relationColumnSuffix, StringComparison.OrdinalIgnoreCase));
+        return col ?? throw new InvalidOperationException(
+            $"No relation column ending with '{_relationColumnSuffix}' found between {masterTable} and {detailTable}.");
     }
 
     /// <inheritdoc />
@@ -64,17 +81,19 @@ public class FormMasterDetailService : IFormMasterDetailService
             return result;
         }
 
-        // 取得主表主鍵欄位名稱，同時做為明細表關聯欄位
-        var relationColumn = _schemaService.GetPrimaryKeyColumn(header.MASTER_TABLE_NAME);
-        if (relationColumn == null)
-            throw new InvalidOperationException("Master table has no primary key.");
+        var relationColumn = GetRelationColumn(header.MASTER_TABLE_NAME, header.DETAIL_TABLE_NAME);
+        var detailPk = _schemaService.GetPrimaryKeyColumn(header.DETAIL_TABLE_NAME)
+            ?? throw new InvalidOperationException("Detail table has no primary key.");
 
-        // 取得明細表主鍵欄位名稱
-        var detailPk = _schemaService.GetPrimaryKeyColumn(header.DETAIL_TABLE_NAME);
-        if (detailPk == null)
-            throw new InvalidOperationException("Detail table has no primary key.");
+        var (pkName, pkType, pkVal) = _schemaService.ResolvePk(header.MASTER_TABLE_NAME, pk);
+        var relationObj = _con.ExecuteScalar<object?>(
+            $"SELECT [{relationColumn}] FROM [{header.MASTER_TABLE_NAME}] WHERE [{pkName}] = @id",
+            new { id = pkVal });
+        var relationValue = relationObj?.ToString();
+        if (relationValue == null)
+            return result;
 
-        // 先撈出所有符合關聯欄位值的明細資料列
+        var detailColumnTypes = _formDataService.LoadColumnTypes(header.DETAIL_TABLE_NAME);
         var rows = _formDataService.GetRows(
             header.DETAIL_TABLE_NAME,
             new List<FormQueryCondition>
@@ -83,8 +102,8 @@ public class FormMasterDetailService : IFormMasterDetailService
                 {
                     Column = relationColumn,
                     ConditionType = ConditionType.Equal,
-                    Value = pk,
-                    DataType = "string"
+                    Value = relationValue,
+                    DataType = detailColumnTypes.GetValueOrDefault(relationColumn, "string")
                 }
             });
 
@@ -103,25 +122,40 @@ public class FormMasterDetailService : IFormMasterDetailService
     {
         _txService.WithTransaction(tx =>
         {
-            // 取得主明細表頭
             var header = _formFieldMasterService.GetFormFieldMasterFromId(input.FormId, tx);
+            var relationColumn = GetRelationColumn(header.MASTER_TABLE_NAME, header.DETAIL_TABLE_NAME);
 
-            // 取得關聯欄位在主表與明細表的 FieldConfig ID
             var masterCfgId = _con.ExecuteScalar<Guid?>(
                 "SELECT ID FROM FORM_FIELD_CONFIG WHERE FORM_FIELD_Master_ID = @Id AND COLUMN_NAME = @Col",
-                new { Id = header.MASTER_TABLE_ID, Col = input.RelationColumn }, transaction: tx)
+                new { Id = header.MASTER_TABLE_ID, Col = relationColumn }, transaction: tx)
                 ?? throw new InvalidOperationException("Master relation column not found.");
             var detailCfgId = _con.ExecuteScalar<Guid?>(
                 "SELECT ID FROM FORM_FIELD_CONFIG WHERE FORM_FIELD_Master_ID = @Id AND COLUMN_NAME = @Col",
-                new { Id = header.DETAIL_TABLE_ID, Col = input.RelationColumn }, transaction: tx)
+                new { Id = header.DETAIL_TABLE_ID, Col = relationColumn }, transaction: tx)
                 ?? throw new InvalidOperationException("Detail relation column not found.");
 
-            // 將關聯欄位補入主表資料後提交
-            input.MasterFields.Add(new FormInputField
+            var relationValue = input.MasterFields
+                .FirstOrDefault(f => f.FieldConfigId == masterCfgId)?.Value;
+
+            if (relationValue == null && !string.IsNullOrEmpty(input.MasterPk))
             {
-                FieldConfigId = masterCfgId,
-                Value = input.RelationValue
-            });
+                var (pkName, pkType, pkVal) = _schemaService.ResolvePk(header.MASTER_TABLE_NAME, input.MasterPk, tx);
+                relationValue = _con.ExecuteScalar<object?>(
+                    $"SELECT [{relationColumn}] FROM [{header.MASTER_TABLE_NAME}] WHERE [{pkName}] = @id",
+                    new { id = pkVal }, tx)?.ToString();
+            }
+
+            if (relationValue == null)
+                throw new InvalidOperationException("Relation value not provided.");
+
+            if (!input.MasterFields.Any(f => f.FieldConfigId == masterCfgId))
+            {
+                input.MasterFields.Add(new FormInputField
+                {
+                    FieldConfigId = masterCfgId,
+                    Value = relationValue
+                });
+            }
 
             var masterInput = new FormSubmissionInputModel
             {
@@ -131,14 +165,21 @@ public class FormMasterDetailService : IFormMasterDetailService
             };
             _formService.SubmitForm(masterInput);
 
-            // 明細資料逐筆處理
             foreach (var row in input.DetailRows)
             {
-                row.Fields.Add(new FormInputField
+                var relField = row.Fields.FirstOrDefault(f => f.FieldConfigId == detailCfgId);
+                if (relField == null)
                 {
-                    FieldConfigId = detailCfgId,
-                    Value = input.RelationValue
-                });
+                    row.Fields.Add(new FormInputField
+                    {
+                        FieldConfigId = detailCfgId,
+                        Value = relationValue
+                    });
+                }
+                else
+                {
+                    relField.Value = relationValue;
+                }
 
                 var detailInput = new FormSubmissionInputModel
                 {

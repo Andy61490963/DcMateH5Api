@@ -13,12 +13,6 @@ public class FormMasterDetailSubmissionInputModel
     /// <summary>主表資料主鍵，新增時可為 null。</summary>
     public string? MasterPk { get; set; }
 
-    /// <summary>主表與明細表連結欄位名稱，例如 TOL_NO。</summary>
-    public string RelationColumn { get; set; } = string.Empty;
-
-    /// <summary>連結欄位的值。</summary>
-    public string RelationValue { get; set; } = string.Empty;
-
     /// <summary>主表欄位資料。</summary>
     public List<FormInputField> MasterFields { get; set; } = new();
 
