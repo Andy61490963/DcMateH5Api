@@ -152,40 +152,40 @@ public class FormService : IFormService
     public FormSubmissionViewModel GetFormSubmission(Guid? formMasterId, string? pk = null)
     {
         // 1. 查主設定
-        var master = _formFieldMasterService.GetFormFieldMasterFromId(formMasterId);
-        if (master == null)
-            throw new InvalidOperationException($"FORM_FIELD_Master {formMasterId} not found");
+        var master = _formFieldMasterService.GetFormFieldMasterFromId(formMasterId)
+            ?? throw new InvalidOperationException($"FORM_FIELD_Master {formMasterId} not found");
 
-        // 2. 取得主表欄位（只抓主表，不抓 view）
-        var fields = GetFields(master.BASE_TABLE_ID, TableSchemaQueryType.OnlyTable, master.BASE_TABLE_NAME);
+        // 2. 依據 SchemaType 解析目標表資訊
+        var (targetId, targetTable, schemaType) = ResolveTargetTable(master);
 
-        // 3. 撈主表實際資料（如果是編輯模式）
+        // 3. 取得欄位設定
+        var fields = GetFields(targetId, schemaType, targetTable);
+
+        // 4. 撈實際資料（如果是編輯模式）
         IDictionary<string, object?>? dataRow = null;
         Dictionary<Guid, Guid>? dropdownAnswers = null;
 
-        var target = master.BASE_TABLE_NAME ?? master.DETAIL_TABLE_NAME;
-        
         if (!string.IsNullOrWhiteSpace(pk))
         {
-            // 3.1 取得主表主鍵名稱/型別/值
-            var (pkName, pkType, pkValue) = _schemaService.ResolvePk(target, pk);
+            // 4.1 取得主鍵名稱/型別/值
+            var (pkName, pkType, pkValue) = _schemaService.ResolvePk(targetTable, pk);
 
-            // 3.2 查詢主表資料（參數化防注入）
-            var sql = $"SELECT * FROM [{target}] WHERE [{pkName}] = @id";
+            // 4.2 查詢主表資料（參數化防注入）
+            var sql = $"SELECT * FROM [{targetTable}] WHERE [{pkName}] = @id";
             dataRow = _con.QueryFirstOrDefault(sql, new { id = pkValue }) as IDictionary<string, object?>;
 
-            // 3.3 如果有Dropdown欄位，再查一次答案
+            // 4.3 如果有 Dropdown 欄位，再查一次答案
             if (fields.Any(f => f.CONTROL_TYPE == FormControlType.Dropdown))
             {
                 dropdownAnswers = _con.Query<(Guid FieldId, Guid OptionId)>(
-                    @"/**/SELECT FORM_FIELD_CONFIG_ID AS FieldId, FORM_FIELD_DROPDOWN_OPTIONS_ID AS OptionId 
+                    @"/**/SELECT FORM_FIELD_CONFIG_ID AS FieldId, FORM_FIELD_DROPDOWN_OPTIONS_ID AS OptionId
                       FROM FORM_FIELD_DROPDOWN_ANSWER WHERE ROW_ID = @Pk",
                     new { Pk = pk })
                     .ToDictionary(x => x.FieldId, x => x.OptionId);
             }
         }
 
-        // 4. 組裝欄位現值
+        // 5. 組裝欄位現值
         foreach (var field in fields)
         {
             if (field.CONTROL_TYPE == FormControlType.Dropdown && dropdownAnswers?.TryGetValue(field.FieldConfigId, out var optId) == true)
@@ -199,14 +199,25 @@ public class FormService : IFormService
             // else 預設 null（新增模式或沒有資料）
         }
 
-        // 5. 回傳組裝後 ViewModel
+        // 6. 回傳組裝後 ViewModel
         return new FormSubmissionViewModel
         {
             FormId = master.ID,
             Pk = pk,
-            TargetTableToUpsert = target,
+            TargetTableToUpsert = targetTable,
             FormName = master.FORM_NAME,
             Fields = fields
+        };
+    }
+
+    private (Guid? Id, string Table, TableSchemaQueryType Schema) ResolveTargetTable(FORM_FIELD_Master master)
+    {
+        return master.SCHEMA_TYPE switch
+        {
+            TableSchemaQueryType.OnlyTable => (master.BASE_TABLE_ID, master.BASE_TABLE_NAME ?? throw new InvalidOperationException("BASE_TABLE_NAME missing"), TableSchemaQueryType.OnlyTable),
+            TableSchemaQueryType.OnlyDetail => (master.DETAIL_TABLE_ID, master.DETAIL_TABLE_NAME ?? throw new InvalidOperationException("DETAIL_TABLE_NAME missing"), TableSchemaQueryType.OnlyDetail),
+            TableSchemaQueryType.OnlyView => (master.VIEW_TABLE_ID, master.VIEW_TABLE_NAME ?? throw new InvalidOperationException("VIEW_TABLE_NAME missing"), TableSchemaQueryType.OnlyView),
+            _ => throw new InvalidOperationException("Unsupported schema type")
         };
     }
 
@@ -270,7 +281,7 @@ public class FormService : IFormService
             ISUSESQL = isUseSql,
             DROPDOWNSQL = dropdown?.DROPDOWNSQL ?? string.Empty,
             DATA_TYPE = dataType,
-            SOURCE_TABLE = TableSchemaQueryType.OnlyTable,
+            SOURCE_TABLE = schemaType,
         };
     }
 
@@ -309,26 +320,27 @@ public class FormService : IFormService
             // 查表單主設定
             var master = _formFieldMasterService.GetFormFieldMasterFromId(input.FormId, tx);
 
-            // 查欄位設定
-            // 取得欄位設定並帶出 IS_EDITABLE 欄位，後續用於權限檢查
+            var (targetId, targetTable, _) = ResolveTargetTable(master);
+
+            // 查欄位設定並帶出 IS_EDITABLE 欄位，後續用於權限檢查
             var configs = _con.Query<FormFieldConfigDto>(
                 "SELECT ID, COLUMN_NAME, CONTROL_TYPE, DATA_TYPE, IS_EDITABLE, QUERY_COMPONENT, QUERY_CONDITION FROM FORM_FIELD_CONFIG WHERE FORM_FIELD_Master_ID = @Id",
-                new { Id = master.BASE_TABLE_ID },
+                new { Id = targetId },
                 transaction: tx).ToDictionary(x => x.ID);
 
             // 1. 欄位 mapping & 型別處理
             var (normalFields, dropdownAnswers) = MapInputFields(input.InputFields, configs);
 
             // 2. Insert/Update 決策
-            var (pkName, pkType, typedRowId) = _schemaService.ResolvePk(master.BASE_TABLE_NAME, input.Pk, tx);
+            var (pkName, pkType, typedRowId) = _schemaService.ResolvePk(targetTable, input.Pk, tx);
             bool isInsert = string.IsNullOrEmpty(input.Pk);
-            bool isIdentity = _schemaService.IsIdentityColumn(master.BASE_TABLE_NAME, pkName, tx);
+            bool isIdentity = _schemaService.IsIdentityColumn(targetTable, pkName, tx);
             object? realRowId = typedRowId;
 
             if (isInsert)
-                realRowId = InsertRow(master, pkName, pkType, isIdentity, normalFields, tx);
+                realRowId = InsertRow(targetTable, pkName, pkType, isIdentity, normalFields, tx);
             else
-                UpdateRow(master, pkName, normalFields, realRowId, tx);
+                UpdateRow(targetTable, pkName, normalFields, realRowId, tx);
 
             // 3. Dropdown Upsert
             foreach (var (configId, optionId) in dropdownAnswers)
@@ -380,12 +392,12 @@ public class FormService : IFormService
     /// 實作 INSERT 資料邏輯，支援 Identity 與非 Identity 主鍵模式
     /// </summary>
     private object InsertRow(
-        FORM_FIELD_Master master,
+        string tableName,
         string pkName,
         string pkType,
         bool isIdentity,
         List<(string Column, object? Value)> normalFields,
-        SqlTransaction tx 
+        SqlTransaction tx
     )
     {
         const string RowIdParamName = "ROWID";
@@ -420,7 +432,7 @@ public class FormService : IFormService
         if (isIdentity && !normalFields.Any())
         {
             sql = $@"
-                INSERT INTO [{master.BASE_TABLE_NAME}] DEFAULT VALUES;
+                INSERT INTO [{tableName}] DEFAULT VALUES;
                 SELECT CAST(SCOPE_IDENTITY() AS {pkType});";
 
             resultId = _con.ExecuteScalar(sql, transaction: tx);
@@ -428,7 +440,7 @@ public class FormService : IFormService
         else if (isIdentity)
         {
             sql = $@"
-                INSERT INTO [{master.BASE_TABLE_NAME}]
+                INSERT INTO [{tableName}]
                     ({string.Join(", ", columns)})
                 OUTPUT INSERTED.[{pkName}]
                 VALUES ({string.Join(", ", values)})";
@@ -438,7 +450,7 @@ public class FormService : IFormService
         else
         {
             sql = $@"
-                INSERT INTO [{master.BASE_TABLE_NAME}]
+                INSERT INTO [{tableName}]
                     ({string.Join(", ", columns)})
                 VALUES ({string.Join(", ", values)})";
 
@@ -450,18 +462,15 @@ public class FormService : IFormService
     }
     
     /// <summary>
-    /// 動態產生 update
-    /// </summary>
-    /// <summary>
     /// 動態產生並執行 UPDATE 語法，用於更新資料表中的指定主鍵資料列。
     /// </summary>
-    /// <param name="master">表單主設定資料（包含 Base Table 與主鍵欄位名稱）</param>
-    /// <param name="pkName">表單 pkName </param>
+    /// <param name="tableName">目標資料表名稱</param>
+    /// <param name="pkName">主鍵欄位名稱</param>
     /// <param name="normalFields">需要更新的欄位集合（欄位名與新值）</param>
     /// <param name="realRowId">實際的主鍵值（用於 WHERE 條件）</param>
-    /// <param name="tx">交易條件</param>
+    /// <param name="tx">交易物件</param>
     private void UpdateRow(
-        FORM_FIELD_Master master,
+        string tableName,
         string pkName,
         List<(string Column, object? Value)> normalFields,
         object realRowId,
@@ -486,8 +495,8 @@ public class FormService : IFormService
 
         // 組合最終 SQL 語句：UPDATE 表 SET 欄位1 = @, 欄位2 = @ ... WHERE 主鍵 = @ROWID
         var sql = $@"
-        UPDATE [{master.BASE_TABLE_NAME}] 
-        SET {string.Join(", ", setList)} 
+        UPDATE [{tableName}]
+        SET {string.Join(", ", setList)}
         WHERE [{pkName}] = @ROWID";
 
         _con.Execute(sql, paramDict, transaction: tx);
