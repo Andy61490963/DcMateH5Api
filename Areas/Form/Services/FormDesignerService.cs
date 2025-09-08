@@ -20,6 +20,7 @@ public class FormDesignerService : IFormDesignerService
     private readonly IConfiguration _configuration;
     private readonly ISchemaService _schemaService;
     private readonly SQLGenerateHelper _sqlHelper;
+    private readonly string _relationColumnSuffix;
 
     public FormDesignerService(SQLGenerateHelper sqlHelper, SqlConnection connection, IConfiguration configuration, ISchemaService schemaService)
     {
@@ -29,6 +30,7 @@ public class FormDesignerService : IFormDesignerService
         _sqlHelper = sqlHelper;
         _excludeColumns = _configuration.GetSection("DropdownSqlSettings:ExcludeColumns").Get<List<string>>() ?? new();
         _requiredColumns = _configuration.GetSection("FormDesignerSettings:RequiredColumns").Get<List<string>>() ?? new();
+        _relationColumnSuffix = _configuration.GetValue<string>("FormSettings:RelationColumnSuffix") ?? "_NO";
     }
 
     private readonly List<string> _excludeColumns;
@@ -952,6 +954,9 @@ public class FormDesignerService : IFormDesignerService
         if (GetTableSchema(viewTableName).Count == 0)
             throw new InvalidOperationException("顯示用 View 名稱查無資料");
 
+        // 確保主表與明細表具有共用的關聯欄位，避免 SubmitForm 發生錯誤
+        EnsureRelationColumn(masterTableName, detailTableName);
+
         if (model.ID == Guid.Empty)
         {
             model.ID = Guid.NewGuid();
@@ -1016,6 +1021,30 @@ public class FormDesignerService : IFormDesignerService
         var res = _con.Query<FormFieldConfigDto>(sql, new { TableName = tableName, FormMasterId = formMasterId })
             .ToDictionary(x => x.COLUMN_NAME, StringComparer.OrdinalIgnoreCase);
         return res;
+    }
+
+    /// <summary>
+    /// 驗證主表與明細表是否存在共用的關聯欄位。
+    /// </summary>
+    /// <param name="masterTableName">主表名稱</param>
+    /// <param name="detailTableName">明細表名稱</param>
+    /// <exception cref="InvalidOperationException">當找不到符合條件的欄位時拋出</exception>
+    private void EnsureRelationColumn(string masterTableName, string detailTableName)
+    {
+        var masterCols = _schemaService.GetFormFieldMaster(masterTableName);
+        var detailSet = _schemaService
+            .GetFormFieldMaster(detailTableName)
+            .ToHashSet(StringComparer.OrdinalIgnoreCase);
+
+        var hasRelation = masterCols.Any(c =>
+            detailSet.Contains(c) &&
+            c.EndsWith(_relationColumnSuffix, StringComparison.OrdinalIgnoreCase));
+
+        if (!hasRelation)
+        {
+            throw new InvalidOperationException(
+                $"主表與明細表缺少以 '{_relationColumnSuffix}' 結尾的共用關聯欄位");
+        }
     }
 
     /// <summary>
