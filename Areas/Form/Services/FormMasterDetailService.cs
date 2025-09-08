@@ -120,75 +120,73 @@ public class FormMasterDetailService : IFormMasterDetailService
     /// <inheritdoc />
     public void SubmitForm(FormMasterDetailSubmissionInputModel input)
     {
-        _txService.WithTransaction(tx =>
+
+        var header = _formFieldMasterService.GetFormFieldMasterFromId(input.FormId, null);
+        var relationColumn = GetRelationColumn(header.BASE_TABLE_NAME, header.DETAIL_TABLE_NAME);
+
+        var masterCfgId = _con.ExecuteScalar<Guid?>(
+            "SELECT ID FROM FORM_FIELD_CONFIG WHERE FORM_FIELD_Master_ID = @Id AND COLUMN_NAME = @Col",
+            new { Id = header.BASE_TABLE_ID, Col = relationColumn }, transaction: null)
+            ?? throw new InvalidOperationException("Master relation column not found.");
+        var detailCfgId = _con.ExecuteScalar<Guid?>(
+            "SELECT ID FROM FORM_FIELD_CONFIG WHERE FORM_FIELD_Master_ID = @Id AND COLUMN_NAME = @Col",
+            new { Id = header.DETAIL_TABLE_ID, Col = relationColumn }, transaction: null)
+            ?? throw new InvalidOperationException("Detail relation column not found.");
+
+        var relationValue = input.MasterFields
+            .FirstOrDefault(f => f.FieldConfigId == masterCfgId)?.Value;
+
+        if (relationValue == null && !string.IsNullOrEmpty(input.MasterPk))
         {
-            var header = _formFieldMasterService.GetFormFieldMasterFromId(input.FormId, tx);
-            var relationColumn = GetRelationColumn(header.BASE_TABLE_NAME, header.DETAIL_TABLE_NAME);
+            var (pkName, pkType, pkVal) = _schemaService.ResolvePk(header.BASE_TABLE_NAME, input.MasterPk, null);
+            relationValue = _con.ExecuteScalar<object?>(
+                $"SELECT [{relationColumn}] FROM [{header.BASE_TABLE_NAME}] WHERE [{pkName}] = @id",
+                new { id = pkVal }, null)?.ToString();
+        }
 
-            var masterCfgId = _con.ExecuteScalar<Guid?>(
-                "SELECT ID FROM FORM_FIELD_CONFIG WHERE FORM_FIELD_Master_ID = @Id AND COLUMN_NAME = @Col",
-                new { Id = header.BASE_TABLE_ID, Col = relationColumn }, transaction: tx)
-                ?? throw new InvalidOperationException("Master relation column not found.");
-            var detailCfgId = _con.ExecuteScalar<Guid?>(
-                "SELECT ID FROM FORM_FIELD_CONFIG WHERE FORM_FIELD_Master_ID = @Id AND COLUMN_NAME = @Col",
-                new { Id = header.DETAIL_TABLE_ID, Col = relationColumn }, transaction: tx)
-                ?? throw new InvalidOperationException("Detail relation column not found.");
+        if (relationValue == null)
+            throw new InvalidOperationException("Relation value not provided.");
 
-            var relationValue = input.MasterFields
-                .FirstOrDefault(f => f.FieldConfigId == masterCfgId)?.Value;
-
-            if (relationValue == null && !string.IsNullOrEmpty(input.MasterPk))
+        if (!input.MasterFields.Any(f => f.FieldConfigId == masterCfgId))
+        {
+            input.MasterFields.Add(new FormInputField
             {
-                var (pkName, pkType, pkVal) = _schemaService.ResolvePk(header.BASE_TABLE_NAME, input.MasterPk, tx);
-                relationValue = _con.ExecuteScalar<object?>(
-                    $"SELECT [{relationColumn}] FROM [{header.BASE_TABLE_NAME}] WHERE [{pkName}] = @id",
-                    new { id = pkVal }, tx)?.ToString();
-            }
+                FieldConfigId = masterCfgId,
+                Value = relationValue
+            });
+        }
 
-            if (relationValue == null)
-                throw new InvalidOperationException("Relation value not provided.");
+        var masterInput = new FormSubmissionInputModel
+        {
+            FormId = header.BASE_TABLE_ID,
+            Pk = input.MasterPk,
+            InputFields = input.MasterFields
+        };
+        _formService.SubmitForm(masterInput);
 
-            if (!input.MasterFields.Any(f => f.FieldConfigId == masterCfgId))
+        foreach (var row in input.DetailRows)
+        {
+            var relField = row.Fields.FirstOrDefault(f => f.FieldConfigId == detailCfgId);
+            if (relField == null)
             {
-                input.MasterFields.Add(new FormInputField
+                row.Fields.Add(new FormInputField
                 {
-                    FieldConfigId = masterCfgId,
+                    FieldConfigId = detailCfgId,
                     Value = relationValue
                 });
             }
-
-            var masterInput = new FormSubmissionInputModel
+            else
             {
-                FormId = header.BASE_TABLE_ID,
-                Pk = input.MasterPk,
-                InputFields = input.MasterFields
-            };
-            _formService.SubmitForm(masterInput);
-
-            foreach (var row in input.DetailRows)
-            {
-                var relField = row.Fields.FirstOrDefault(f => f.FieldConfigId == detailCfgId);
-                if (relField == null)
-                {
-                    row.Fields.Add(new FormInputField
-                    {
-                        FieldConfigId = detailCfgId,
-                        Value = relationValue
-                    });
-                }
-                else
-                {
-                    relField.Value = relationValue;
-                }
-
-                var detailInput = new FormSubmissionInputModel
-                {
-                    FormId = header.DETAIL_TABLE_ID,
-                    Pk = row.Pk,
-                    InputFields = row.Fields
-                };
-                _formService.SubmitForm(detailInput);
+                relField.Value = relationValue;
             }
-        });
+
+            var detailInput = new FormSubmissionInputModel
+            {
+                FormId = header.DETAIL_TABLE_ID,
+                Pk = row.Pk,
+                InputFields = row.Fields
+            };
+            _formService.SubmitForm(detailInput);
+        }
     }
 }
