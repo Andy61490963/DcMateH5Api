@@ -16,10 +16,14 @@ public class FormDataService : IFormDataService
         _con = connection;
     }
     
-    public List<IDictionary<string, object?>> GetRows(string tableName, IEnumerable<FormQueryCondition>? conditions = null)
+    public List<IDictionary<string, object?>> GetRows(
+        string tableName,
+        IEnumerable<FormQueryCondition>? conditions = null,
+        int? page = null,
+        int? pageSize = null)
     {
-        var sql    = new System.Text.StringBuilder($"SELECT * FROM [{tableName}]");
-        var param  = new DynamicParameters();
+        var sql   = new System.Text.StringBuilder($"SELECT * FROM [{tableName}]");
+        var param = new DynamicParameters();
 
         if (conditions != null)
         {
@@ -120,6 +124,16 @@ public class FormDataService : IFormDataService
                 sql.Append(" WHERE ");
                 sql.Append(string.Join(" AND ", whereList));
             }
+        }
+
+        // 分頁處理：若有指定 page 與 pageSize，組合 OFFSET / FETCH
+        if (page.HasValue && pageSize.HasValue)
+        {
+            var p  = Math.Max(page.Value, 1);
+            var ps = Math.Max(pageSize.Value, 1);
+            sql.Append(" ORDER BY (SELECT NULL) OFFSET @offset ROWS FETCH NEXT @pageSize ROWS ONLY");
+            param.Add("offset", (p - 1) * ps);
+            param.Add("pageSize", ps);
         }
 
         var rows = _con.Query(sql.ToString(), param);

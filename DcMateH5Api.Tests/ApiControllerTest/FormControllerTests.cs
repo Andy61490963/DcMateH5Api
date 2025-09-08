@@ -37,6 +37,19 @@ public class FormControllerTests
     }
 
     [Fact]
+    public void GetForms_WithRequest_ReturnsOk()
+    {
+        var request = new FormSearchRequest(Guid.NewGuid());
+        var vm = new List<FormListDataViewModel>();
+        _serviceMock.Setup(s => s.GetFormList(request)).Returns(vm);
+
+        var result = _controller.GetForms(request) as OkObjectResult;
+
+        Assert.NotNull(result);
+        Assert.Equal(vm, result.Value);
+    }
+
+    [Fact]
     public void GetForm_WithRowId_CallsServiceWithId()
     {
         var formId = Guid.NewGuid();

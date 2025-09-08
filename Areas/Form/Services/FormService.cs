@@ -43,12 +43,18 @@ public class FormService : IFormService
     /// 取得所有表單的資料清單（含對應欄位值），
     /// 並自動轉換下拉選單欄位的選項 ID 為顯示文字（OptionText）。
     /// </summary>
-    /// <param name="conditions">查詢條件（可選）</param>
+    /// <param name="request">查詢條件與分頁資訊（可選）</param>
     /// <returns>轉換過欄位顯示內容的表單清單資料</returns>
-    public List<FormListDataViewModel> GetFormList(IEnumerable<FormQueryCondition>? conditions = null)
+    public List<FormListDataViewModel> GetFormList(FormSearchRequest? request = null)
     {
         // 1. 取得所有表單主設定（含欄位設定），使用 VIEW 為主查詢來源
         var metas = _formFieldMasterService.GetFormMetaAggregates(TableSchemaQueryType.All);
+
+        // 若指定 FormMasterId，僅處理該表單
+        if (request?.FormMasterId != Guid.Empty)
+        {
+            metas = metas.Where(m => m.Master.ID == request.FormMasterId).ToList();
+        }
 
         // 2. 預備回傳結果容器
         var results = new List<FormListDataViewModel>();
@@ -56,8 +62,12 @@ public class FormService : IFormService
         // 3. 對每一個表單主設定進行處理
         foreach (var (master, fieldConfigs) in metas)
         {
-            // 3.1 根據 View 撈出該表單的資料列（使用傳入查詢條件）
-            var rawRows = _formDataService.GetRows(master.VIEW_TABLE_NAME, conditions);
+            // 3.1 根據 View 撈出該表單的資料列（使用傳入查詢條件與分頁設定）
+            var rawRows = _formDataService.GetRows(
+                master.VIEW_TABLE_NAME,
+                request?.Conditions,
+                request?.Page,
+                request?.PageSize);
 
             // 3.2 取得主表主鍵欄位，用於辨識每一筆資料的唯一性
             var pk = _schemaService.GetPrimaryKeyColumn(master.BASE_TABLE_NAME);

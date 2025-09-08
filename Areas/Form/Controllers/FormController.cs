@@ -36,12 +36,12 @@ public class FormController : ControllerBase
     /// ]
     /// </code>
     /// </summary>
-    /// <param name="conditions">查詢條件</param>
+    /// <param name="request">查詢條件與分頁設定</param>
     /// <returns>查詢結果</returns>
     [HttpPost("search")]
-    public IActionResult GetForms([FromBody] FormSearchRequest conditions)
+    public IActionResult GetForms([FromBody] FormSearchRequest? request)
     {
-        var vm = _formService.GetFormList(conditions);
+        var vm = _formService.GetFormList(request);
         return Ok(vm);
     }
     
