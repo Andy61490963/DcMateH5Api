@@ -65,7 +65,7 @@ public class FormMasterDetailService : IFormMasterDetailService
     {
         // 取得主明細表頭設定，包含主表與明細表的 FormId
         var header = _formFieldMasterService.GetFormFieldMasterFromId(formMasterDetailId);
-        var masterVm = _formService.GetFormSubmission(header.MASTER_TABLE_ID, pk);
+        var masterVm = _formService.GetFormSubmission(header.BASE_TABLE_ID, pk);
 
         var result = new FormMasterDetailSubmissionViewModel
         {
@@ -81,13 +81,13 @@ public class FormMasterDetailService : IFormMasterDetailService
             return result;
         }
 
-        var relationColumn = GetRelationColumn(header.MASTER_TABLE_NAME, header.DETAIL_TABLE_NAME);
+        var relationColumn = GetRelationColumn(header.BASE_TABLE_NAME, header.DETAIL_TABLE_NAME);
         var detailPk = _schemaService.GetPrimaryKeyColumn(header.DETAIL_TABLE_NAME)
             ?? throw new InvalidOperationException("Detail table has no primary key.");
 
-        var (pkName, pkType, pkVal) = _schemaService.ResolvePk(header.MASTER_TABLE_NAME, pk);
+        var (pkName, pkType, pkVal) = _schemaService.ResolvePk(header.BASE_TABLE_NAME, pk);
         var relationObj = _con.ExecuteScalar<object?>(
-            $"SELECT [{relationColumn}] FROM [{header.MASTER_TABLE_NAME}] WHERE [{pkName}] = @id",
+            $"SELECT [{relationColumn}] FROM [{header.BASE_TABLE_NAME}] WHERE [{pkName}] = @id",
             new { id = pkVal });
         var relationValue = relationObj?.ToString();
         if (relationValue == null)
@@ -123,11 +123,11 @@ public class FormMasterDetailService : IFormMasterDetailService
         _txService.WithTransaction(tx =>
         {
             var header = _formFieldMasterService.GetFormFieldMasterFromId(input.FormId, tx);
-            var relationColumn = GetRelationColumn(header.MASTER_TABLE_NAME, header.DETAIL_TABLE_NAME);
+            var relationColumn = GetRelationColumn(header.BASE_TABLE_NAME, header.DETAIL_TABLE_NAME);
 
             var masterCfgId = _con.ExecuteScalar<Guid?>(
                 "SELECT ID FROM FORM_FIELD_CONFIG WHERE FORM_FIELD_Master_ID = @Id AND COLUMN_NAME = @Col",
-                new { Id = header.MASTER_TABLE_ID, Col = relationColumn }, transaction: tx)
+                new { Id = header.BASE_TABLE_ID, Col = relationColumn }, transaction: tx)
                 ?? throw new InvalidOperationException("Master relation column not found.");
             var detailCfgId = _con.ExecuteScalar<Guid?>(
                 "SELECT ID FROM FORM_FIELD_CONFIG WHERE FORM_FIELD_Master_ID = @Id AND COLUMN_NAME = @Col",
@@ -139,9 +139,9 @@ public class FormMasterDetailService : IFormMasterDetailService
 
             if (relationValue == null && !string.IsNullOrEmpty(input.MasterPk))
             {
-                var (pkName, pkType, pkVal) = _schemaService.ResolvePk(header.MASTER_TABLE_NAME, input.MasterPk, tx);
+                var (pkName, pkType, pkVal) = _schemaService.ResolvePk(header.BASE_TABLE_NAME, input.MasterPk, tx);
                 relationValue = _con.ExecuteScalar<object?>(
-                    $"SELECT [{relationColumn}] FROM [{header.MASTER_TABLE_NAME}] WHERE [{pkName}] = @id",
+                    $"SELECT [{relationColumn}] FROM [{header.BASE_TABLE_NAME}] WHERE [{pkName}] = @id",
                     new { id = pkVal }, tx)?.ToString();
             }
 
@@ -159,7 +159,7 @@ public class FormMasterDetailService : IFormMasterDetailService
 
             var masterInput = new FormSubmissionInputModel
             {
-                FormId = header.MASTER_TABLE_ID,
+                FormId = header.BASE_TABLE_ID,
                 Pk = input.MasterPk,
                 InputFields = input.MasterFields
             };

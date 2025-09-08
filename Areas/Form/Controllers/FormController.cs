@@ -41,6 +41,15 @@ public class FormController : ControllerBase
     [HttpPost("search")]
     public IActionResult GetForms([FromBody] FormSearchRequest? request)
     {
+        if (request == null)
+        {
+            return BadRequest(new
+            {
+                Error = "Request body is null",
+                Hint  = "請確認傳入的 JSON 是否正確，至少需要提供查詢條件或分頁參數"
+            });
+        }
+        
         var vm = _formService.GetFormList(request);
         return Ok(vm);
     }

@@ -149,7 +149,7 @@ public class FormService : IFormService
     /// 根據表單設定抓取主表欄位與現有資料（編輯時用）
     /// 只對主表進行欄位組裝，Dropdown 顯示選項答案
     /// </summary>
-    public FormSubmissionViewModel GetFormSubmission(Guid formMasterId, string? pk = null)
+    public FormSubmissionViewModel GetFormSubmission(Guid? formMasterId, string? pk = null)
     {
         // 1. 查主設定
         var master = _formFieldMasterService.GetFormFieldMasterFromId(formMasterId);
@@ -163,13 +163,15 @@ public class FormService : IFormService
         IDictionary<string, object?>? dataRow = null;
         Dictionary<Guid, Guid>? dropdownAnswers = null;
 
+        var target = master.BASE_TABLE_NAME ?? master.DETAIL_TABLE_NAME;
+        
         if (!string.IsNullOrWhiteSpace(pk))
         {
             // 3.1 取得主表主鍵名稱/型別/值
-            var (pkName, pkType, pkValue) = _schemaService.ResolvePk(master.BASE_TABLE_NAME, pk);
+            var (pkName, pkType, pkValue) = _schemaService.ResolvePk(target, pk);
 
             // 3.2 查詢主表資料（參數化防注入）
-            var sql = $"SELECT * FROM [{master.BASE_TABLE_NAME}] WHERE [{pkName}] = @id";
+            var sql = $"SELECT * FROM [{target}] WHERE [{pkName}] = @id";
             dataRow = _con.QueryFirstOrDefault(sql, new { id = pkValue }) as IDictionary<string, object?>;
 
             // 3.3 如果有Dropdown欄位，再查一次答案
@@ -202,7 +204,7 @@ public class FormService : IFormService
         {
             FormId = master.ID,
             Pk = pk,
-            TargetTableToUpsert = master.BASE_TABLE_NAME,
+            TargetTableToUpsert = target,
             FormName = master.FORM_NAME,
             Fields = fields
         };

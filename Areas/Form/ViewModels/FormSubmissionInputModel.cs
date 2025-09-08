@@ -8,7 +8,7 @@ namespace DcMateH5Api.Areas.Form.ViewModels;
 /// </summary>
 public class FormSubmissionInputModel
 {
-    public Guid FormId { get; set; }
+    public Guid? FormId { get; set; }
     public string? Pk { get; set; }
     public string? TargetTableToUpsert { get; set; }
     public List<FormInputField> InputFields { get; set; } = new();

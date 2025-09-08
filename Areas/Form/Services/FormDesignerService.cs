@@ -232,9 +232,19 @@ public class FormDesignerService : IFormDesignerService
             return res.Value;
 
         var insertId = model.ID == Guid.Empty ? Guid.NewGuid() : model.ID;
+        static bool HasValue(string? s) => !string.IsNullOrWhiteSpace(s);
+        
         _con.Execute(@"
-        INSERT INTO FORM_FIELD_Master (ID, FORM_NAME, STATUS, SCHEMA_TYPE, BASE_TABLE_NAME, VIEW_TABLE_NAME, DETAIL_TABLE_NAME, DETAIL_TABLE_ID, IS_MASTER_DETAIL, IS_DELETE)
-        VALUES (@ID, @FORM_NAME, @STATUS, @SCHEMA_TYPE, @BASE_TABLE_NAME, @VIEW_TABLE_NAME, @DETAIL_TABLE_NAME, @DETAIL_TABLE_ID, @IS_MASTER_DETAIL)", new
+        INSERT INTO FORM_FIELD_Master
+    (ID, FORM_NAME, STATUS, SCHEMA_TYPE,
+     BASE_TABLE_NAME, VIEW_TABLE_NAME, DETAIL_TABLE_NAME,
+     BASE_TABLE_ID,  VIEW_TABLE_ID,  DETAIL_TABLE_ID,
+     IS_MASTER_DETAIL, IS_DELETE)
+    VALUES
+    (@ID, @FORM_NAME, @STATUS, @SCHEMA_TYPE,
+     @BASE_TABLE_NAME, @VIEW_TABLE_NAME, @DETAIL_TABLE_NAME,
+     @BASE_TABLE_ID,  @VIEW_TABLE_ID,  @DETAIL_TABLE_ID,
+     @IS_MASTER_DETAIL, 0);", new
         {
             ID = insertId,
             model.FORM_NAME,
@@ -243,7 +253,12 @@ public class FormDesignerService : IFormDesignerService
             model.BASE_TABLE_NAME,
             model.VIEW_TABLE_NAME,
             model.DETAIL_TABLE_NAME,
-            model.DETAIL_TABLE_ID
+
+            BASE_TABLE_ID   = HasValue(model.BASE_TABLE_NAME)   ? insertId : (Guid?)null,
+            VIEW_TABLE_ID   = HasValue(model.VIEW_TABLE_NAME)   ? insertId : (Guid?)null,
+            DETAIL_TABLE_ID = HasValue(model.DETAIL_TABLE_NAME) ? insertId : (Guid?)null,
+
+            model.IS_MASTER_DETAIL,
         });
 
         return insertId;
