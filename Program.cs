@@ -82,6 +82,7 @@ builder.Services.AddScoped<IFormFieldConfigService, FormFieldConfigService>();
 builder.Services.AddScoped<IDropdownService, DropdownService>();
 builder.Services.AddScoped<IFormDataService, FormDataService>();
 builder.Services.AddScoped<IFormService, FormService>();
+builder.Services.AddScoped<IFormMasterDetailService, FormMasterDetailService>();
 builder.Services.AddScoped<IPermissionService, PermissionService>();
 builder.Services.AddScoped<ITransactionService, TransactionService>();
 
