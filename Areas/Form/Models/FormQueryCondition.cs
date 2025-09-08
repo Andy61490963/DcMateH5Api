@@ -2,6 +2,13 @@ using ClassLibrary;
 
 namespace DcMateH5Api.Areas.Form.Models;
 
+public sealed record FormSearchRequest(
+    Guid FormMasterId,
+    int Page = 1,
+    int PageSize = 20,
+    List<FormQueryCondition>? Conditions = null
+);
+
 /// <summary>
 /// 描述查詢條件的資料模型。
 /// </summary>

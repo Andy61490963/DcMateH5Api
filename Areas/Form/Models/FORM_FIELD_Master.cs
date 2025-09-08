@@ -41,7 +41,7 @@ public class FORM_FIELD_Master
     
 
     [Column("IS_MASTER_DETAIL")]
-    public bool? IS_MASTER_DETAIL { get; set; }
+    public FormFunctionType? IS_MASTER_DETAIL { get; set; }
     
     [Column("STATUS")]
     public int STATUS { get; set; }  

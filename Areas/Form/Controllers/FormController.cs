@@ -39,7 +39,7 @@ public class FormController : ControllerBase
     /// <param name="conditions">查詢條件</param>
     /// <returns>查詢結果</returns>
     [HttpPost("search")]
-    public IActionResult GetForms([FromBody] List<FormQueryCondition>? conditions)
+    public IActionResult GetForms([FromBody] FormSearchRequest conditions)
     {
         var vm = _formService.GetFormList(conditions);
         return Ok(vm);

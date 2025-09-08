@@ -96,53 +96,90 @@ public class FormDesignerService : IFormDesignerService
     
     /// <summary>
     /// 根據 functionType 取得 主檔維護 或 主明細維護 畫面資料，提供前端建樹狀結構使用。
+    /// NotMasterDetail(0) → 只顯示 Base + View；MasterDetail(1) → 顯示 Base + Detail + View。
+    /// 若功能模組與表單型態不匹配，直接丟出可讀的 Domain 例外。
     /// </summary>
     public async Task<FormDesignerIndexViewModel> GetFormDesignerIndexViewModel(
         FormFunctionType functionType, 
         Guid? id, 
         CancellationToken ct)
     {
+        // 1) 取主檔
         var master = await GetFormMasterAsync(id, ct) ?? new FORM_FIELD_Master();
 
+        // 2) 判斷「表單是否主明細」與「功能模組」是否相容
+        var isMasterDetail = master.IS_MASTER_DETAIL.ToInt() == 1;
+        if (functionType == FormFunctionType.NotMasterDetail && isMasterDetail)
+            throw new Exception("此表單為『主明細』型態，無法在『主檔維護』模組開啟。");
+        if (functionType == FormFunctionType.MasterDetail && !isMasterDetail)
+            throw new Exception("此表單為『非主明細』型態，請改在『主檔維護』模組開啟。");
+
+        // 3) 準備回傳物件，先放表頭
         var result = new FormDesignerIndexViewModel
         {
-            FormHeader = master
+            FormHeader = master,
+            BaseFields = null!,
+            DetailFields = null!,
+            ViewFields = null!
         };
 
-        // 主檔欄位
-        var baseFields = GetFieldsByTableName(master.BASE_TABLE_NAME, master.BASE_TABLE_ID, TableSchemaQueryType.OnlyTable);
+        // 4) 主檔欄位（Base）——通常為必備，缺少視為設定錯誤
+        if (string.IsNullOrWhiteSpace(master.BASE_TABLE_NAME) || master.BASE_TABLE_ID is null)
+            throw new Exception("缺少主檔（BASE）表設定：請檢查 BASE_TABLE_NAME / BASE_TABLE_ID。");
+
+        var baseFields = GetFieldsByTableName(
+            master.BASE_TABLE_NAME,
+            master.BASE_TABLE_ID.Value,
+            TableSchemaQueryType.OnlyTable);
         baseFields.ID = master.ID;
         baseFields.SchemaQueryType = TableSchemaQueryType.OnlyTable;
         result.BaseFields = baseFields;
 
-        if (functionType == FormFunctionType.MasterDetail)
+        // 5) 依功能模組決定要不要載 Detail / View
+        if (functionType == FormFunctionType.NotMasterDetail)
         {
-            // 明細表 欄位
-            var detailFields = GetFieldsByTableName(master.DETAIL_TABLE_NAME, master.DETAIL_TABLE_ID, TableSchemaQueryType.OnlyDetail);
+            // NotMasterDetail：只載 View（可缺省 → 回傳 null，前端不渲染該節點）
+            if (!string.IsNullOrWhiteSpace(master.VIEW_TABLE_NAME) && master.VIEW_TABLE_ID is not null)
+            {
+                var viewFields = GetFieldsByTableName(
+                    master.VIEW_TABLE_NAME,
+                    master.VIEW_TABLE_ID.Value,
+                    TableSchemaQueryType.OnlyView);
+                viewFields.ID = master.ID;
+                viewFields.SchemaQueryType = TableSchemaQueryType.OnlyView;
+                result.ViewFields = viewFields;
+            }
+            // 明細不需要
+            result.DetailFields = null!;
+        }
+        else // MasterDetail
+        {
+            // MasterDetail：Detail 與 View 都是必備，缺任何一個都丟例外
+            if (string.IsNullOrWhiteSpace(master.DETAIL_TABLE_NAME) || master.DETAIL_TABLE_ID is null)
+                throw new Exception("主明細維護需要明細表設定：請檢查 DETAIL_TABLE_NAME / DETAIL_TABLE_ID。");
+            if (string.IsNullOrWhiteSpace(master.VIEW_TABLE_NAME) || master.VIEW_TABLE_ID is null)
+                throw new Exception("主明細維護需要檢視表設定：請檢查 VIEW_TABLE_NAME / VIEW_TABLE_ID。");
+
+            var detailFields = GetFieldsByTableName(
+                master.DETAIL_TABLE_NAME,
+                master.DETAIL_TABLE_ID.Value,
+                TableSchemaQueryType.OnlyDetail);
             detailFields.ID = master.ID;
             detailFields.SchemaQueryType = TableSchemaQueryType.OnlyDetail;
             result.DetailFields = detailFields;
 
-            // 檢視表 欄位
-            var viewFields = GetFieldsByTableName(master.VIEW_TABLE_NAME, master.VIEW_TABLE_ID, TableSchemaQueryType.OnlyView);
+            var viewFields = GetFieldsByTableName(
+                master.VIEW_TABLE_NAME,
+                master.VIEW_TABLE_ID.Value,
+                TableSchemaQueryType.OnlyView);
             viewFields.ID = master.ID;
             viewFields.SchemaQueryType = TableSchemaQueryType.OnlyView;
             result.ViewFields = viewFields;
-        }
-        else if (functionType == FormFunctionType.NotMasterDetail)
-        {
-            // 檢視表 欄位
-            var viewFields = GetFieldsByTableName(master.VIEW_TABLE_NAME, master.VIEW_TABLE_ID, TableSchemaQueryType.OnlyView);
-            viewFields.ID = master.ID;
-            viewFields.SchemaQueryType = TableSchemaQueryType.OnlyView;
-            result.ViewFields = viewFields;
-
-            // 明細表不需要 設成 null
-            result.DetailFields = null!;
         }
 
         return result;
     }
+
     
     /// <summary>
     /// 依名稱關鍵字查詢資料表或檢視表清單。

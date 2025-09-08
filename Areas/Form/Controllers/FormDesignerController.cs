@@ -92,7 +92,7 @@ public class FormDesignerController : ControllerBase
     // ────────── 欄位相關 ──────────
 
     /// <summary>
-    /// 依表名稱關鍵字搜尋實表或檢視表，並回傳列表。
+    /// 依表名稱關鍵字搜尋 表 或 檢視表，並回傳列表。
     /// </summary>
     [HttpGet("tables/tableName")]
     public IActionResult SearchTables(string? tableName, [FromQuery] TableSchemaQueryType schemaType)
@@ -110,7 +110,7 @@ public class FormDesignerController : ControllerBase
     }
     
     /// <summary>
-    /// 取得資料表所有欄位設定(如果傳入空formMasterId，會創建一筆新的，如果有傳入，會取得舊的)
+    /// 取得資料表所有欄位設定(tableName必須傳，如果傳入空formMasterId，會創建一筆新的，如果有傳入formMasterId，會取得舊的)
     /// </summary>
     [HttpGet("tables/{tableName}/fields")]
     public IActionResult GetFields(string tableName, Guid? formMasterId, [FromQuery] TableSchemaQueryType schemaType)
@@ -152,15 +152,6 @@ public class FormDesignerController : ControllerBase
     {
         try
         {
-            // var ensure = _formDesignerService.EnsureFieldsSaved(
-            //     model.TableName,
-            //     model.FORM_FIELD_Master_ID == Guid.Empty ? null : model.FORM_FIELD_Master_ID,
-            //     schemaType);
-            // if (ensure == null)
-            // {
-            //     return NotFound();
-            // }
-
             if (model.SchemaType == TableSchemaQueryType.OnlyTable &&
                 (model.QUERY_COMPONENT != QueryComponentType.None ||
                  model.CAN_QUERY == true))
