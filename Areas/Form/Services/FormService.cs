@@ -286,9 +286,9 @@ public class FormService : IFormService
     }
 
     /// <summary>
-    /// 以 <see cref="FORM_FIELD_DROPDOWN_OPTIONS"/> 設定動態載入下拉選單選項。
+    /// 以 <see cref="FormFieldDropdownOptions"/> 設定動態載入下拉選單選項。
     /// </summary>
-    private List<FORM_FIELD_DROPDOWN_OPTIONS> LoadDropdownOptions(FORM_FIELD_DROPDOWN_OPTIONS config)
+    private List<FormFieldDropdownOptions> LoadDropdownOptions(FormFieldDropdownOptions config)
     {
         if (!IsSafeIdentifier(config.OPTION_TABLE) ||
             !IsSafeIdentifier(config.OPTION_VALUE) ||
@@ -298,7 +298,7 @@ public class FormService : IFormService
         }
 
         var sql = $"SELECT [{config.OPTION_VALUE}] AS OPTION_VALUE, [{config.OPTION_TEXT}] AS OPTION_TEXT FROM [{config.OPTION_TABLE}]";
-        return _con.Query<FORM_FIELD_DROPDOWN_OPTIONS>(sql).ToList();
+        return _con.Query<FormFieldDropdownOptions>(sql).ToList();
     }
 
     /// <summary>

@@ -1,50 +1,58 @@
-﻿using ClassLibrary;
+﻿using System.ComponentModel.DataAnnotations;
+using System.ComponentModel.DataAnnotations.Schema;
+using ClassLibrary;
 
 namespace DcMateH5Api.Areas.Form.Models;
 
+[Table("FORM_FIELD_CONFIG")]
 public class FormFieldConfigDto
 {
+    [Key]
+    [Column("ID")]
     public Guid ID { get; set; }
 
+    [Column("FORM_FIELD_Master_ID")]
     public Guid FORM_FIELD_Master_ID { get; set; }
 
-    public string FORM_NAME { get; set; } = string.Empty;
-
+    [Column("TABLE_NAME")]
     public string TABLE_NAME { get; set; } = string.Empty;
-    
-    public string SOURCE_TABLE { get; set; }
 
+    [Column("COLUMN_NAME")]
     public string COLUMN_NAME { get; set; } = string.Empty;
+    
+    [Column("DATA_TYPE")]
+    public string DATA_TYPE { get; set; }
 
+    [Column("CONTROL_TYPE")]
     public FormControlType CONTROL_TYPE { get; set; }
 
     /// <summary>
+    /// 是否允許此欄位作為查詢條件使用。
+    /// </summary>
+    [Column("CAN_QUERY")]
+    public bool CAN_QUERY { get; set; }
+    
+    /// <summary>
     /// 查詢元件類型，決定該欄位在搜尋介面上的呈現方式。
     /// </summary>
+    [Column("QUERY_COMPONENT")]
     public QueryComponentType QUERY_COMPONENT { get; set; }
 
     /// <summary>
     /// 實際查詢 SQL 條件
     /// </summary>
+    [Column("QUERY_CONDITION")]
     public ConditionType QUERY_CONDITION { get; set; }
     
-    /// <summary>
-    /// 若為下拉選單查詢條件，使用此 SQL 取得選項資料。
-    /// </summary>
-    // public string? QUERY_CONDITION_SQL { get; set; }
-
-    /// <summary>
-    /// 是否允許此欄位作為查詢條件使用。
-    /// </summary>
-    public bool CAN_QUERY { get; set; }
-    
+    [Column("QUERY_DEFAULT_VALUE")]
     public string? QUERY_DEFAULT_VALUE { get; set; }
 
+    [Column("IS_EDITABLE")]
+    public bool IS_EDITABLE { get; set; }
+    
+    [Column("IS_REQUIRED")]
     public bool IS_REQUIRED { get; set; }
 
-    public bool IS_EDITABLE { get; set; }
-
+    [Column("FIELD_ORDER")]
     public int FIELD_ORDER { get; set; }
-
-    public string DATA_TYPE { get; set; }
 }

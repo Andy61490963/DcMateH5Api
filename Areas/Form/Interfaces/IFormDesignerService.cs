@@ -1,7 +1,6 @@
 using DcMateH5Api.Areas.Form.Models;
 using ClassLibrary;
 using DcMateH5Api.Areas.Form.ViewModels;
-using System.Threading;
 
 namespace DcMateH5Api.Areas.Form.Interfaces;
 
@@ -34,58 +33,45 @@ public interface IFormDesignerService
     /// <summary>
     /// 批次設定欄位的可編輯狀態。
     /// </summary>
-    void SetAllEditable(Guid formMasterId, string tableName, bool isEditable);
+    Task<string> SetAllEditable( Guid formMasterId, bool isEditable, CancellationToken ct );
 
     /// <summary>
     /// 批次設定欄位的必填狀態。
     /// </summary>
-    void SetAllRequired(Guid formMasterId, string tableName, bool isRequired);
+    Task<string> SetAllRequired( Guid formMasterId, bool isRequired, CancellationToken ct );
 
     bool CheckFieldExists(Guid fieldId);
-    
-    List<FormFieldValidationRuleDto> GetValidationRulesByFieldId(Guid fieldId);
+
+    Task<List<FormFieldValidationRuleDto>> GetValidationRulesByFieldId(Guid fieldId, CancellationToken ct = default);
 
     bool HasValidationRules(Guid fieldId);
 
     FormFieldValidationRuleDto CreateEmptyValidationRule(Guid fieldConfigId);
-    void InsertValidationRule(FormFieldValidationRuleDto model);
+    Task<bool> InsertValidationRule( FormFieldValidationRuleDto model, CancellationToken ct = default );
     int GetNextValidationOrder(Guid fieldId);
 
     FormControlType GetControlTypeByFieldId(Guid fieldId);
 
-    bool SaveValidationRule(FormFieldValidationRuleDto rule);
+    Task<bool> SaveValidationRule( FormFieldValidationRuleDto model, CancellationToken ct = default );
 
-    bool DeleteValidationRule(Guid id);
-
-    /// <summary>
-    /// 確保 FORM_FIELD_DROPDOWN 存在，
-    /// 可依需求指定預設的 SQL 來源與是否使用 SQL。
-    /// </summary>
-    /// <param name="fieldId">欄位設定 ID</param>
-    /// <param name="isUseSql">是否使用 SQL 為資料來源，預設為 false；OnlyView 可帶入 null</param>
-    /// <param name="sql">預設 SQL 查詢語句，預設為 null</param>
+    Task<bool> DeleteValidationRule( Guid id , CancellationToken ct = default );
+    
     void EnsureDropdownCreated(Guid fieldId, bool? isUseSql = false, string? sql = null);
-    
-    DropDownViewModel GetDropdownSetting(Guid fieldId);
 
-    List<FORM_FIELD_DROPDOWN_OPTIONS> GetDropdownOptions(Guid dropDownId);
-    
-    void SaveDropdownSql(Guid fieldId, string sql);
+    Task<DropDownViewModel> GetDropdownSetting( Guid fieldId, CancellationToken ct = default );
+
+    Task<List<FormFieldDropdownOptions>> GetDropdownOptions( Guid dropDownId, CancellationToken ct = default );
+
+    Task SaveDropdownSql( Guid dropdownId, string sql, CancellationToken ct );
     Guid SaveDropdownOption(Guid? id, Guid dropdownId, string optionText, string optionValue, string? optionTable = null);
 
-    void DeleteDropdownOption(Guid optionId);
+    Task<bool> DeleteDropdownOption(Guid optionId, CancellationToken ct = default);
 
-    void SetDropdownMode(Guid dropdownId, bool isUseSql);
+    Task SetDropdownMode( Guid dropdownId, bool isUseSql, CancellationToken ct );
 
-    ValidateSqlResultViewModel ValidateDropdownSql(string sql);
-
-    /// <summary>
-    /// 執行 SQL 並將結果匯入指定的下拉選單選項表
-    /// </summary>
-    /// <param name="sql">要執行的查詢語法（僅限 SELECT）</param>
-    /// <param name="dropdownId">目標下拉選單 ID</param>
-    /// <returns>SQL 驗證與匯入結果</returns>
-    ValidateSqlResultViewModel ImportDropdownOptionsFromSql(string sql, Guid dropdownId);
+    ValidateSqlResultViewModel ValidateDropdownSql( string sql );
+    
+    ValidateSqlResultViewModel ImportDropdownOptionsFromSql( string sql, Guid dropdownId );
     Guid SaveFormHeader( FormHeaderViewModel model );
 
     Guid SaveMasterDetailFormHeader(MasterDetailFormHeaderViewModel model);

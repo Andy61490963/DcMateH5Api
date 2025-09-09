@@ -127,8 +127,7 @@ public class FormDesignerService : IFormDesignerService
             master.BASE_TABLE_NAME,
             master.BASE_TABLE_ID.Value,
             TableSchemaQueryType.OnlyTable);
-        baseFields.ID = master.ID;
-        baseFields.SchemaQueryType = TableSchemaQueryType.OnlyTable;
+
         result.BaseFields = baseFields;
 
         // 依功能模組決定要不要載 Detail / View
@@ -141,8 +140,7 @@ public class FormDesignerService : IFormDesignerService
                     master.VIEW_TABLE_NAME,
                     master.VIEW_TABLE_ID.Value,
                     TableSchemaQueryType.OnlyView);
-                viewFields.ID = master.ID;
-                viewFields.SchemaQueryType = TableSchemaQueryType.OnlyView;
+
                 result.ViewFields = viewFields;
             }
             // 明細不需要
@@ -156,16 +154,13 @@ public class FormDesignerService : IFormDesignerService
                 master.DETAIL_TABLE_NAME,
                 master.DETAIL_TABLE_ID.Value,
                 TableSchemaQueryType.OnlyDetail);
-            detailFields.ID = master.ID;
-            detailFields.SchemaQueryType = TableSchemaQueryType.OnlyDetail;
+
             result.DetailFields = detailFields;
 
             var viewFields = GetFieldsByTableName(
                 master.VIEW_TABLE_NAME,
                 master.VIEW_TABLE_ID.Value,
                 TableSchemaQueryType.OnlyView);
-            viewFields.ID = master.ID;
-            viewFields.SchemaQueryType = TableSchemaQueryType.OnlyView;
             result.ViewFields = viewFields;
         }
 
@@ -317,10 +312,7 @@ ORDER BY TABLE_SCHEMA, TABLE_NAME;";
 
         var result = new FormFieldListViewModel
         {
-            ID = masterId,
-            TableName = tableName,
             Fields = fields,
-            SchemaQueryType = schemaType
         };
 
         return result;
@@ -523,19 +515,32 @@ ORDER BY TABLE_SCHEMA, TABLE_NAME;";
     /// 批次設定欄位的可編輯狀態。
     /// 若設定為不可編輯，會同步取消必填。
     /// </summary>
-    public void SetAllEditable(Guid formMasterId, string tableName, bool isEditable)
+    public async Task<string> SetAllEditable( Guid formMasterId, bool isEditable, CancellationToken ct )
     {
-        // Guid children = GetFormFieldMasterChildren(formMasterId);
-        _con.Execute(Sql.SetAllEditable, new { formMasterId, tableName, isEditable });
+        _con.Execute(Sql.SetAllEditable, new { formMasterId, isEditable });
+        
+        var where = new WhereBuilder<FormFieldConfigDto>()
+            .AndEq(x => x.FORM_FIELD_Master_ID, formMasterId)
+            .AndNotDeleted();
+        
+        var model = await _sqlHelper.SelectFirstOrDefaultAsync( where, ct );
+        return model.TABLE_NAME;
     }
 
     /// <summary>
     /// 批次設定欄位的必填狀態，僅對可編輯欄位生效。
     /// </summary>
-    public void SetAllRequired(Guid formMasterId, string tableName, bool isRequired)
+    public async Task<string> SetAllRequired( Guid formMasterId, bool isRequired, CancellationToken ct )
     {
         // Guid children = GetFormFieldMasterChildren(formMasterId);
-        _con.Execute(Sql.SetAllRequired, new { formMasterId, tableName, isRequired });
+        _con.Execute(Sql.SetAllRequired, new { formMasterId, isRequired });
+        
+        var where = new WhereBuilder<FormFieldConfigDto>()
+            .AndEq(x => x.FORM_FIELD_Master_ID, formMasterId)
+            .AndNotDeleted();
+        
+        var model = await _sqlHelper.SelectFirstOrDefaultAsync( where, ct );
+        return model.TABLE_NAME;
     }
 
     /// <summary>
@@ -554,10 +559,17 @@ ORDER BY TABLE_SCHEMA, TABLE_NAME;";
     /// </summary>
     /// <param name="fieldId">欄位唯一識別碼</param>
     /// <returns>回傳驗證規則清單</returns>
-    public List<FormFieldValidationRuleDto> GetValidationRulesByFieldId(Guid fieldId)
+    /// <summary>
+    /// 依欄位設定 ID 取回該欄位的所有驗證規則（過濾已刪除），並依 SEQNO/ID 排序。
+    /// </summary>
+    public async Task<List<FormFieldValidationRuleDto>> GetValidationRulesByFieldId( Guid fieldId, CancellationToken ct = default )
     {
-        var sql = Sql.ValidationRuleSelect + " WHERE FIELD_CONFIG_ID = @fieldId ORDER BY VALIDATION_ORDER";
-        return _con.Query<FormFieldValidationRuleDto>(sql, new { fieldId }).ToList();
+        var where = new WhereBuilder<FormFieldValidationRuleDto>()
+            .AndEq(x => x.FIELD_CONFIG_ID, fieldId)
+            .AndNotDeleted();
+        
+        var rules = await _sqlHelper.SelectWhereAsync( where, ct );
+        return rules;
     }
 
     /// <summary>
@@ -592,10 +604,14 @@ ORDER BY TABLE_SCHEMA, TABLE_NAME;";
     /// <summary>
     /// 新增一筆欄位驗證規則。
     /// </summary>
-    /// <param name="model">驗證規則 DTO</param>
-    public void InsertValidationRule(FormFieldValidationRuleDto model)
+    /// <param name="model"></param>
+    /// <param name="ct"></param>
+    /// <returns></returns>
+    public async Task<bool> InsertValidationRule( FormFieldValidationRuleDto model, CancellationToken ct = default )
     {
-        _con.Execute(Sql.InsertValidationRule, model);
+
+        var count = await _sqlHelper.InsertAsync( model, ct );
+        return count > 0;
     }
 
     /// <summary>
@@ -621,14 +637,15 @@ ORDER BY TABLE_SCHEMA, TABLE_NAME;";
     }
 
     /// <summary>
-    /// 儲存（更新）驗證規則。
+    /// 儲存（更新）驗證規則
     /// </summary>
-    /// <param name="rule">要更新的驗證規則 DTO</param>
-    /// <returns>更新成功則回傳 true</returns>
-    public bool SaveValidationRule(FormFieldValidationRuleDto rule)
-    {
-       var res =_con.Execute(Sql.UpdateValidationRule, rule) > 0;
-       return res;
+    /// <param name="model"></param>
+    /// <param name="ct"></param>
+    /// <returns></returns>
+    public async Task<bool> SaveValidationRule( FormFieldValidationRuleDto model, CancellationToken ct = default )
+    { 
+        var res = await _sqlHelper.UpdateAllByIdAsync(model, UpdateNullBehavior.IgnoreNulls, true, ct)  > 0;
+        return res;
     }
 
     /// <summary>
@@ -636,36 +653,52 @@ ORDER BY TABLE_SCHEMA, TABLE_NAME;";
     /// </summary>
     /// <param name="id">驗證規則的唯一識別碼</param>
     /// <returns>刪除成功則回傳 true</returns>
-    public bool DeleteValidationRule(Guid id)
+    public async Task<bool> DeleteValidationRule( Guid id , CancellationToken ct = default )
     {
-        var res = _con.Execute(Sql.DeleteValidationRule, new { id }) > 0;
+        var where = new WhereBuilder<FormFieldValidationRuleDto>()
+            .AndEq(x => x.ID, id);
+        var res = await _sqlHelper.DeleteWhereAsync( where, ct ) > 0;
         return res;
     }
 
+    /// <summary>
+    /// 確保 FORM_FIELD_DROPDOWN 存在，
+    /// 可依需求指定預設的 SQL 來源與是否使用 SQL。
+    /// </summary>
+    /// <param name="fieldId">欄位設定 ID</param>
+    /// <param name="isUseSql">是否使用 SQL 為資料來源，預設為 false；OnlyView 可帶入 null</param>
+    /// <param name="sql">預設 SQL 查詢語句，預設為 null</param>
     public void EnsureDropdownCreated(Guid fieldId, bool? isUseSql = false, string? sql = null)
     {
         _con.Execute(Sql.EnsureDropdownExists, new { fieldId, isUseSql, sql });
     }
     
-    public DropDownViewModel GetDropdownSetting(Guid fieldId)
+    public async Task<DropDownViewModel> GetDropdownSetting( Guid fieldId, CancellationToken ct = default )
     {
-        var dropDown = _con.QueryFirstOrDefault<DropDownViewModel>(Sql.GetDropdownByFieldId, new { fieldId });
+        var model = new DropDownViewModel();
+        var where = new WhereBuilder<FormDropDownDto>()
+            .AndEq(x => x.FORM_FIELD_CONFIG_ID, fieldId)
+            .AndNotDeleted();
+        
+        var dropDown = await _sqlHelper.SelectFirstOrDefaultAsync( where, ct );
+        if(dropDown == null) throw new Exception("查無下拉選單設定，且確認傳入的id是否正確");
+        
+        model.FormDropDown = dropDown;
+        var optionTexts = GetDropdownOptions( dropDown.ID, ct );
+        model.OPTION_TEXT = optionTexts;
 
-        if (dropDown == null)
-        {
-            return new DropDownViewModel();
-        }
-        var optionTexts = GetDropdownOptions(dropDown.ID);
-        dropDown.OPTION_TEXT = optionTexts;
-
-        return dropDown;
+        return model;
     }
     
-    public List<FORM_FIELD_DROPDOWN_OPTIONS> GetDropdownOptions(Guid dropDownId)
+    public async Task<List<FormFieldDropdownOptions>> GetDropdownOptions( Guid dropDownId, CancellationToken ct = default )
     {
-        var optionTexts = _con.Query<FORM_FIELD_DROPDOWN_OPTIONS>(Sql.GetOptionByDropdownId, new { dropDownId }).ToList();
+        var where = new WhereBuilder<FormFieldDropdownOptions>()
+            .AndEq(x => x.FORM_FIELD_DROPDOWN_ID, dropDownId)
+            // .AndEq(x => x.OPTION_TABLE!, null)
+            .AndNotDeleted();
         
-        return optionTexts;
+        var dropDown = await _sqlHelper.SelectWhereAsync( where, ct );
+        return dropDown;
     }
 
     public Guid SaveDropdownOption(Guid? id, Guid dropdownId, string optionText, string optionValue, string? optionTable = null)
@@ -683,35 +716,43 @@ ORDER BY TABLE_SCHEMA, TABLE_NAME;";
         return _con.ExecuteScalar<Guid>(Sql.UpsertDropdownOption, param);
     }
 
-    public void DeleteDropdownOption(Guid optionId)
+    public async Task<bool> DeleteDropdownOption( Guid optionId, CancellationToken ct = default )
     {
-        _con.Execute(Sql.DeleteDropdownOption, new { optionId });
+        var where = new WhereBuilder<FormFieldDropdownOptions>()
+            .AndEq(x => x.ID, optionId);
+        return await _sqlHelper.DeleteWhereAsync(where, ct) > 0;
     }
     
-    public void SaveDropdownSql(Guid dropdownId, string sql)
+    public Task SaveDropdownSql( Guid dropdownId, string sql, CancellationToken ct )
     {
-        _con.Execute(Sql.UpsertDropdownSql, new { dropdownId, sql });
+        return _sqlHelper.UpdateById<FormDropDownDto>(dropdownId)
+            .Set(x => x.ISUSESQL, true)
+            .Set(x => x.DROPDOWNSQL, sql)
+            .ExecuteAsync(ct);
     }
     
-    public void SetDropdownMode(Guid dropdownId, bool isUseSql)
+    public Task SetDropdownMode( Guid dropdownId, bool isUseSql, CancellationToken ct )
     {
-        _con.Execute(Sql.SetDropdownMode, new { DropdownId = dropdownId, IsUseSql = isUseSql });
+        return _sqlHelper.UpdateById<FormDropDownDto>(dropdownId)
+            .Set(x => x.ISUSESQL, isUseSql)
+            .ExecuteAsync(ct);
     }
     
-    public ValidateSqlResultViewModel ValidateDropdownSql(string sql)
+    public ValidateSqlResultViewModel ValidateDropdownSql( string sql )
     {
         var result = new ValidateSqlResultViewModel();
 
         try
         {
-            if (string.IsNullOrWhiteSpace(sql))
+            if ( string.IsNullOrWhiteSpace( sql ) )
             {
                 result.Success = false;
                 result.Message = "SQL 不可為空。";
                 return result;
             }
 
-            if (Regex.IsMatch(sql, @"\b(insert|update|delete|drop|alter|truncate|exec|merge)\b", RegexOptions.IgnoreCase))
+            if ( Regex.IsMatch(sql, 
+                    @"\b(insert|update|delete|drop|alter|truncate|exec|merge)\b", RegexOptions.IgnoreCase ) )
             {
                 result.Success = false;
                 result.Message = "僅允許查詢類 SQL。";
@@ -719,13 +760,13 @@ ORDER BY TABLE_SCHEMA, TABLE_NAME;";
             }
 
             var wasClosed = _con.State != System.Data.ConnectionState.Open;
-            if (wasClosed) _con.Open();
+            if ( wasClosed ) _con.Open();
 
-            using var cmd = new SqlCommand(sql, _con);
+            using var cmd = new SqlCommand( sql, _con );
             using var reader = cmd.ExecuteReader();
 
             var columns = reader.GetColumnSchema();
-            if (columns.Count < 2)
+            if ( columns.Count < 2 )
             {
                 result.Success = false;
                 result.Message = "SQL 必須回傳至少兩個欄位，SELECT A AS ID, B AS NAME";
@@ -733,21 +774,21 @@ ORDER BY TABLE_SCHEMA, TABLE_NAME;";
             }
 
             // 檢查第一個欄位是否包含任一個 _excludeColumns 關鍵字
-            if (!_excludeColumns.Any(ex =>
-                    columns[0].ColumnName.Contains(ex, StringComparison.OrdinalIgnoreCase)))
+            if ( !_excludeColumns.Any(ex =>
+                    columns[0].ColumnName.Contains( ex, StringComparison.OrdinalIgnoreCase) ) )
             {
                 result.Success = false;
-                result.Message = $"第一個欄位必須包含任一關鍵字：{string.Join(", ", _excludeColumns)}";
+                result.Message = $"第一個欄位必須包含任一關鍵字：{ string.Join (", ", _excludeColumns ) }";
                 return result;
             }
 
             var rows = new List<Dictionary<string, object>>();
-            while (reader.Read())
+            while ( reader.Read() )
             {
                 var row = new Dictionary<string, object>();
-                for (int i = 0; i < reader.FieldCount; i++)
+                for ( int i = 0; i < reader.FieldCount; i++ )
                 {
-                    row[columns[i].ColumnName] = reader.GetValue(i);
+                    row[columns[i].ColumnName] = reader.GetValue( i );
                 }
                 rows.Add(row);
             }
@@ -756,9 +797,9 @@ ORDER BY TABLE_SCHEMA, TABLE_NAME;";
             result.RowCount = rows.Count;
             result.Rows = rows.Take(10).ToList(); // 最多回傳前 10 筆
 
-            if (wasClosed) _con.Close();
+            if ( wasClosed ) _con.Close();
         }
-        catch (Exception ex)
+        catch ( Exception ex )
         {
             result.Success = false;
             result.Message = ex.Message;
@@ -780,38 +821,38 @@ ORDER BY TABLE_SCHEMA, TABLE_NAME;";
         const string ColId   = "ID";
         const string ColName = "NAME";
 
-        var validation = ValidateDropdownSql(sql);
-        if (!validation.Success)
+        var validation = ValidateDropdownSql( sql );
+        if ( !validation.Success )
             return validation;
 
         // 解析來源表名：先用較穩健的 regex（容許 [dbo].[Table] / dbo.Table / Table）
-        var optionTable = TryExtractTableName(sql);
-        if (string.IsNullOrWhiteSpace(optionTable))
+        var optionTable = TryExtractTableName( sql );
+        if ( string.IsNullOrWhiteSpace( optionTable ) )
         {
-            return Fail("無法解析來源表名稱（請使用單一 FROM，並避免子查詢/CTE/多表 JOIN）。");
+            return Fail( "無法解析來源表名稱（請使用單一 FROM，並避免子查詢/CTE/多表 JOIN）。" );
         }
 
         var wasClosed = _con.State != System.Data.ConnectionState.Open;
-        if (wasClosed) _con.Open();
+        if ( wasClosed ) _con.Open();
 
         using var tx = _con.BeginTransaction();
         try
         {
             // 要求 SQL 結果一定有兩個別名：ID、NAME
-            var rows = _con.Query<DropdownOptionRow>(sql, transaction: tx);
+            var rows = _con.Query<DropdownOptionRow>( sql, transaction: tx );
 
             int i = 0;
-            foreach (var r in rows)
+            foreach ( var r in rows )
             {
                 i++;
 
                 // 明確檢查 NULL 與空白
-                if (r.ID is null)
+                if ( r.ID is null )
                 {
                     tx.Rollback();
                     return Fail($"第 {i} 筆資料的 {ColId} 為 NULL，請修正來源 SQL 或清理資料。");
                 }
-                if (r.NAME is null)
+                if ( r.NAME is null )
                 {
                     tx.Rollback();
                     return Fail($"第 {i} 筆資料的 {ColName} 為 NULL，請修正來源 SQL 或清理資料。");
@@ -820,19 +861,19 @@ ORDER BY TABLE_SCHEMA, TABLE_NAME;";
                 var optionValue = r.ID.Trim();
                 var optionText  = r.NAME.Trim();
 
-                if (optionValue.Length == 0)
+                if ( optionValue.Length == 0 )
                 {
                     tx.Rollback();
                     return Fail($"第 {i} 筆資料的 {ColId} 為空字串。");
                 }
-                if (optionText.Length == 0)
+                if ( optionText.Length == 0 )
                 {
                     tx.Rollback();
                     return Fail($"第 {i} 筆資料的 {ColName} 為空字串。");
                 }
 
                 // 參數化寫入（忽略重複）
-                _con.Execute(Sql.InsertOptionIgnoreDuplicate, new
+                _con.Execute( Sql.InsertOptionIgnoreDuplicate, new
                 {
                     DropdownId  = dropdownId,
                     OptionTable = optionTable,
@@ -896,10 +937,10 @@ ORDER BY TABLE_SCHEMA, TABLE_NAME;";
         var viewTableName = viewField.VIEW_TABLE_NAME;
         
         // 確保主表與顯示用 View 皆能成功查詢，避免儲存無效設定
-        if (GetTableSchema(baseTableName).Count == 0)
+        if ( GetTableSchema(baseTableName).Count == 0 )
             throw new InvalidOperationException("主表名稱查無資料");
 
-        if (GetTableSchema(viewTableName).Count == 0)
+        if ( GetTableSchema(viewTableName).Count == 0)
             throw new InvalidOperationException("顯示用 View 名稱查無資料");
 
         // 若未指定 ID 則產生新 ID
@@ -1178,11 +1219,11 @@ WHEN MATCHED THEN
 WHEN NOT MATCHED THEN
     INSERT (
         ID, FORM_FIELD_Master_ID, TABLE_NAME, COLUMN_NAME, DATA_TYPE,
-        CONTROL_TYPE, IS_REQUIRED, IS_EDITABLE, QUERY_DEFAULT_VALUE, FIELD_ORDER, QUERY_COMPONENT, QUERY_CONDITION, CAN_QUERY, CREATE_TIME
+        CONTROL_TYPE, IS_REQUIRED, IS_EDITABLE, QUERY_DEFAULT_VALUE, FIELD_ORDER, QUERY_COMPONENT, QUERY_CONDITION, CAN_QUERY, CREATE_TIME, IS_DELETE
     )
     VALUES (
         @ID, @FORM_FIELD_Master_ID, @TABLE_NAME, @COLUMN_NAME, @DATA_TYPE,
-        @CONTROL_TYPE, @IS_REQUIRED, @IS_EDITABLE, @QUERY_DEFAULT_VALUE, @FIELD_ORDER, @QUERY_COMPONENT, @QUERY_CONDITION, @CAN_QUERY, GETDATE()
+        @CONTROL_TYPE, @IS_REQUIRED, @IS_EDITABLE, @QUERY_DEFAULT_VALUE, @FIELD_ORDER, @QUERY_COMPONENT, @QUERY_CONDITION, @CAN_QUERY, GETDATE(), 0
     );";
 
         public const string CheckFieldExists         = @"/**/
@@ -1191,33 +1232,24 @@ SELECT COUNT(1) FROM FORM_FIELD_CONFIG WHERE ID = @fieldId";
         public const string SetAllEditable = @"/**/
 UPDATE FORM_FIELD_CONFIG
 SET IS_EDITABLE = @isEditable
-WHERE FORM_FIELD_Master_ID = @formMasterId AND TABLE_NAME = @tableName;
+WHERE FORM_FIELD_Master_ID = @formMasterId;
 
 -- 若不可編輯，強制取消必填
 IF (@isEditable = 0)
 BEGIN
     UPDATE FORM_FIELD_CONFIG
     SET IS_REQUIRED = 0
-    WHERE FORM_FIELD_Master_ID = @formMasterId AND TABLE_NAME = @tableName;
+    WHERE FORM_FIELD_Master_ID = @formMasterId;
 END
 ";
 
         public const string SetAllRequired = @"/**/
 UPDATE FORM_FIELD_CONFIG
 SET IS_REQUIRED = CASE WHEN @isRequired = 1 AND IS_EDITABLE = 1 THEN 1 ELSE 0 END
-WHERE FORM_FIELD_Master_ID = @formMasterId AND TABLE_NAME = @tableName";
+WHERE FORM_FIELD_Master_ID = @formMasterId";
         
         public const string CountValidationRules     = @"/**/
 SELECT COUNT(1) FROM FORM_FIELD_VALIDATION_RULE WHERE FIELD_CONFIG_ID = @fieldId";
-        
-        public const string InsertValidationRule     = @"/**/
-INSERT INTO FORM_FIELD_VALIDATION_RULE (
-    ID, FIELD_CONFIG_ID, VALIDATION_TYPE, VALIDATION_VALUE,
-    MESSAGE_ZH, MESSAGE_EN, VALIDATION_ORDER
-) VALUES (
-    @ID, @FIELD_CONFIG_ID, @VALIDATION_TYPE, @VALIDATION_VALUE,
-    @MESSAGE_ZH, @MESSAGE_EN, @VALIDATION_ORDER
-)";
 
         public const string GetNextValidationOrder   = @"/**/
 SELECT ISNULL(MAX(VALIDATION_ORDER), 0) + 1 FROM FORM_FIELD_VALIDATION_RULE WHERE FIELD_CONFIG_ID = @fieldId";
@@ -1245,8 +1277,8 @@ IF NOT EXISTS (
     SELECT 1 FROM FORM_FIELD_DROPDOWN WHERE FORM_FIELD_CONFIG_ID = @fieldId
 )
 BEGIN
-    INSERT INTO FORM_FIELD_DROPDOWN (ID, FORM_FIELD_CONFIG_ID, ISUSESQL, DROPDOWNSQL)
-    VALUES (NEWID(), @fieldId, @isUseSql, @sql)
+    INSERT INTO FORM_FIELD_DROPDOWN (ID, FORM_FIELD_CONFIG_ID, ISUSESQL, DROPDOWNSQL, IS_DELETE)
+    VALUES (NEWID(), @fieldId, @isUseSql, @sql, 0)
 END
 ";
         
@@ -1280,12 +1312,13 @@ WHEN MATCHED THEN
         OPTION_VALUE = source.OPTION_VALUE,
         OPTION_TABLE = source.OPTION_TABLE
 WHEN NOT MATCHED THEN
-    INSERT (ID, FORM_FIELD_DROPDOWN_ID, OPTION_TEXT, OPTION_VALUE, OPTION_TABLE)
+    INSERT (ID, FORM_FIELD_DROPDOWN_ID, OPTION_TEXT, OPTION_VALUE, OPTION_TABLE, IS_DELETE)
     VALUES (ISNULL(source.ID, NEWID()),       -- 若 Guid.Empty → 直接 NEWID()
             source.FORM_FIELD_DROPDOWN_ID,
             source.OPTION_TEXT,
             source.OPTION_VALUE,
-            source.OPTION_TABLE)
+            source.OPTION_TABLE,
+            0)
 OUTPUT INSERTED.ID;                          -- 把 ID 回傳給 Dapper
 ";
 
@@ -1302,8 +1335,8 @@ ON target.FORM_FIELD_DROPDOWN_ID = src.FORM_FIELD_DROPDOWN_ID
    AND target.OPTION_TABLE = src.OPTION_TABLE
    AND target.OPTION_VALUE = src.OPTION_VALUE
 WHEN NOT MATCHED THEN
-    INSERT (ID, FORM_FIELD_DROPDOWN_ID, OPTION_TABLE, OPTION_VALUE, OPTION_TEXT)
-    VALUES (NEWID(), src.FORM_FIELD_DROPDOWN_ID, src.OPTION_TABLE, src.OPTION_VALUE, src.OPTION_TEXT);
+    INSERT (ID, FORM_FIELD_DROPDOWN_ID, OPTION_TABLE, OPTION_VALUE, OPTION_TEXT, IS_DELETE)
+    VALUES (NEWID(), src.FORM_FIELD_DROPDOWN_ID, src.OPTION_TABLE, src.OPTION_VALUE, src.OPTION_TEXT, 0);
 ";
 
         public const string DeleteDropdownOption = @"/**/
