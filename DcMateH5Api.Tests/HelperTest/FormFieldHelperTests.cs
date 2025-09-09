@@ -11,16 +11,16 @@ public class FormFieldHelperTests
     public void GetQueryConditionTypeWhitelist_Int()
     {
         var result = FormFieldHelper.GetQueryConditionTypeWhitelist("int");
-        Assert.Contains(QueryConditionType.Number, result);
-        Assert.Contains(QueryConditionType.Text, result);
-        Assert.Contains(QueryConditionType.Dropdown, result);
-        Assert.DoesNotContain(QueryConditionType.Date, result);
+        Assert.Contains(QueryComponentType.Number, result);
+        Assert.Contains(QueryComponentType.Text, result);
+        Assert.Contains(QueryComponentType.Dropdown, result);
+        Assert.DoesNotContain(QueryComponentType.Date, result);
     }
 
     [Fact]
     public void GetQueryConditionTypeWhitelist_DateTime()
     {
         var result = FormFieldHelper.GetQueryConditionTypeWhitelist("datetime");
-        Assert.Equal(new[] { QueryConditionType.Date }, result);
+        Assert.Equal(new[] { QueryComponentType.Date }, result);
     }
 }

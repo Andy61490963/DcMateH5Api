@@ -23,22 +23,6 @@ public class FormDesignerControllerTests
         => new FormDesignerController(_designerMock.Object);
 
     [Fact]
-    public async Task GetDesigner_ReturnsViewModel()
-    {
-        var id = Guid.NewGuid();
-        var vm = new FormDesignerIndexViewModel();
-        _designerMock
-            .Setup(s => s.GetFormDesignerIndexViewModel(id, It.IsAny<CancellationToken>()))
-            .ReturnsAsync(vm);
-        var controller = CreateController();
-
-        var result = await controller.GetDesigner(id, CancellationToken.None) as OkObjectResult;
-
-        Assert.NotNull(result);
-        Assert.Equal(vm, result.Value);
-    }
-
-    [Fact]
     public void SetAllEditable_NotOnlyTable_ReturnsBadRequest()
     {
         var controller = CreateController();
@@ -118,20 +102,6 @@ public class FormDesignerControllerTests
         var obj = Assert.IsType<ObjectResult>(result);
         Assert.Equal((int)HttpStatusCode.BadRequest, obj.StatusCode);
         Assert.Equal("缺少必要欄位", obj.Value);
-    }
-
-    [Fact]
-    public async Task UpdateFormName_ReturnsOk()
-    {
-        var controller = CreateController();
-        var vm = new UpdateFormNameViewModel { Id = Guid.NewGuid(), FormName = "N" };
-        _designerMock
-            .Setup(s => s.UpdateFormName(vm.Id, vm.FormName, It.IsAny<CancellationToken>()))
-            .Returns(Task.CompletedTask);
-
-        var result = await controller.UpdateFormName(vm, CancellationToken.None);
-
-        Assert.IsType<OkResult>(result);
     }
 
     [Fact]

@@ -47,7 +47,7 @@ public class FormDesignerService : IFormDesignerService
         CancellationToken ct)
     {
         var where = new WhereBuilder<FORM_FIELD_Master>()
-            .AndEq(x => x.IS_MASTER_DETAIL, functionType)
+            .AndEq(x => x.IS_MASTER_DETAIL!, functionType)
             .AndNotDeleted();
 
         if (!string.IsNullOrWhiteSpace(q))
@@ -110,7 +110,7 @@ public class FormDesignerService : IFormDesignerService
         var master = await GetFormMasterAsync(id, ct) ?? new FORM_FIELD_Master();
 
         // 2) 判斷「表單是否主明細」與「功能模組」是否相容
-        var isMasterDetail = master.IS_MASTER_DETAIL.ToInt() == 1;
+        var isMasterDetail = master.IS_MASTER_DETAIL == FormFunctionType.MasterDetail;
         if (functionType == FormFunctionType.NotMasterDetail && isMasterDetail)
             throw new Exception("此表單為『主明細』型態，無法在『主檔維護』模組開啟。");
         if (functionType == FormFunctionType.MasterDetail && !isMasterDetail)
