@@ -59,16 +59,11 @@ public class FormDesignerService : IFormDesignerService
         return res;
     }
 
-    public Task UpdateFormMaster(FORM_FIELD_Master model, CancellationToken ct)
+    public Task UpdateFormName(UpdateFormNameViewModel model, CancellationToken ct)
     {
-        return _sqlHelper.UpdateAllByIdAsync(model, UpdateNullBehavior.IgnoreNulls, false, ct);
-    }
-
-    public Task UpdateFormName(Guid id, string formName, CancellationToken ct)
-    {
-        const string sql = "UPDATE FORM_FIELD_Master SET FORM_NAME = @formName WHERE ID = @id";
-        _con.Execute(sql, new { id, formName });
-        return Task.CompletedTask;
+        return _sqlHelper.UpdateById<FORM_FIELD_Master>(model.ID)
+            .Set(x => x.FORM_NAME, model.FORM_NAME)
+            .ExecuteAsync(ct);
     }
     
     /// <summary>
@@ -106,17 +101,20 @@ public class FormDesignerService : IFormDesignerService
         Guid? id, 
         CancellationToken ct)
     {
-        // 1) 取主檔
-        var master = await GetFormMasterAsync(id, ct) ?? new FORM_FIELD_Master();
+        var master = await GetFormMasterAsync(id, ct) ?? throw new Exception("查無主檔。");
 
-        // 2) 判斷「表單是否主明細」與「功能模組」是否相容
+        // 判斷「表單是否主明細」與「功能模組」是否相容
         var isMasterDetail = master.IS_MASTER_DETAIL == FormFunctionType.MasterDetail;
         if (functionType == FormFunctionType.NotMasterDetail && isMasterDetail)
             throw new Exception("此表單為『主明細』型態，無法在『主檔維護』模組開啟。");
         if (functionType == FormFunctionType.MasterDetail && !isMasterDetail)
             throw new Exception("此表單為『非主明細』型態，請改在『主檔維護』模組開啟。");
-
-        // 3) 準備回傳物件，先放表頭
+        if (string.IsNullOrWhiteSpace(master.BASE_TABLE_NAME) || master.BASE_TABLE_ID is null)
+            throw new Exception("缺少主檔（Base）表設定：請檢查 BASE_TABLE_NAME / BASE_TABLE_ID。");
+        if (string.IsNullOrWhiteSpace(master.VIEW_TABLE_NAME) || master.VIEW_TABLE_ID is null)
+            throw new Exception("缺少檢視表（View）表設定：請檢查 VIEW_TABLE_NAME / VIEW_TABLE_ID。");
+        
+        // 準備回傳物件，先放表頭
         var result = new FormDesignerIndexViewModel
         {
             FormHeader = master,
@@ -124,10 +122,6 @@ public class FormDesignerService : IFormDesignerService
             DetailFields = null!,
             ViewFields = null!
         };
-
-        // 4) 主檔欄位（Base）——通常為必備，缺少視為設定錯誤
-        if (string.IsNullOrWhiteSpace(master.BASE_TABLE_NAME) || master.BASE_TABLE_ID is null)
-            throw new Exception("缺少主檔（BASE）表設定：請檢查 BASE_TABLE_NAME / BASE_TABLE_ID。");
 
         var baseFields = GetFieldsByTableName(
             master.BASE_TABLE_NAME,
@@ -137,7 +131,7 @@ public class FormDesignerService : IFormDesignerService
         baseFields.SchemaQueryType = TableSchemaQueryType.OnlyTable;
         result.BaseFields = baseFields;
 
-        // 5) 依功能模組決定要不要載 Detail / View
+        // 依功能模組決定要不要載 Detail / View
         if (functionType == FormFunctionType.NotMasterDetail)
         {
             // NotMasterDetail：只載 View（可缺省 → 回傳 null，前端不渲染該節點）
@@ -156,11 +150,7 @@ public class FormDesignerService : IFormDesignerService
         }
         else // MasterDetail
         {
-            // MasterDetail：Detail 與 View 都是必備，缺任何一個都丟例外
-            if (string.IsNullOrWhiteSpace(master.DETAIL_TABLE_NAME) || master.DETAIL_TABLE_ID is null)
-                throw new Exception("主明細維護需要明細表設定：請檢查 DETAIL_TABLE_NAME / DETAIL_TABLE_ID。");
-            if (string.IsNullOrWhiteSpace(master.VIEW_TABLE_NAME) || master.VIEW_TABLE_ID is null)
-                throw new Exception("主明細維護需要檢視表設定：請檢查 VIEW_TABLE_NAME / VIEW_TABLE_ID。");
+            
 
             var detailFields = GetFieldsByTableName(
                 master.DETAIL_TABLE_NAME,
@@ -191,37 +181,34 @@ public class FormDesignerService : IFormDesignerService
     /// <returns>符合條件的表名稱集合</returns>
     public List<string> SearchTables(string? tableName, TableSchemaQueryType schemaType)
     {
-        // 白名單檢查：只允許英數、底線、點
+        // 允許英數、底線、點。點是為了支援 schema.name 輸入
         if (!string.IsNullOrWhiteSpace(tableName) &&
-            !Regex.IsMatch(tableName, @"^[A-Za-z0-9_\.]+$"))
+            !Regex.IsMatch(tableName, @"^[A-Za-z0-9_\.]+$", RegexOptions.CultureInvariant))
         {
             throw new ArgumentException("tableName 含非法字元");
         }
 
-        // 判斷要查 VIEW 還是 TABLE
+        // 解析可能的 schema.name 輸入
+        string? schema = null, name = null;
+        if (!string.IsNullOrWhiteSpace(tableName))
+        {
+            var parts = tableName.Split('.', 2, StringSplitOptions.RemoveEmptyEntries);
+            if (parts.Length == 2) { schema = parts[0]; name = parts[1]; }
+            else { name = parts[0]; }
+        }
+
+        // 決定 VIEW 或 BASE TABLE
         var tableType = schemaType == TableSchemaQueryType.OnlyView ? "VIEW" : "BASE TABLE";
 
-        string sql;
-        object param;
+        const string sql = @"/**/
+SELECT TABLE_SCHEMA + '.' + TABLE_NAME
+FROM INFORMATION_SCHEMA.TABLES
+WHERE TABLE_TYPE = @tableType
+  AND (@schema IS NULL OR TABLE_SCHEMA = @schema)
+  AND (@name   IS NULL OR TABLE_NAME LIKE '%' + @name + '%')
+ORDER BY TABLE_SCHEMA, TABLE_NAME;";
 
-        if (string.IsNullOrWhiteSpace(tableName))
-        {
-            // 沒輸入 tableName，就撈所有符合 schemaType 的表
-            sql = @"SELECT TABLE_NAME 
-                FROM INFORMATION_SCHEMA.TABLES
-                WHERE TABLE_TYPE = @tableType;";
-            param = new { tableType };
-        }
-        else
-        {
-            // 模糊搜尋
-            sql = @"SELECT TABLE_NAME 
-                FROM INFORMATION_SCHEMA.TABLES
-                WHERE TABLE_NAME LIKE @tableName
-                AND TABLE_TYPE = @tableType;";
-            param = new { tableName = $"%{tableName}%", tableType };
-        }
-
+        var param = new { tableType, schema, name };
         return _con.Query<string>(sql, param).ToList();
     }
     
@@ -265,13 +252,15 @@ public class FormDesignerService : IFormDesignerService
 
         return insertId;
     }
-
+    
     /// <summary>
-    /// 根據資料表名稱，取得所有欄位資訊並合併 欄位設定、驗證、語系資訊。
+    /// 根據資料表名稱，取得所有欄位資訊並合併 欄位設定、驗證資訊。
     /// </summary>
     /// <param name="tableName">使用者輸入的表名稱</param>
-    /// <returns>回傳多筆 FormFieldViewModel</returns>
-    public FormFieldListViewModel GetFieldsByTableName(string tableName, Guid? formMasterId, TableSchemaQueryType schemaType)
+    /// <param name="formMasterId"></param>
+    /// <param name="schemaType"></param>
+    /// <returns></returns>
+    public FormFieldListViewModel GetFieldsByTableName( string tableName, Guid? formMasterId, TableSchemaQueryType schemaType )
     {
         var columns = GetTableSchema(tableName);
         if (columns.Count == 0) return new();
@@ -402,7 +391,6 @@ public class FormDesignerService : IFormDesignerService
             FIELD_ORDER = cfg.FIELD_ORDER,
             QUERY_COMPONENT = cfg.QUERY_COMPONENT,
             QUERY_CONDITION = cfg.QUERY_CONDITION,
-            // QUERY_CONDITION_SQL = cfg.QUERY_CONDITION_SQL ?? string.Empty,
             CAN_QUERY = cfg.CAN_QUERY,
             SchemaType = master.SCHEMA_TYPE
         };

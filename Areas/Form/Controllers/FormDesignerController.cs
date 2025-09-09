@@ -33,149 +33,145 @@ public class FormDesignerController : ControllerBase
     /// <param name="ct">CancellationToken</param>
     /// <returns>表單主檔清單</returns>
     [HttpGet]
-    public async Task<ActionResult<List<FORM_FIELD_Master>>> GetFormMasters(
-        [FromQuery] string? q,
-        CancellationToken ct)
+    public async Task<ActionResult<List<FORM_FIELD_Master>>> GetFormMasters( [FromQuery] string? q, CancellationToken ct )
     {
-        var masters = await _formDesignerService.GetFormMasters(_funcType, q, ct);
-
-        return Ok(masters.ToList());
+        var masters = await _formDesignerService.GetFormMasters( _funcType, q, ct );
+        return Ok( masters.ToList() );
     }
     
-    // /// <summary>
-    // /// 更新單筆主表or檢視表名稱
-    // /// </summary>
-    // /// <param name="model"></param>
-    // /// <param name="ct"></param>
-    // /// <returns></returns>
-    // [HttpPut]
-    // public async Task<IActionResult> UpdateFormMaster([FromBody] FORM_FIELD_Master model, CancellationToken ct)
-    // {
-    //     await _formDesignerService.UpdateFormMaster(model, ct);
-    //     return Ok();
-    // }
-
     /// <summary>
     /// 更新主檔 or 明細 or 檢視表 名稱
     /// </summary>
+    /// <param name="model"></param>
+    /// <param name="ct">CancellationToken</param>
+    /// <returns></returns>
     [HttpPut("form-name")]
-    public async Task<IActionResult> UpdateFormName([FromBody] UpdateFormNameViewModel model, CancellationToken ct)
+    public async Task<IActionResult> UpdateFormName( [FromBody] UpdateFormNameViewModel model, CancellationToken ct )
     {
-        await _formDesignerService.UpdateFormName(model.ID, model.FORM_NAME, ct);
+        await _formDesignerService.UpdateFormName( model, ct );
         return Ok();
     }
     
     /// <summary>
-    /// 刪除指定的主檔 or 明細 or 檢視表資料
+    /// 刪除指定的主檔或明細或檢視表資料
     /// </summary>
-    /// <param name="id">FORM_FIELD_Master 的唯一識別編號</param>
+    /// <param name="id">FORM_FIELD_Master 的ID</param>
     /// <returns>NoContent 回應</returns>
     [HttpDelete("{id}")]
-    public IActionResult Delete(Guid id)
+    public IActionResult Delete( Guid id )
     {
-        _formDesignerService.DeleteFormMaster(id);
+        _formDesignerService.DeleteFormMaster( id );
         return NoContent();
     }
     
     // ────────── Form Designer 入口 ──────────
     /// <summary>
-    /// 取得指定的 主檔 and 檢視表 主畫面資料(請傳入父節點 masterId)
+    /// 取得指定的 主檔、檢視表 主畫面資料(請傳入父節點 masterId)
     /// </summary>
-    // [RequirePermission(ActionAuthorizeHelper.View)]
+    /// <param name="id">FORM_FIELD_Master 的ID</param>
+    /// <param name="ct"></param>
+    /// <returns></returns>
     [HttpGet("{id:guid}")]
-    public async Task<IActionResult> GetDesigner(Guid id, CancellationToken ct)
+    public async Task<IActionResult> GetDesigner( Guid id, CancellationToken ct )
     {
-        var model = await _formDesignerService.GetFormDesignerIndexViewModel(_funcType, id, ct);
-        return Ok(model);
+        var model = await _formDesignerService.GetFormDesignerIndexViewModel( _funcType, id, ct );
+        return Ok( model );
     }
 
     // ────────── 欄位相關 ──────────
 
     /// <summary>
-    /// 依表名稱關鍵字搜尋 表 或 檢視表，並回傳列表。
+    /// 依名稱關鍵字查詢資料表或檢視表名稱清單。
+    /// 支援前綴與模糊比對（使用 LIKE）。
     /// </summary>
+    /// /// <param name="tableName">名稱</param>
+    /// <param name="schemaType">欲搜尋的資料來源類型（主表或檢視表）</param>
+    /// <returns>符合條件的表名稱集合</returns>
     [HttpGet("tables/tableName")]
-    public IActionResult SearchTables(string? tableName, [FromQuery] TableSchemaQueryType schemaType)
+    public IActionResult SearchTables( string? tableName, [FromQuery] TableSchemaQueryType schemaType )
     {
         try
         {
-            var result = _formDesignerService.SearchTables(tableName, schemaType);
-            if (result.Count == 0) return NotFound();
-            return Ok(result);
+            var result = _formDesignerService.SearchTables( tableName, schemaType );
+            if ( result.Count == 0 ) return NotFound();
+            return Ok( result );
         }
-        catch (HttpStatusCodeException ex)
+        catch ( HttpStatusCodeException ex )
         {
-            return StatusCode((int)ex.StatusCode, ex.Message);
+            return StatusCode( (int)ex.StatusCode, ex.Message );
         }
     }
     
     /// <summary>
     /// 取得資料表所有欄位設定(tableName必須傳，如果傳入空formMasterId，會創建一筆新的，如果有傳入formMasterId，會取得舊的)
     /// </summary>
+    /// <param name="tableName">名稱</param>
+    /// <param name="formMasterId">FORM_FIELD_Master 的ID</param>
+    /// <param name="schemaType">列舉類型</param>
+    /// <returns></returns>
     [HttpGet("tables/{tableName}/fields")]
-    public IActionResult GetFields(string tableName, Guid? formMasterId, [FromQuery] TableSchemaQueryType schemaType)
+    public IActionResult GetFields( string tableName, Guid? formMasterId, [FromQuery] TableSchemaQueryType schemaType )
     {
         try
         {
-            var result = _formDesignerService.EnsureFieldsSaved(tableName, formMasterId, schemaType);
+            var result = _formDesignerService.EnsureFieldsSaved( tableName, formMasterId, schemaType );
 
-            if (result == null)
-            {
-                return NotFound();
-            }
-            return Ok(result);
+            if ( result == null ) return NotFound();
+            return Ok( result );
         }
-        catch (HttpStatusCodeException ex)
+        catch ( HttpStatusCodeException ex )
         {
-            return StatusCode((int)ex.StatusCode, ex.Message);
+            return StatusCode( (int)ex.StatusCode, ex.Message );
         }
     }
 
     /// <summary>
-    /// 依欄位設定 ID 取得單一欄位設定
+    /// 依欄位設定 ID 取得單一欄位設定 ( GetFields搜尋時就會先預先建立完成 )
     /// </summary>
-    /// <param name="fieldId">欄位設定唯一識別碼</param>
+    /// <param name="fieldId">FORM_FIELD_CONFIG 的ID</param>
+    /// <returns></returns>
     [HttpGet("fields/{fieldId}")]
-    public IActionResult GetField(Guid fieldId)
+    public IActionResult GetField( Guid fieldId )
     {
-        var field = _formDesignerService.GetFieldById(fieldId);
-        if (field == null) return NotFound();
-        return Ok(field);
+        var field = _formDesignerService.GetFieldById( fieldId );
+        if ( field == null ) return NotFound();
+        return Ok( field );
     }
 
     /// <summary>
     /// 新增或更新單一欄位設定（ID 有值為更新，無值為新增）
     /// </summary>
-    // [RequirePermission(ActionAuthorizeHelper.View)]
+    /// <param name="model">GetField( Guid fieldId ) 取得的欄位 Json </param>
+    /// <returns></returns>
     [HttpPost("fields")]
-    public IActionResult UpsertField([FromBody] FormFieldViewModel model)
+    public IActionResult UpsertField( [FromBody] FormFieldViewModel model )
     {
         try
         {
-            if (model.SchemaType == TableSchemaQueryType.OnlyTable &&
-                (model.QUERY_COMPONENT != QueryComponentType.None ||
-                 model.CAN_QUERY == true))
-                return Conflict("無法往主表寫入查詢條件");
+            if ( model.SchemaType == TableSchemaQueryType.OnlyTable &&
+                ( model.QUERY_COMPONENT != QueryComponentType.None ||
+                 model.CAN_QUERY == true ) )
+                return Conflict( "無法往主表寫入查詢條件" );
             
-            if (model.SchemaType == TableSchemaQueryType.OnlyTable &&
-                (model.QUERY_DEFAULT_VALUE != null ||
-                 model.CAN_QUERY == true))
-                return Conflict("無法往主表寫入查詢預設值");
+            if ( model.SchemaType == TableSchemaQueryType.OnlyTable &&
+                ( model.QUERY_DEFAULT_VALUE != null ||
+                 model.CAN_QUERY == true ) )
+                return Conflict( "無法往主表寫入查詢預設值" );
             
-            if (model.SchemaType == TableSchemaQueryType.OnlyView &&
-                (model.CAN_QUERY == false && model.QUERY_COMPONENT != QueryComponentType.None))
-                return Conflict("無法更改未開放查詢條件的查詢元件");
+            if ( model.SchemaType == TableSchemaQueryType.OnlyView &&
+                ( model.CAN_QUERY == false && model.QUERY_COMPONENT != QueryComponentType.None ) )
+                return Conflict( "無法更改未開放查詢條件的查詢元件" );
             
-            if (model.ID != Guid.Empty &&
-                _formDesignerService.HasValidationRules(model.ID) &&
-                _formDesignerService.GetControlTypeByFieldId(model.ID) != model.CONTROL_TYPE)
-                return Conflict("已有驗證規則，無法變更控制元件類型");
+            if ( model.ID != Guid.Empty &&
+                _formDesignerService.HasValidationRules( model.ID ) &&
+                _formDesignerService.GetControlTypeByFieldId( model.ID ) != model.CONTROL_TYPE )
+                return Conflict( "已有驗證規則，無法變更控制元件類型" );
 
             var master = new FORM_FIELD_Master { ID = model.FORM_FIELD_Master_ID };
-            var formMasterId = _formDesignerService.GetOrCreateFormMasterId(master);
+            var formMasterId = _formDesignerService.GetOrCreateFormMasterId( master );
 
-            _formDesignerService.UpsertField(model, formMasterId);
-            var fields = _formDesignerService.GetFieldsByTableName(model.TableName, formMasterId, model.SchemaType);
+            _formDesignerService.UpsertField( model, formMasterId );
+            var fields = _formDesignerService.GetFieldsByTableName( model.TableName, formMasterId, model.SchemaType );
             fields.ID = formMasterId;
             fields.SchemaQueryType = model.SchemaType;
             return Ok(fields);

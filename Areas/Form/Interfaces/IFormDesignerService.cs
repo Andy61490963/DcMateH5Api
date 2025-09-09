@@ -7,32 +7,20 @@ namespace DcMateH5Api.Areas.Form.Interfaces;
 
 public interface IFormDesignerService
 {
-    Task<List<FORM_FIELD_Master>> GetFormMasters(FormFunctionType functionType, string? q, CancellationToken ct);
-
-    Task UpdateFormMaster(FORM_FIELD_Master model, CancellationToken ct);
+    Task<List<FORM_FIELD_Master>> GetFormMasters( FormFunctionType functionType, string? q, CancellationToken ct );
     
-    void DeleteFormMaster(Guid id);
+    Task UpdateFormName( UpdateFormNameViewModel model, CancellationToken ct );
     
-    Task<FormDesignerIndexViewModel> GetFormDesignerIndexViewModel(FormFunctionType functionType, Guid? id, CancellationToken ct);
+    void DeleteFormMaster( Guid id );
     
-    /// <summary>
-    /// 依名稱關鍵字查詢資料表或檢視表名稱清單。
-    /// 支援前綴與模糊比對（使用 LIKE）。
-    /// </summary>
-    /// <param name="tableNamePattern">表名稱關鍵字或樣式</param>
-    /// <param name="schemaType">欲搜尋的資料來源類型（主表或檢視表）</param>
-    /// <returns>符合條件的表名稱集合</returns>
-    List<string> SearchTables(string? tableNamePattern, TableSchemaQueryType schemaType);
+    Task<FormDesignerIndexViewModel> GetFormDesignerIndexViewModel( FormFunctionType functionType, Guid? id, CancellationToken ct );
     
-    Guid GetOrCreateFormMasterId(FORM_FIELD_Master model);
+    List<string> SearchTables( string? tableName, TableSchemaQueryType schemaType );
     
-    FormFieldListViewModel? EnsureFieldsSaved(
-        string tableName,
-        Guid? formMasterId,
-        TableSchemaQueryType type);
-    FormFieldListViewModel GetFieldsByTableName(string tableName, Guid? formMasterId, TableSchemaQueryType schemaType);
-
-    Task UpdateFormName(Guid id, string formName, CancellationToken ct);
+    Guid GetOrCreateFormMasterId( FORM_FIELD_Master model );
+    
+    FormFieldListViewModel? EnsureFieldsSaved( string tableName, Guid? formMasterId, TableSchemaQueryType type );
+    FormFieldListViewModel GetFieldsByTableName( string tableName, Guid? formMasterId, TableSchemaQueryType schemaType );
 
     /// <summary>
     /// 依欄位設定 ID 取得單一欄位設定。
