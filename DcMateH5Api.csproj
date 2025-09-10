@@ -9,15 +9,13 @@
             <GenerateDocumentationFile>true</GenerateDocumentationFile>
             <NoWarn>$(NoWarn);1591</NoWarn> <!-- 避免每個未標註 <summary> 都報警告 -->
 
-                <GenerateAssemblyInfo>false</GenerateAssemblyInfo>
-                <GenerateTargetFrameworkAttribute>false</GenerateTargetFrameworkAttribute>
-                <!-- 組件資訊交給 SDK 產生 -->
-            <Company>DcMateH5Api</Company>
-            <Product>DcMateH5Api</Product>
-            <Version>1.0.0</Version>
-            <AssemblyTitle>DcMateH5Api</AssemblyTitle>
-            <Authors>WeYu</Authors>
-            <Description>DcMateH5Api Web Application</Description>
+        <!-- 由 SDK 自動產生組件屬性，避免重複宣告 -->
+        <Company>DcMateH5Api</Company>
+        <Product>DcMateH5Api</Product>
+        <Version>1.0.0</Version>
+        <AssemblyTitle>DcMateH5Api</AssemblyTitle>
+        <Authors>WeYu</Authors>
+        <Description>DcMateH5Api Web Application</Description>
     </PropertyGroup>
 
     <ItemGroup>
@@ -41,12 +39,14 @@
     </ItemGroup>
 
     <ItemGroup>
-      <_ContentIncludedByDefault Remove="DbExtensions\obj\DbExtensions.csproj.nuget.dgspec.json" />
-      <_ContentIncludedByDefault Remove="DbExtensions\obj\project.assets.json" />
-      <_ContentIncludedByDefault Remove="DbExtensions\obj\project.packagespec.json" />
-      <_ContentIncludedByDefault Remove="DcMateClassLibrary\obj\DcMateClassLibrary.csproj.nuget.dgspec.json" />
-      <_ContentIncludedByDefault Remove="DcMateClassLibrary\obj\project.assets.json" />
-      <_ContentIncludedByDefault Remove="DcMateClassLibrary\obj\project.packagespec.json" />
+        <!-- 明確排除子專案的編譯產物，避免 AssemblyInfo 重複被編譯 -->
+        <Compile Remove="DbExtensions\obj\**" />
+        <EmbeddedResource Remove="DbExtensions\obj\**" />
+        <None Remove="DbExtensions\obj\**" />
+
+        <Compile Remove="DcMateClassLibrary\obj\**" />
+        <EmbeddedResource Remove="DcMateClassLibrary\obj\**" />
+        <None Remove="DcMateClassLibrary\obj\**" />
     </ItemGroup>
 
 </Project>
