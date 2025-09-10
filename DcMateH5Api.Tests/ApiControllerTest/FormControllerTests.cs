@@ -1,7 +1,8 @@
+using ClassLibrary;
 using DcMateH5Api.Areas.Form.Controllers;
-using DcMateH5Api.Areas.Form.Models;
 using DcMateH5Api.Areas.Form.Interfaces;
 using DcMateH5Api.Areas.Form.ViewModels;
+using DcMateH5Api.Areas.Form.Models;
 using Microsoft.AspNetCore.Mvc;
 using Moq;
 using System.Collections.Generic;
@@ -10,7 +11,6 @@ namespace DcMateH5Api.Tests.ApiControllerTest;
 
 /// <summary>
 /// 測試 <see cref="FormController"/> 的 API 行為。
-/// 使用 <see cref="Moq"/> 模擬服務層，以避免存取真實資料庫。
 /// </summary>
 public class FormControllerTests
 {
@@ -24,16 +24,10 @@ public class FormControllerTests
     }
 
     [Fact]
-    public void GetForms_ReturnsOkWithViewModel()
+    public void GetForms_NullRequest_ReturnsBadRequest()
     {
-        var vm = new List<FormListDataViewModel> { new FormListDataViewModel { FormMasterId = Guid.NewGuid() } };
-        _serviceMock.Setup(s => s.GetFormList(null)).Returns(vm);
-
-
-        var result = _controller.GetForms(null) as OkObjectResult;
-
-        Assert.NotNull(result);
-        Assert.Equal(vm, result.Value);
+        var result = _controller.GetForms(null);
+        Assert.IsType<BadRequestObjectResult>(result);
     }
 
     [Fact]
@@ -41,7 +35,7 @@ public class FormControllerTests
     {
         var request = new FormSearchRequest(Guid.NewGuid());
         var vm = new List<FormListDataViewModel>();
-        _serviceMock.Setup(s => s.GetFormList(request)).Returns(vm);
+        _serviceMock.Setup(s => s.GetFormList(FormFunctionType.NotMasterDetail, request)).Returns(vm);
 
         var result = _controller.GetForms(request) as OkObjectResult;
 
@@ -79,7 +73,7 @@ public class FormControllerTests
     [Fact]
     public void SubmitForm_ReturnsNoContentAndInvokesService()
     {
-        var input = new FormSubmissionInputModel { FormId = Guid.NewGuid() };
+        var input = new FormSubmissionInputModel { BaseId = Guid.NewGuid() };
 
         var result = _controller.SubmitForm(input) as NoContentResult;
 
@@ -87,4 +81,3 @@ public class FormControllerTests
         Assert.NotNull(result);
     }
 }
-

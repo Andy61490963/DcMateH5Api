@@ -1,23 +1,23 @@
 <Project Sdk="Microsoft.NET.Sdk.Web">
 
     <PropertyGroup>
-        <TargetFramework>net10.0</TargetFramework>
+        <TargetFramework>net8.0</TargetFramework>
         <Nullable>enable</Nullable>
         <ImplicitUsings>enable</ImplicitUsings>
-		
-		<!-- 產生 XML 註解檔 -->
-	    <GenerateDocumentationFile>true</GenerateDocumentationFile>
-	    <NoWarn>$(NoWarn);1591</NoWarn> <!-- 避免每個未標註 <summary> 都報警告 -->
-		
-		<GenerateAssemblyInfo>false</GenerateAssemblyInfo>
-		<GenerateTargetFrameworkAttribute>false</GenerateTargetFrameworkAttribute>
-		<!-- 組件資訊交給 SDK 產生 -->
-	    <Company>DcMateH5Api</Company>
-	    <Product>DcMateH5Api</Product>
-	    <Version>1.0.0</Version>
-	    <AssemblyTitle>DcMateH5Api</AssemblyTitle>
-	    <Authors>WeYu</Authors>
-	    <Description>DcMateH5Api Web Application</Description>
+
+                <!-- 產生 XML 註解檔 -->
+            <GenerateDocumentationFile>true</GenerateDocumentationFile>
+            <NoWarn>$(NoWarn);1591</NoWarn> <!-- 避免每個未標註 <summary> 都報警告 -->
+
+                <GenerateAssemblyInfo>false</GenerateAssemblyInfo>
+                <GenerateTargetFrameworkAttribute>false</GenerateTargetFrameworkAttribute>
+                <!-- 組件資訊交給 SDK 產生 -->
+            <Company>DcMateH5Api</Company>
+            <Product>DcMateH5Api</Product>
+            <Version>1.0.0</Version>
+            <AssemblyTitle>DcMateH5Api</AssemblyTitle>
+            <Authors>WeYu</Authors>
+            <Description>DcMateH5Api Web Application</Description>
     </PropertyGroup>
 
     <ItemGroup>
@@ -29,35 +29,24 @@
       <PackageReference Include="Microsoft.AspNetCore.Authentication.JwtBearer" Version="8.0.7" />
     </ItemGroup>
 
-  <ItemGroup>
-      <!-- Exclude test project files from main project compilation -->
-      <Compile Remove="DcMateH5Api.Tests\**" />
-      <EmbeddedResource Remove="DcMateH5Api.Tests\**" />
-      <None Remove="DcMateH5Api.Tests\**" />
-  </ItemGroup>
+    <ItemGroup>
+        <!-- Exclude test project files from main project compilation -->
+        <Compile Remove="DcMateH5Api.Tests\**" />
+        <EmbeddedResource Remove="DcMateH5Api.Tests\**" />
+        <None Remove="DcMateH5Api.Tests\**" />
+    </ItemGroup>
 
-  <ItemGroup>
-    <Reference Include="Microsoft.AspNetCore.Authentication.JwtBearer">
-      <HintPath>bin\Debug\net10.0\Microsoft.AspNetCore.Authentication.JwtBearer.dll</HintPath>
-    </Reference>
-  </ItemGroup>
+    <ItemGroup>
+      <Folder Include="Areas\Log\ViewModels\" />
+    </ItemGroup>
 
-  <ItemGroup>
-    <Folder Include="Areas\Log\ViewModels\" />
-  </ItemGroup>
-
-  <ItemGroup>
-    <_ContentIncludedByDefault Remove="DbExtensions\obj\DbExtensions.csproj.nuget.dgspec.json" />
-    <_ContentIncludedByDefault Remove="DbExtensions\obj\project.assets.json" />
-    <_ContentIncludedByDefault Remove="DbExtensions\obj\project.packagespec.json" />
-    <_ContentIncludedByDefault Remove="TelegramNotify\obj\Debug\net10.0\TelegramNotify.sourcelink.json" />
-    <_ContentIncludedByDefault Remove="TelegramNotify\obj\project.assets.json" />
-    <_ContentIncludedByDefault Remove="TelegramNotify\obj\project.packagespec.json" />
-    <_ContentIncludedByDefault Remove="TelegramNotify\obj\TelegramNotify.csproj.nuget.dgspec.json" />
-    <_ContentIncludedByDefault Remove="TelegramNotify\bin\Debug\net10.0\TelegramNotify.deps.json" />
-    <_ContentIncludedByDefault Remove="DcMateClassLibrary\obj\DcMateClassLibrary.csproj.nuget.dgspec.json" />
-    <_ContentIncludedByDefault Remove="DcMateClassLibrary\obj\project.assets.json" />
-    <_ContentIncludedByDefault Remove="DcMateClassLibrary\obj\project.packagespec.json" />
-  </ItemGroup>
+    <ItemGroup>
+      <_ContentIncludedByDefault Remove="DbExtensions\obj\DbExtensions.csproj.nuget.dgspec.json" />
+      <_ContentIncludedByDefault Remove="DbExtensions\obj\project.assets.json" />
+      <_ContentIncludedByDefault Remove="DbExtensions\obj\project.packagespec.json" />
+      <_ContentIncludedByDefault Remove="DcMateClassLibrary\obj\DcMateClassLibrary.csproj.nuget.dgspec.json" />
+      <_ContentIncludedByDefault Remove="DcMateClassLibrary\obj\project.assets.json" />
+      <_ContentIncludedByDefault Remove="DcMateClassLibrary\obj\project.packagespec.json" />
+    </ItemGroup>
 
 </Project>

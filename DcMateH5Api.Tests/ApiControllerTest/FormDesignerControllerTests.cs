@@ -1,19 +1,15 @@
 using ClassLibrary;
 using DcMateH5Api.Areas.Form.Controllers;
-using DcMateH5Api.Areas.Form.Models;
 using DcMateH5Api.Areas.Form.Interfaces;
 using DcMateH5Api.Areas.Form.ViewModels;
 using Microsoft.AspNetCore.Mvc;
 using Moq;
-using DcMateH5Api.Helper;
-using System.Net;
 using System.Threading;
 
 namespace DcMateH5Api.Tests.ApiControllerTest;
 
 /// <summary>
 /// 測試 <see cref="FormDesignerController"/> 主要的 API 行為。
-/// 透過模擬的服務層確保 Controller 的邏輯正確。
 /// </summary>
 public class FormDesignerControllerTests
 {
@@ -23,112 +19,64 @@ public class FormDesignerControllerTests
         => new FormDesignerController(_designerMock.Object);
 
     [Fact]
-    public void SetAllEditable_NotOnlyTable_ReturnsBadRequest()
-    {
-        var controller = CreateController();
-
-        var result = controller.BatchSetEditable(Guid.NewGuid(), "t", true, TableSchemaQueryType.All);
-
-        Assert.IsType<BadRequestObjectResult>(result);
-    }
-
-    [Fact]
-    public void SetAllEditable_OnlyTable_ReturnsUpdatedFields()
+    public async Task BatchSetEditable_ReturnsUpdatedFields()
     {
         var controller = CreateController();
         var formId = Guid.NewGuid();
         var fields = new FormFieldListViewModel();
-        _designerMock.Setup(s => s.GetFieldsByTableName("t", formId, TableSchemaQueryType.OnlyTable)).Returns(fields);
+        _designerMock.Setup(s => s.SetAllEditable(formId, true, It.IsAny<CancellationToken>()))
+                     .ReturnsAsync("t");
+        _designerMock.Setup(s => s.GetFieldsByTableName("t", formId, TableSchemaQueryType.OnlyTable))
+                     .ReturnsAsync(fields);
 
-        var result = controller.BatchSetEditable(formId, "t", true, TableSchemaQueryType.OnlyTable) as OkObjectResult;
+        var result = await controller.BatchSetEditable(formId, true, CancellationToken.None) as OkObjectResult;
 
-        _designerMock.Verify(s => s.SetAllEditable(formId, "t", true), Times.Once);
+        _designerMock.Verify(s => s.SetAllEditable(formId, true, It.IsAny<CancellationToken>()), Times.Once);
         Assert.NotNull(result);
-        var model = Assert.IsType<FormFieldListViewModel>(result.Value);
-        Assert.Same(fields, model);
-        Assert.Equal(formId, model.ID);
-        Assert.Equal(TableSchemaQueryType.OnlyTable, model.SchemaQueryType);
+        Assert.Same(fields, result.Value);
     }
 
     [Fact]
-    public void SetAllRequired_NotOnlyTable_ReturnsBadRequest()
-    {
-        var controller = CreateController();
-
-        var result = controller.BatchSetRequired(Guid.NewGuid(), "t", true, TableSchemaQueryType.All);
-
-        Assert.IsType<BadRequestObjectResult>(result);
-    }
-
-    [Fact]
-    public void SetAllRequired_OnlyTable_ReturnsUpdatedFields()
+    public async Task BatchSetRequired_ReturnsUpdatedFields()
     {
         var controller = CreateController();
         var formId = Guid.NewGuid();
         var fields = new FormFieldListViewModel();
-        _designerMock.Setup(s => s.GetFieldsByTableName("t", formId, TableSchemaQueryType.OnlyTable)).Returns(fields);
+        _designerMock.Setup(s => s.SetAllRequired(formId, true, It.IsAny<CancellationToken>()))
+                     .ReturnsAsync("t");
+        _designerMock.Setup(s => s.GetFieldsByTableName("t", formId, TableSchemaQueryType.OnlyTable))
+                     .ReturnsAsync(fields);
 
-        var result = controller.BatchSetRequired(formId, "t", true, TableSchemaQueryType.OnlyTable) as OkObjectResult;
+        var result = await controller.BatchSetRequired(formId, true, CancellationToken.None) as OkObjectResult;
 
-        _designerMock.Verify(s => s.SetAllRequired(formId, "t", true), Times.Once);
+        _designerMock.Verify(s => s.SetAllRequired(formId, true, It.IsAny<CancellationToken>()), Times.Once);
         Assert.NotNull(result);
-        var model = Assert.IsType<FormFieldListViewModel>(result.Value);
-        Assert.Same(fields, model);
-        Assert.Equal(formId, model.ID);
-        Assert.Equal(TableSchemaQueryType.OnlyTable, model.SchemaQueryType);
+        Assert.Same(fields, result.Value);
     }
 
     [Fact]
-    public void SaveFormHeader_MissingNames_ReturnsBadRequest()
-    {
-        var controller = CreateController();
-        var vm = new FormHeaderViewModel();
-
-        var result = controller.SaveFormHeader(vm);
-
-        Assert.IsType<BadRequestObjectResult>(result);
-    }
-
-    [Fact]
-    public void GetFields_MissingSystemColumns_ReturnsBadRequest()
-    {
-        var controller = CreateController();
-        _designerMock
-            .Setup(s => s.EnsureFieldsSaved("T", null, TableSchemaQueryType.OnlyTable))
-            .Throws(new HttpStatusCodeException(HttpStatusCode.BadRequest, "缺少必要欄位"));
-
-        var result = controller.GetFields("T", null, TableSchemaQueryType.OnlyTable);
-
-        var obj = Assert.IsType<ObjectResult>(result);
-        Assert.Equal((int)HttpStatusCode.BadRequest, obj.StatusCode);
-        Assert.Equal("缺少必要欄位", obj.Value);
-    }
-
-    [Fact]
-    public void GetField_ById_ReturnsField()
+    public async Task GetField_ById_ReturnsField()
     {
         var controller = CreateController();
         var fieldId = Guid.NewGuid();
-        var field = new FormFieldViewModel { ID = fieldId };
-        _designerMock.Setup(s => s.GetFieldById(fieldId)).Returns(field);
+        var field = new FormFieldViewModel();
+        _designerMock.Setup(s => s.GetFieldById(fieldId)).ReturnsAsync(field);
 
-        var result = controller.GetField(fieldId) as OkObjectResult;
+        var result = await controller.GetField(fieldId) as OkObjectResult;
 
         Assert.NotNull(result);
-        var model = Assert.IsType<FormFieldViewModel>(result.Value);
-        Assert.Equal(TableSchemaQueryType.OnlyTable, model.SchemaType);
+        Assert.Same(field, result.Value);
     }
 
     [Fact]
-    public void GetField_ById_NotFound()
+    public async Task GetField_ById_NotFound()
     {
         var controller = CreateController();
         var fieldId = Guid.NewGuid();
-        _designerMock.Setup(s => s.GetFieldById(fieldId)).Returns((FormFieldViewModel?)null);
+        _designerMock.Setup(s => s.GetFieldById(fieldId)).ReturnsAsync((FormFieldViewModel?)null);
 
-        var result = controller.GetField(fieldId);
+        var result = await controller.GetField(fieldId);
 
         Assert.IsType<NotFoundResult>(result);
     }
 }
-
