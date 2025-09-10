@@ -312,44 +312,59 @@ public class FormService : IFormService
     }
 
     /// <summary>
-    /// 儲存或更新表單資料（含下拉選項答案）
+    /// 儲存或更新表單資料（含下拉選項答案），由呼叫端決定交易界限。
+    /// </summary>
+    /// <param name="input">前端送出的表單資料</param>
+    /// <param name="tx">交易物件</param>
+    public void SubmitForm(FormSubmissionInputModel input, SqlTransaction tx)
+    {
+        SubmitFormCore(input, tx);
+    }
+
+    /// <summary>
+    /// 儲存或更新表單資料（含下拉選項答案），由本服務自行開啟交易。
     /// </summary>
     /// <param name="input">前端送出的表單資料</param>
     public void SubmitForm(FormSubmissionInputModel input)
     {
-        _txService.WithTransaction(tx =>
+        _txService.WithTransaction(tx => SubmitFormCore(input, tx));
+    }
+
+    /// <summary>
+    /// 實際執行資料存取的核心邏輯，所有資料庫操作均以同一個交易物件進行。
+    /// </summary>
+    private void SubmitFormCore(FormSubmissionInputModel input, SqlTransaction tx)
+    {
+        // 查表單主設定
+        var master = _formFieldMasterService.GetFormFieldMasterFromId(input.BaseId, tx);
+
+        var (targetId, targetTable, _) = ResolveTargetTable(master);
+
+        // 查欄位設定並帶出 IS_EDITABLE 欄位，後續用於權限檢查
+        var configs = _con.Query<FormFieldConfigDto>(
+            "SELECT ID, COLUMN_NAME, CONTROL_TYPE, DATA_TYPE, IS_EDITABLE, QUERY_COMPONENT, QUERY_CONDITION FROM FORM_FIELD_CONFIG WHERE FORM_FIELD_Master_ID = @Id",
+            new { Id = targetId },
+            transaction: tx).ToDictionary(x => x.ID);
+
+        // 1. 欄位 mapping & 型別處理
+        var (normalFields, dropdownAnswers) = MapInputFields(input.InputFields, configs);
+
+        // 2. Insert/Update 決策
+        var (pkName, pkType, typedRowId) = _schemaService.ResolvePk(targetTable, input.Pk, tx);
+        bool isInsert = string.IsNullOrEmpty(input.Pk);
+        bool isIdentity = _schemaService.IsIdentityColumn(targetTable, pkName, tx);
+        object? realRowId = typedRowId;
+
+        if (isInsert)
+            realRowId = InsertRow(targetTable, pkName, pkType, isIdentity, normalFields, tx);
+        else
+            UpdateRow(targetTable, pkName, normalFields, realRowId, tx);
+
+        // 3. Dropdown Upsert
+        foreach (var (configId, optionId) in dropdownAnswers)
         {
-            // 查表單主設定
-            var master = _formFieldMasterService.GetFormFieldMasterFromId(input.BaseId, tx);
-
-            var (targetId, targetTable, _) = ResolveTargetTable(master);
-
-            // 查欄位設定並帶出 IS_EDITABLE 欄位，後續用於權限檢查
-            var configs = _con.Query<FormFieldConfigDto>(
-                "SELECT ID, COLUMN_NAME, CONTROL_TYPE, DATA_TYPE, IS_EDITABLE, QUERY_COMPONENT, QUERY_CONDITION FROM FORM_FIELD_CONFIG WHERE FORM_FIELD_Master_ID = @Id",
-                new { Id = targetId },
-                transaction: tx).ToDictionary(x => x.ID);
-
-            // 1. 欄位 mapping & 型別處理
-            var (normalFields, dropdownAnswers) = MapInputFields(input.InputFields, configs);
-
-            // 2. Insert/Update 決策
-            var (pkName, pkType, typedRowId) = _schemaService.ResolvePk(targetTable, input.Pk, tx);
-            bool isInsert = string.IsNullOrEmpty(input.Pk);
-            bool isIdentity = _schemaService.IsIdentityColumn(targetTable, pkName, tx);
-            object? realRowId = typedRowId;
-
-            if (isInsert)
-                realRowId = InsertRow(targetTable, pkName, pkType, isIdentity, normalFields, tx);
-            else
-                UpdateRow(targetTable, pkName, normalFields, realRowId, tx);
-
-            // 3. Dropdown Upsert
-            foreach (var (configId, optionId) in dropdownAnswers)
-            {
-                _con.Execute(Sql.UpsertDropdownAnswer, new { configId, RowId = realRowId, optionId }, transaction: tx);
-            }
-        });
+            _con.Execute(Sql.UpsertDropdownAnswer, new { configId, RowId = realRowId, optionId }, transaction: tx);
+        }
     }
     
     private (List<(string Column, object? Value)> NormalFields,
