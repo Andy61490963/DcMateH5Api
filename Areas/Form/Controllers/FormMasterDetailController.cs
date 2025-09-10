@@ -57,7 +57,7 @@ public class FormMasterDetailController : ControllerBase
     /// <summary>
     /// 提交主表與明細表資料。
     /// </summary>
-    /// <param name="input"></param>
+    /// <param name="input">一定要記得帶TOL_NO的FieldConfigId</param>
     [HttpPost]
     public IActionResult SubmitForm([FromBody] FormMasterDetailSubmissionInputModel input)
     {

@@ -6,8 +6,6 @@ using DcMateH5Api.Areas.Form.Interfaces.Transaction;
 using DcMateH5Api.Areas.Form.Models;
 using DcMateH5Api.Areas.Form.ViewModels;
 using Microsoft.Data.SqlClient;
-using Microsoft.Extensions.Configuration;
-using System.Linq;
 
 namespace DcMateH5Api.Areas.Form.Services;
 
@@ -117,77 +115,109 @@ public class FormMasterDetailService : IFormMasterDetailService
         return result;
     }
 
-    /// <inheritdoc />
+    /// <summary>
+    /// 新增/更新 主+明細 的 Orchestrator（原子性）
+    /// 支援：
+    /// 1) MasterPk 有值 → 只處理 Master 更新（若有欄位） + 新增/更新 Detail
+    /// 2) MasterPk 空 → 先新增 Master 取 relationValue → 灌入所有 Detail 後再寫 Detail
+    /// </summary>
     public void SubmitForm(FormMasterDetailSubmissionInputModel input)
     {
+        // 1) 讀設定：找出主檔/明細要用的關聯欄位名稱
+        var header = _formFieldMasterService.GetFormFieldMasterFromId(input.BaseId, null)
+                     ?? throw new InvalidOperationException($"Form master not found: {input.BaseId}");
 
-        var header = _formFieldMasterService.GetFormFieldMasterFromId(input.BaseId, null);
         var relationColumn = GetRelationColumn(header.BASE_TABLE_NAME!, header.DETAIL_TABLE_NAME!);
 
-        var masterCfgId = _con.ExecuteScalar<Guid?>(
-            @"/**/SELECT ID FROM FORM_FIELD_CONFIG WHERE FORM_FIELD_Master_ID = @Id AND COLUMN_NAME = @Col",
-            new { Id = header.BASE_TABLE_ID, Col = relationColumn }, transaction: null)
-            ?? throw new InvalidOperationException("Master relation column not found.");
-        var detailCfgId = _con.ExecuteScalar<Guid?>(
-            @"/**/SELECT ID FROM FORM_FIELD_CONFIG WHERE FORM_FIELD_Master_ID = @Id AND COLUMN_NAME = @Col",
-            new { Id = header.DETAIL_TABLE_ID, Col = relationColumn }, transaction: null)
-            ?? throw new InvalidOperationException("Detail relation column not found.");
+        // 2) 查出「關聯欄位」在 config 中對應的 ConfigId（Master / Detail 各一）
+        var masterCfgId = _con.ExecuteScalar<Guid?>(@"/**/
+        SELECT ID FROM FORM_FIELD_CONFIG 
+        WHERE FORM_FIELD_Master_ID = @Id AND COLUMN_NAME = @Col",
+                              new { Id = header.BASE_TABLE_ID, Col = relationColumn })
+                          ?? throw new InvalidOperationException("Master relation column not found.");
 
-        // 先找主明細表之間的關連鍵有沒有在異動清單裡面
-        var relationValue = input.MasterFields
-            .FirstOrDefault(f => f.FieldConfigId == masterCfgId)?.Value;
+        var detailCfgId = _con.ExecuteScalar<Guid?>(@"/**/
+        SELECT ID FROM FORM_FIELD_CONFIG 
+        WHERE FORM_FIELD_Master_ID = @Id AND COLUMN_NAME = @Col",
+                              new { Id = header.DETAIL_TABLE_ID, Col = relationColumn })
+                          ?? throw new InvalidOperationException("Detail relation column not found.");
+        
+        // 3) 優先從 MasterFields 嘗試取得 relationValue（若前端已送）
+        object? relationValue = input.MasterFields .FirstOrDefault(f => f.FieldConfigId == masterCfgId)?.Value;
 
-        if (relationValue == null && !string.IsNullOrEmpty(input.MasterPk))
+        // 4) 分兩種情境
+        if (!string.IsNullOrEmpty(input.MasterPk))
         {
-            var (pkName, pkType, pkVal) = _schemaService.ResolvePk(header.BASE_TABLE_NAME!, input.MasterPk, null);
-            relationValue = _con.ExecuteScalar<object?>(
-                $"SELECT [{relationColumn}] FROM [{header.BASE_TABLE_NAME}] WHERE [{pkName}] = @id",
-                new { id = pkVal }, null)?.ToString();
+            // Case A：Master 已存在（MasterPk 有值）
+            // 若 relationValue 還沒有，就用 MasterPk 回查 DB 的 relationColumn
+            if (relationValue is null)
+            {
+                var (pkName, _, pkVal) = _schemaService.ResolvePk(header.BASE_TABLE_NAME!, input.MasterPk);
+                relationValue = _con.ExecuteScalar<object?>(@"/**/
+SELECT [{relationColumn}] FROM [{header.BASE_TABLE_NAME}] WHERE [{pkName}] = @id", new { id = pkVal })
+                                ?? throw new InvalidOperationException($"Master not found by PK: {input.MasterPk}");
+            }
+
+            // 若有 Master 欄位要改，交給既有單表 Submit
+            if (input.MasterFields.Count > 0)
+            {
+                var masterUpdate = new FormSubmissionInputModel
+                {
+                    BaseId = header.BASE_TABLE_ID,
+                    Pk = input.MasterPk,
+                    InputFields = input.MasterFields
+                };
+                _formService.SubmitForm(masterUpdate);
+            }
+        }
+        else
+        {
+            // Case B：Master 要新增（MasterPk 空）
+            if (relationValue is null)
+            {
+                throw new InvalidOperationException($"關聯鍵的FieldConfigId遺失，無法插入關聯欄位");
+            }
+            else
+            {
+                // 前端已送 relationValue（例如非 PK 的自然鍵）
+                // 直接新增 Master（不需要再取 PK），用既有單表 Submit
+                var masterInsert = new FormSubmissionInputModel
+                {
+                    BaseId = header.BASE_TABLE_ID,
+                    Pk = null,
+                    InputFields = input.MasterFields
+                };
+                _formService.SubmitForm(masterInsert); // 沿用你現有方法
+            }
         }
 
-        if (relationValue == null)
-            throw new InvalidOperationException("Relation value not provided.");
-
-        // if (!input.MasterFields.Any(f => f.FieldConfigId == masterCfgId))
-        // {
-        //     input.MasterFields.Add(new FormInputField
-        //     {
-        //         FieldConfigId = masterCfgId,
-        //         Value = relationValue
-        //     });
-        // }
-
-        var masterInput = new FormSubmissionInputModel
-        {
-            BaseId = header.BASE_TABLE_ID,
-            Pk = input.MasterPk,
-            InputFields = input.MasterFields
-        };
-        _formService.SubmitForm(masterInput);
-
+        // 5) 明細：一律強制帶上 relationValue（覆蓋前端，避免被移到其他 Master）
         foreach (var row in input.DetailRows)
         {
-            // var relField = row.Fields.FirstOrDefault(f => f.FieldConfigId == detailCfgId);
-            // if (relField == null)
-            // {
-            //     row.Fields.Add(new FormInputField
-            //     {
-            //         FieldConfigId = detailCfgId,
-            //         Value = relationValue
-            //     });
-            // }
-            // else
-            // {
-            //     relField.Value = relationValue;
-            // }
+            UpsertField(row.Fields, detailCfgId, relationValue, overwrite: true);
 
             var detailInput = new FormSubmissionInputModel
             {
                 BaseId = header.DETAIL_TABLE_ID,
-                Pk = row.Pk,
+                Pk = string.IsNullOrWhiteSpace(row.Pk) ? null : row.Pk,
                 InputFields = row.Fields
             };
-            _formService.SubmitForm(detailInput);
+            _formService.SubmitForm(detailInput); 
         }
     }
+
+    /// <summary>
+    /// 把 relationValue 塞進某 Fields 清單（若已存在就覆蓋）
+    /// </summary>
+    /// <param name="fields"></param>
+    /// <param name="cfgId"></param>
+    /// <param name="value"></param>
+    /// <param name="overwrite"></param>
+    private static void UpsertField(List<FormInputField> fields, Guid cfgId, object? value, bool overwrite)
+    {
+        var f = fields.FirstOrDefault(x => x.FieldConfigId == cfgId);
+        if (f == null) fields.Add(new FormInputField { FieldConfigId = cfgId, Value = value.ToString() });
+        else if (overwrite) f.Value = value.ToString();
+    }
+
 }
