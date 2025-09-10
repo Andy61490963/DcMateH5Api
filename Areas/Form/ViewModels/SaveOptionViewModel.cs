@@ -2,7 +2,7 @@ using System.ComponentModel.DataAnnotations;
 
 namespace DcMateH5Api.Areas.Form.Models;
 
-public class SaveOptionDto
+public class SaveOptionViewModel
 {
     /// <summary>
     /// 選項 ID，若為 null 表示新增；否則表示更新

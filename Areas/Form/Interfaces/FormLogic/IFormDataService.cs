@@ -15,7 +15,7 @@ public interface IFormDataService
     /// <returns>符合條件的資料列。</returns>
     List<IDictionary<string, object?>> GetRows(
         string tableName,
-        IEnumerable<FormQueryCondition>? conditions = null,
+        IEnumerable<FormQueryConditionViewModel>? conditions = null,
         int? page = null,
         int? pageSize = null);
 

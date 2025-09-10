@@ -18,7 +18,7 @@ public class FormDataService : IFormDataService
     
     public List<IDictionary<string, object?>> GetRows(
         string tableName,
-        IEnumerable<FormQueryCondition>? conditions = null,
+        IEnumerable<FormQueryConditionViewModel>? conditions = null,
         int? page = null,
         int? pageSize = null)
     {

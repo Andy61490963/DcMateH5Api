@@ -7,10 +7,10 @@ namespace DcMateH5Api.Areas.Form.Interfaces.FormLogic;
 
 public interface IFormFieldMasterService
 {
-    FORM_FIELD_Master? GetFormFieldMaster(TableSchemaQueryType type);
+    FormFieldMasterDto? GetFormFieldMaster(TableSchemaQueryType type);
 
-    FORM_FIELD_Master GetFormFieldMasterFromId(Guid? id, SqlTransaction? tx = null );
+    FormFieldMasterDto GetFormFieldMasterFromId(Guid? id, SqlTransaction? tx = null );
 
-    List<(FORM_FIELD_Master Master, List<FormFieldConfigDto> FieldConfigs)> GetFormMetaAggregates(
-        TableSchemaQueryType type);
+    List<(FormFieldMasterDto Master, List<FormFieldConfigDto> FieldConfigs)> GetFormMetaAggregates(
+        FormFunctionType funcType, TableSchemaQueryType type);
 }

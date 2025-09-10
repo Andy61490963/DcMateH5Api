@@ -78,17 +78,6 @@ public static class EnumExtensions
             })
             .ToList();
     }
-
-    public static List<ValidationTypeOptionDto> ToSelectList<TEnum>(IEnumerable<TEnum> values) where TEnum : Enum
-    {
-        return values
-            .Select(e => new ValidationTypeOptionDto
-            {
-                Value = Convert.ToInt32(e).ToString(),
-                Text = GetDisplayName(e)
-            })
-            .ToList();
-    }
     
     /// <summary>
     /// 取得列舉描述

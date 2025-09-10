@@ -1,3 +1,4 @@
+using ClassLibrary;
 using DcMateH5Api.Areas.Form.Interfaces;
 using DcMateH5Api.Areas.Form.Models;
 using DcMateH5Api.Areas.Form.ViewModels;
@@ -16,7 +17,7 @@ namespace DcMateH5Api.Areas.Form.Controllers;
 public class FormMasterDetailController : ControllerBase
 {
     private readonly IFormMasterDetailService _service;
-
+    private readonly FormFunctionType _funcType = FormFunctionType.MasterDetail;
     public FormMasterDetailController(IFormMasterDetailService service)
     {
         _service = service;
@@ -37,7 +38,7 @@ public class FormMasterDetailController : ControllerBase
                 Hint  = "請確認傳入的 JSON 是否正確，至少需要提供查詢條件或分頁參數"
             });
         }
-        var vm = _service.GetFormList(request);
+        var vm = _service.GetFormList( _funcType, request );
         return Ok(vm);
     }
 
@@ -56,7 +57,7 @@ public class FormMasterDetailController : ControllerBase
     /// <summary>
     /// 提交主表與明細表資料。
     /// </summary>
-    /// <param name="input">提交資料。</param>
+    /// <param name="input"></param>
     [HttpPost]
     public IActionResult SubmitForm([FromBody] FormMasterDetailSubmissionInputModel input)
     {

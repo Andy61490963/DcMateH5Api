@@ -55,9 +55,9 @@ public class FormMasterDetailService : IFormMasterDetailService
     }
 
     /// <inheritdoc />
-    public List<FormListDataViewModel> GetFormList(FormSearchRequest? request = null)
+    public List<FormListDataViewModel> GetFormList(FormFunctionType funcType, FormSearchRequest? request = null)
     {
-        return _formService.GetFormList(request);
+        return _formService.GetFormList(funcType, request);
     }
 
     /// <inheritdoc />
@@ -96,9 +96,9 @@ public class FormMasterDetailService : IFormMasterDetailService
         var detailColumnTypes = _formDataService.LoadColumnTypes(header.DETAIL_TABLE_NAME);
         var rows = _formDataService.GetRows(
             header.DETAIL_TABLE_NAME,
-            new List<FormQueryCondition>
+            new List<FormQueryConditionViewModel>
             {
-                new FormQueryCondition
+                new FormQueryConditionViewModel
                 {
                     Column = relationColumn,
                     ConditionType = ConditionType.Equal,
@@ -121,24 +121,25 @@ public class FormMasterDetailService : IFormMasterDetailService
     public void SubmitForm(FormMasterDetailSubmissionInputModel input)
     {
 
-        var header = _formFieldMasterService.GetFormFieldMasterFromId(input.FormId, null);
-        var relationColumn = GetRelationColumn(header.BASE_TABLE_NAME, header.DETAIL_TABLE_NAME);
+        var header = _formFieldMasterService.GetFormFieldMasterFromId(input.BaseId, null);
+        var relationColumn = GetRelationColumn(header.BASE_TABLE_NAME!, header.DETAIL_TABLE_NAME!);
 
         var masterCfgId = _con.ExecuteScalar<Guid?>(
-            "SELECT ID FROM FORM_FIELD_CONFIG WHERE FORM_FIELD_Master_ID = @Id AND COLUMN_NAME = @Col",
+            @"/**/SELECT ID FROM FORM_FIELD_CONFIG WHERE FORM_FIELD_Master_ID = @Id AND COLUMN_NAME = @Col",
             new { Id = header.BASE_TABLE_ID, Col = relationColumn }, transaction: null)
             ?? throw new InvalidOperationException("Master relation column not found.");
         var detailCfgId = _con.ExecuteScalar<Guid?>(
-            "SELECT ID FROM FORM_FIELD_CONFIG WHERE FORM_FIELD_Master_ID = @Id AND COLUMN_NAME = @Col",
+            @"/**/SELECT ID FROM FORM_FIELD_CONFIG WHERE FORM_FIELD_Master_ID = @Id AND COLUMN_NAME = @Col",
             new { Id = header.DETAIL_TABLE_ID, Col = relationColumn }, transaction: null)
             ?? throw new InvalidOperationException("Detail relation column not found.");
 
+        // 先找主明細表之間的關連鍵有沒有在異動清單裡面
         var relationValue = input.MasterFields
             .FirstOrDefault(f => f.FieldConfigId == masterCfgId)?.Value;
 
         if (relationValue == null && !string.IsNullOrEmpty(input.MasterPk))
         {
-            var (pkName, pkType, pkVal) = _schemaService.ResolvePk(header.BASE_TABLE_NAME, input.MasterPk, null);
+            var (pkName, pkType, pkVal) = _schemaService.ResolvePk(header.BASE_TABLE_NAME!, input.MasterPk, null);
             relationValue = _con.ExecuteScalar<object?>(
                 $"SELECT [{relationColumn}] FROM [{header.BASE_TABLE_NAME}] WHERE [{pkName}] = @id",
                 new { id = pkVal }, null)?.ToString();
@@ -147,18 +148,18 @@ public class FormMasterDetailService : IFormMasterDetailService
         if (relationValue == null)
             throw new InvalidOperationException("Relation value not provided.");
 
-        if (!input.MasterFields.Any(f => f.FieldConfigId == masterCfgId))
-        {
-            input.MasterFields.Add(new FormInputField
-            {
-                FieldConfigId = masterCfgId,
-                Value = relationValue
-            });
-        }
+        // if (!input.MasterFields.Any(f => f.FieldConfigId == masterCfgId))
+        // {
+        //     input.MasterFields.Add(new FormInputField
+        //     {
+        //         FieldConfigId = masterCfgId,
+        //         Value = relationValue
+        //     });
+        // }
 
         var masterInput = new FormSubmissionInputModel
         {
-            FormId = header.BASE_TABLE_ID,
+            BaseId = header.BASE_TABLE_ID,
             Pk = input.MasterPk,
             InputFields = input.MasterFields
         };
@@ -166,23 +167,23 @@ public class FormMasterDetailService : IFormMasterDetailService
 
         foreach (var row in input.DetailRows)
         {
-            var relField = row.Fields.FirstOrDefault(f => f.FieldConfigId == detailCfgId);
-            if (relField == null)
-            {
-                row.Fields.Add(new FormInputField
-                {
-                    FieldConfigId = detailCfgId,
-                    Value = relationValue
-                });
-            }
-            else
-            {
-                relField.Value = relationValue;
-            }
+            // var relField = row.Fields.FirstOrDefault(f => f.FieldConfigId == detailCfgId);
+            // if (relField == null)
+            // {
+            //     row.Fields.Add(new FormInputField
+            //     {
+            //         FieldConfigId = detailCfgId,
+            //         Value = relationValue
+            //     });
+            // }
+            // else
+            // {
+            //     relField.Value = relationValue;
+            // }
 
             var detailInput = new FormSubmissionInputModel
             {
-                FormId = header.DETAIL_TABLE_ID,
+                BaseId = header.DETAIL_TABLE_ID,
                 Pk = row.Pk,
                 InputFields = row.Fields
             };

@@ -7,7 +7,7 @@ public class FormDesignerIndexViewModel
     /// <summary>
     /// 表單主檔基本資訊
     /// </summary>
-    public FORM_FIELD_Master FormHeader { get; set; } = new();
+    public FormFieldMasterDto FormHeader { get; set; } = new();
 
     /// <summary>
     /// 主檔欄位設定清單

@@ -30,7 +30,7 @@ public class FormDesignerMasterDetailController : ControllerBase
     /// <param name="ct">CancellationToken</param>
     /// <returns>表單主檔清單</returns>
     [HttpGet]
-    public async Task<ActionResult<List<FORM_FIELD_Master>>> GetFormMasters(
+    public async Task<ActionResult<List<FormFieldMasterDto>>> GetFormMasters(
         [FromQuery] string? q,
         CancellationToken ct)
     {
@@ -105,11 +105,11 @@ public class FormDesignerMasterDetailController : ControllerBase
     /// <param name="schemaType">列舉類型</param>
     /// <returns></returns>
     [HttpGet("tables/{tableName}/fields")]
-    public IActionResult GetFields( string tableName, Guid? formMasterId, [FromQuery] TableSchemaQueryType schemaType )
+    public async Task<IActionResult> GetFields( string tableName, Guid? formMasterId, [FromQuery] TableSchemaQueryType schemaType )
     {
         try
         {
-            var result = _formDesignerService.EnsureFieldsSaved( tableName, formMasterId, schemaType );
+            var result = await _formDesignerService.EnsureFieldsSaved( tableName, formMasterId, schemaType );
 
             if ( result == null ) return NotFound();
             return Ok( result );
@@ -126,9 +126,9 @@ public class FormDesignerMasterDetailController : ControllerBase
     /// <param name="fieldId">FORM_FIELD_CONFIG 的ID</param>
     /// <returns></returns>
     [HttpGet("fields/{fieldId}")]
-    public IActionResult GetField( Guid fieldId )
+    public async Task<IActionResult> GetField( Guid fieldId )
     {
-        var field = _formDesignerService.GetFieldById( fieldId );
+        var field = await _formDesignerService.GetFieldById( fieldId );
         if ( field == null ) return NotFound();
         return Ok( field );
     }
@@ -136,15 +136,10 @@ public class FormDesignerMasterDetailController : ControllerBase
     /// <summary>
     /// 新增或更新單一欄位設定（ID 有值為更新，無值為新增）
     /// </summary>
-    // [RequirePermission(ActionAuthorizeHelper.View)]
-    [HttpPost("fields")]
-    /// <summary>
-    /// 新增或更新單一欄位設定（ID 有值為更新，無值為新增）
-    /// </summary>
     /// <param name="model">GetField( Guid fieldId ) 取得的欄位 Json </param>
     /// <returns></returns>
     [HttpPost("fields")]
-    public IActionResult UpsertField( [FromBody] FormFieldViewModel model )
+    public async Task<IActionResult> UpsertField( [FromBody] FormFieldViewModel model )
     {
         try
         {
@@ -167,11 +162,11 @@ public class FormDesignerMasterDetailController : ControllerBase
                  _formDesignerService.GetControlTypeByFieldId( model.ID ) != model.CONTROL_TYPE )
                 return Conflict( "已有驗證規則，無法變更控制元件類型" );
 
-            var master = new FORM_FIELD_Master { ID = model.FORM_FIELD_Master_ID };
+            var master = new FormFieldMasterDto { ID = model.FORM_FIELD_Master_ID };
             var formMasterId = _formDesignerService.GetOrCreateFormMasterId( master );
 
             _formDesignerService.UpsertField( model, formMasterId );
-            var fields = _formDesignerService.GetFieldsByTableName( model.TableName, formMasterId, model.SchemaType );
+            var fields = await _formDesignerService.GetFieldsByTableName( model.TableName, formMasterId, model.SchemaType );
             return Ok( fields );
         }
         catch ( HttpStatusCodeException ex )
@@ -193,7 +188,7 @@ public class FormDesignerMasterDetailController : ControllerBase
     public async Task<IActionResult> BatchSetEditable( [FromQuery] Guid formMasterId, [FromQuery] bool isEditable, CancellationToken ct )
     {
         var model = await _formDesignerService.SetAllEditable( formMasterId, isEditable, ct );
-        var fields = _formDesignerService.GetFieldsByTableName( model, formMasterId, TableSchemaQueryType.OnlyTable );
+        var fields = await _formDesignerService.GetFieldsByTableName( model, formMasterId, TableSchemaQueryType.OnlyTable );
         return Ok( fields );
     }
     
@@ -208,7 +203,7 @@ public class FormDesignerMasterDetailController : ControllerBase
     public async Task<IActionResult> BatchSetRequired( [FromQuery] Guid formMasterId, [FromQuery] bool isRequired, CancellationToken ct )
     {
         var tableName = await _formDesignerService.SetAllRequired( formMasterId, isRequired, ct );
-        var fields = _formDesignerService.GetFieldsByTableName( tableName, formMasterId,  TableSchemaQueryType.OnlyTable );
+        var fields = await _formDesignerService.GetFieldsByTableName( tableName, formMasterId,  TableSchemaQueryType.OnlyTable );
         return Ok( fields );
     }
     
@@ -224,7 +219,7 @@ public class FormDesignerMasterDetailController : ControllerBase
     public async Task<IActionResult> AddEmptyValidationRule( Guid fieldId, CancellationToken ct = default )
     {
         var rule = _formDesignerService.CreateEmptyValidationRule( fieldId );
-        await _formDesignerService.InsertValidationRule(rule);
+        await _formDesignerService.InsertValidationRule( rule, ct );
         var rules = await _formDesignerService.GetValidationRulesByFieldId( fieldId, ct );
         return Ok( new { rules } );
     }
@@ -280,14 +275,14 @@ public class FormDesignerMasterDetailController : ControllerBase
     [HttpGet("fields/{fieldId:guid}/dropdown")]
     public async Task<IActionResult> GetDropdownSetting( Guid fieldId )
     {
-        var field = _formDesignerService.GetFieldById( fieldId );
+        var field = await _formDesignerService.GetFieldById( fieldId );
         if ( field == null )
         {
             return BadRequest( "查無此設定檔，請確認ID是否正確。" );
         }
-        if (field.SchemaType != TableSchemaQueryType.OnlyView)
+        if (field.SchemaType != TableSchemaQueryType.OnlyTable)
         {
-            return BadRequest( "查詢條件僅支援View表。" );
+            return BadRequest( "下拉選單設定只支援主擋。" );
         }
         _formDesignerService.EnsureDropdownCreated( fieldId );
         var setting = await _formDesignerService.GetDropdownSetting( fieldId );
@@ -352,12 +347,12 @@ public class FormDesignerMasterDetailController : ControllerBase
     /// <param name="dto"></param>
     /// <returns></returns>
     [HttpPost("dropdowns/{dropdownId:guid}/import-options")]
-    public IActionResult ImportDropdownOptions( Guid dropdownId, [FromBody] ImportOptionDto dto )
+    public async Task<IActionResult> ImportDropdownOptions( Guid dropdownId, [FromBody] ImportOptionViewModel dto )
     {
         var res = _formDesignerService.ImportDropdownOptionsFromSql( dto.Sql, dropdownId );
         if ( !res.Success ) return BadRequest( res.Message );
 
-        var options = _formDesignerService.GetDropdownOptions( dropdownId );
+        var options = await _formDesignerService.GetDropdownOptions( dropdownId );
         return Ok( options );
     }
 
@@ -382,7 +377,7 @@ public class FormDesignerMasterDetailController : ControllerBase
     /// <param name="dto"></param>
     /// <returns></returns>
     [HttpPut("dropdowns/{dropdownId:guid}/options")]
-    public IActionResult SaveDropdownOption( Guid dropdownId, [FromBody] SaveOptionDto dto )
+    public IActionResult SaveDropdownOption( Guid dropdownId, [FromBody] SaveOptionViewModel dto )
     {
         _formDesignerService.SaveDropdownOption( dto.Id, dropdownId, dto.OptionText, dto.OptionValue );
         return Ok();
@@ -410,7 +405,7 @@ public class FormDesignerMasterDetailController : ControllerBase
     [HttpPost("headers")]
     public IActionResult SaveMasterDetailFormHeader([FromBody] MasterDetailFormHeaderViewModel model)
     {
-        if (model.MASTER_TABLE_ID == Guid.Empty ||
+        if (model.BASE_TABLE_ID == Guid.Empty ||
             model.DETAIL_TABLE_ID == Guid.Empty ||
             model.VIEW_TABLE_ID == Guid.Empty)
         {
@@ -418,7 +413,7 @@ public class FormDesignerMasterDetailController : ControllerBase
         }
 
         if (_formDesignerService.CheckMasterDetailFormMasterExists(
-                model.MASTER_TABLE_ID,
+                model.BASE_TABLE_ID,
                 model.DETAIL_TABLE_ID,
                 model.VIEW_TABLE_ID,
                 model.ID))

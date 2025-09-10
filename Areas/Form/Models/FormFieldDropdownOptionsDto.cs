@@ -4,7 +4,7 @@ using System.ComponentModel.DataAnnotations.Schema;
 namespace DcMateH5Api.Areas.Form.Models;
 
 [Table("FORM_FIELD_DROPDOWN_OPTIONS")]
-public class FormFieldDropdownOptions
+public class FormFieldDropdownOptionsDto
 {
     [Key]
     [Column("ID")]

@@ -16,28 +16,28 @@ public class FormFieldMasterService : IFormFieldMasterService
         _con = connection;
     }
 
-    public FORM_FIELD_Master? GetFormFieldMaster(TableSchemaQueryType type)
+    public FormFieldMasterDto? GetFormFieldMaster(TableSchemaQueryType type)
     {
-        return _con.QueryFirstOrDefault<FORM_FIELD_Master>(
+        return _con.QueryFirstOrDefault<FormFieldMasterDto>(
             "/**/SELECT * FROM FORM_FIELD_Master WHERE SCHEMA_TYPE = @TYPE",
             new { TYPE = type.ToInt() });
     }
 
-    public FORM_FIELD_Master GetFormFieldMasterFromId(Guid? id, SqlTransaction? tx = null)
+    public FormFieldMasterDto GetFormFieldMasterFromId(Guid? id, SqlTransaction? tx = null)
     {
-        return _con.QueryFirst<FORM_FIELD_Master>(
+        return _con.QueryFirst<FormFieldMasterDto>(
             "/**/SELECT * FROM FORM_FIELD_Master WHERE ID = @id",
             new { id }, transaction: tx);
     }
 
-    public List<(FORM_FIELD_Master Master, List<FormFieldConfigDto> FieldConfigs)> GetFormMetaAggregates(TableSchemaQueryType type)
+    public List<(FormFieldMasterDto Master, List<FormFieldConfigDto> FieldConfigs)> GetFormMetaAggregates( FormFunctionType funcType, TableSchemaQueryType type )
     {
-        var masters = _con.Query<FORM_FIELD_Master>(
-            "/**/SELECT * FROM FORM_FIELD_Master WHERE SCHEMA_TYPE = @TYPE",
-            new { TYPE = type.ToInt() })
+        var masters = _con.Query<FormFieldMasterDto>(
+            "/**/SELECT * FROM FORM_FIELD_Master WHERE SCHEMA_TYPE = @TYPE AND IS_MASTER_DETAIL = @funcType",
+            new { TYPE = type.ToInt(), funcType = funcType.ToInt() })
             .ToList();
 
-        var result = new List<(FORM_FIELD_Master Master, List<FormFieldConfigDto> FieldConfigs)>();
+        var result = new List<(FormFieldMasterDto Master, List<FormFieldConfigDto> FieldConfigs)>();
 
         foreach (var master in masters)
         {

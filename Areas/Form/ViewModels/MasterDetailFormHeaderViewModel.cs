@@ -18,7 +18,7 @@ public class MasterDetailFormHeaderViewModel
     /// <summary>
     /// Master 表單的 FORM_FIELD_Master ID
     /// </summary>
-    public Guid MASTER_TABLE_ID { get; set; }
+    public Guid BASE_TABLE_ID { get; set; }
 
     /// <summary>
     /// Detail 表單的 FORM_FIELD_Master ID

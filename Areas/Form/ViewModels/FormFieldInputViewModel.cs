@@ -23,7 +23,7 @@ public class FormFieldInputViewModel
     public ConditionType QUERY_CONDITION { get; set; }
     
     public bool CAN_QUERY { get; set; }
-    public List<FormFieldDropdownOptions> OptionList { get; set; } = new();
+    public List<FormFieldDropdownOptionsDto> OptionList { get; set; } = new();
 
     /// <summary>
     /// 若欄位來自 View，可紀錄其實際來源表

@@ -2,7 +2,7 @@ using System.ComponentModel.DataAnnotations;
 
 namespace DcMateH5Api.Areas.Form.Models;
 
-public class ImportOptionDto
+public class ImportOptionViewModel
 {
     /// <summary>
     /// 使用者輸入的 SQL 語法（例如 SELECT Value, Text FROM ...）

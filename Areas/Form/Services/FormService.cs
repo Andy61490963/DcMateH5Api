@@ -43,15 +43,16 @@ public class FormService : IFormService
     /// 取得所有表單的資料清單（含對應欄位值），
     /// 並自動轉換下拉選單欄位的選項 ID 為顯示文字（OptionText）。
     /// </summary>
+    /// <param name="funcType">功能類型</param>
     /// <param name="request">查詢條件與分頁資訊（可選）</param>
     /// <returns>轉換過欄位顯示內容的表單清單資料</returns>
-    public List<FormListDataViewModel> GetFormList(FormSearchRequest? request = null)
+    public List<FormListDataViewModel> GetFormList( FormFunctionType funcType, FormSearchRequest? request = null )
     {
         // 1. 取得所有表單主設定（含欄位設定），使用 VIEW 為主查詢來源
-        var metas = _formFieldMasterService.GetFormMetaAggregates(TableSchemaQueryType.All);
+        var metas = _formFieldMasterService.GetFormMetaAggregates( funcType, TableSchemaQueryType.All );
 
         // 若指定 FormMasterId，僅處理該表單
-        if (request?.FormMasterId != Guid.Empty)
+        if (request?.FormMasterId != Guid.Empty && request?.FormMasterId != null)
         {
             metas = metas.Where(m => m.Master.ID == request.FormMasterId).ToList();
         }
@@ -64,13 +65,13 @@ public class FormService : IFormService
         {
             // 3.1 根據 View 撈出該表單的資料列（使用傳入查詢條件與分頁設定）
             var rawRows = _formDataService.GetRows(
-                master.VIEW_TABLE_NAME,
+                master.VIEW_TABLE_NAME!,
                 request?.Conditions,
                 request?.Page,
                 request?.PageSize);
 
             // 3.2 取得主表主鍵欄位，用於辨識每一筆資料的唯一性
-            var pk = _schemaService.GetPrimaryKeyColumn(master.BASE_TABLE_NAME);
+            var pk = _schemaService.GetPrimaryKeyColumn(master.BASE_TABLE_NAME!);
 
             if (pk == null)
                 throw new InvalidOperationException("No primary key column found");
@@ -92,7 +93,7 @@ public class FormService : IFormService
             }
 
             // 3.5 根據 VIEW 設定，組裝欄位模板（含控制型態、驗證等）
-            var fieldTemplates = GetFields(master.VIEW_TABLE_ID, TableSchemaQueryType.OnlyView, master.VIEW_TABLE_NAME);
+            var fieldTemplates = GetFields(master.VIEW_TABLE_ID, TableSchemaQueryType.OnlyView, master.VIEW_TABLE_NAME!);
 
             // 3.6 將每一筆資料列組成 ViewModel，並加入回傳清單
             foreach (var row in rows)
@@ -134,6 +135,7 @@ public class FormService : IFormService
                 results.Add(new FormListDataViewModel
                 {
                     FormMasterId = master.ID,
+                    BaseId = master.BASE_TABLE_ID,
                     Pk = row.PkId?.ToString() ?? string.Empty,
                     Fields = rowFields
                 });
@@ -210,13 +212,13 @@ public class FormService : IFormService
         };
     }
 
-    private (Guid? Id, string Table, TableSchemaQueryType Schema) ResolveTargetTable(FORM_FIELD_Master master)
+    private (Guid? Id, string Table, TableSchemaQueryType Schema) ResolveTargetTable(FormFieldMasterDto masterDto)
     {
-        return master.SCHEMA_TYPE switch
+        return masterDto.SCHEMA_TYPE switch
         {
-            TableSchemaQueryType.OnlyTable => (master.BASE_TABLE_ID, master.BASE_TABLE_NAME ?? throw new InvalidOperationException("BASE_TABLE_NAME missing"), TableSchemaQueryType.OnlyTable),
-            TableSchemaQueryType.OnlyDetail => (master.DETAIL_TABLE_ID, master.DETAIL_TABLE_NAME ?? throw new InvalidOperationException("DETAIL_TABLE_NAME missing"), TableSchemaQueryType.OnlyDetail),
-            TableSchemaQueryType.OnlyView => (master.VIEW_TABLE_ID, master.VIEW_TABLE_NAME ?? throw new InvalidOperationException("VIEW_TABLE_NAME missing"), TableSchemaQueryType.OnlyView),
+            TableSchemaQueryType.OnlyTable => (masterDto.BASE_TABLE_ID, masterDto.BASE_TABLE_NAME ?? throw new InvalidOperationException("BASE_TABLE_NAME missing"), TableSchemaQueryType.OnlyTable),
+            TableSchemaQueryType.OnlyDetail => (masterDto.DETAIL_TABLE_ID, masterDto.DETAIL_TABLE_NAME ?? throw new InvalidOperationException("DETAIL_TABLE_NAME missing"), TableSchemaQueryType.OnlyDetail),
+            TableSchemaQueryType.OnlyView => (masterDto.VIEW_TABLE_ID, masterDto.VIEW_TABLE_NAME ?? throw new InvalidOperationException("VIEW_TABLE_NAME missing"), TableSchemaQueryType.OnlyView),
             _ => throw new InvalidOperationException("Unsupported schema type")
         };
     }
@@ -286,9 +288,9 @@ public class FormService : IFormService
     }
 
     /// <summary>
-    /// 以 <see cref="FormFieldDropdownOptions"/> 設定動態載入下拉選單選項。
+    /// 以 <see cref="FormFieldDropdownOptionsDto"/> 設定動態載入下拉選單選項。
     /// </summary>
-    private List<FormFieldDropdownOptions> LoadDropdownOptions(FormFieldDropdownOptions config)
+    private List<FormFieldDropdownOptionsDto> LoadDropdownOptions(FormFieldDropdownOptionsDto config)
     {
         if (!IsSafeIdentifier(config.OPTION_TABLE) ||
             !IsSafeIdentifier(config.OPTION_VALUE) ||
@@ -298,7 +300,7 @@ public class FormService : IFormService
         }
 
         var sql = $"SELECT [{config.OPTION_VALUE}] AS OPTION_VALUE, [{config.OPTION_TEXT}] AS OPTION_TEXT FROM [{config.OPTION_TABLE}]";
-        return _con.Query<FormFieldDropdownOptions>(sql).ToList();
+        return _con.Query<FormFieldDropdownOptionsDto>(sql).ToList();
     }
 
     /// <summary>
@@ -318,7 +320,7 @@ public class FormService : IFormService
         _txService.WithTransaction(tx =>
         {
             // 查表單主設定
-            var master = _formFieldMasterService.GetFormFieldMasterFromId(input.FormId, tx);
+            var master = _formFieldMasterService.GetFormFieldMasterFromId(input.BaseId, tx);
 
             var (targetId, targetTable, _) = ResolveTargetTable(master);
 

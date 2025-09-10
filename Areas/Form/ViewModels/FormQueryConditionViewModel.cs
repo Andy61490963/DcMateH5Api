@@ -6,13 +6,13 @@ public sealed record FormSearchRequest(
     Guid FormMasterId,
     int Page = 1,
     int PageSize = 20,
-    List<FormQueryCondition>? Conditions = null
+    List<FormQueryConditionViewModel>? Conditions = null
 );
 
 /// <summary>
 /// 描述查詢條件的資料模型。
 /// </summary>
-public class FormQueryCondition
+public class FormQueryConditionViewModel
 {
     /// <summary>要比對的欄位名稱。</summary>
     public string Column { get; set; } = string.Empty;

@@ -2,7 +2,7 @@ using System;
 
 namespace DcMateH5Api.Areas.Form.Models;
 
-public class FORM_FIELD_DROPDOWN_ANSWER
+public class FormFieldDropdownAnswerDto
 {
     /// <summary>
     /// 排序用序號

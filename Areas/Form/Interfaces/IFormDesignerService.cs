@@ -6,7 +6,7 @@ namespace DcMateH5Api.Areas.Form.Interfaces;
 
 public interface IFormDesignerService
 {
-    Task<List<FORM_FIELD_Master>> GetFormMasters( FormFunctionType functionType, string? q, CancellationToken ct );
+    Task<List<FormFieldMasterDto>> GetFormMasters( FormFunctionType functionType, string? q, CancellationToken ct );
     
     Task UpdateFormName( UpdateFormNameViewModel model, CancellationToken ct );
     
@@ -16,17 +16,17 @@ public interface IFormDesignerService
     
     List<string> SearchTables( string? tableName, TableSchemaQueryType schemaType );
     
-    Guid GetOrCreateFormMasterId( FORM_FIELD_Master model );
+    Guid GetOrCreateFormMasterId( FormFieldMasterDto model );
     
-    FormFieldListViewModel? EnsureFieldsSaved( string tableName, Guid? formMasterId, TableSchemaQueryType type );
-    FormFieldListViewModel GetFieldsByTableName( string tableName, Guid? formMasterId, TableSchemaQueryType schemaType );
+    Task<FormFieldListViewModel?> EnsureFieldsSaved( string tableName, Guid? formMasterId, TableSchemaQueryType type );
+    Task<FormFieldListViewModel> GetFieldsByTableName( string tableName, Guid? formMasterId, TableSchemaQueryType schemaType );
 
     /// <summary>
     /// 依欄位設定 ID 取得單一欄位設定。
     /// </summary>
     /// <param name="fieldId">欄位設定唯一識別碼</param>
     /// <returns>若找到欄位則回傳 <see cref="FormFieldViewModel"/>；否則回傳 null。</returns>
-    FormFieldViewModel? GetFieldById(Guid fieldId);
+    Task<FormFieldViewModel?> GetFieldById(Guid fieldId);
 
     void UpsertField(FormFieldViewModel model, Guid formMasterId);
 
@@ -60,7 +60,7 @@ public interface IFormDesignerService
 
     Task<DropDownViewModel> GetDropdownSetting( Guid fieldId, CancellationToken ct = default );
 
-    Task<List<FormFieldDropdownOptions>> GetDropdownOptions( Guid dropDownId, CancellationToken ct = default );
+    Task<List<FormFieldDropdownOptionsDto>> GetDropdownOptions( Guid dropDownId, CancellationToken ct = default );
 
     Task SaveDropdownSql( Guid dropdownId, string sql, CancellationToken ct );
     Guid SaveDropdownOption(Guid? id, Guid dropdownId, string optionText, string optionValue, string? optionTable = null);
@@ -72,9 +72,9 @@ public interface IFormDesignerService
     ValidateSqlResultViewModel ValidateDropdownSql( string sql );
     
     ValidateSqlResultViewModel ImportDropdownOptionsFromSql( string sql, Guid dropdownId );
-    Guid SaveFormHeader( FormHeaderViewModel model );
+    Task<Guid> SaveFormHeader( FormHeaderViewModel model );
 
-    Guid SaveMasterDetailFormHeader(MasterDetailFormHeaderViewModel model);
+    Task<Guid> SaveMasterDetailFormHeader(MasterDetailFormHeaderViewModel model);
 
     /// <summary>
     /// 檢查表格名稱與 View 名稱的組合是否已存在於 FORM_FIELD_Master

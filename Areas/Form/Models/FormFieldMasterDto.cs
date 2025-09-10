@@ -7,7 +7,7 @@ namespace DcMateH5Api.Areas.Form.Models;
 
 
 [Table("FORM_FIELD_Master")]
-public class FORM_FIELD_Master
+public class FormFieldMasterDto
 {
     [Key]
     [Column("ID")]

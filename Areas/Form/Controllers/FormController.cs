@@ -1,3 +1,4 @@
+using ClassLibrary;
 using DcMateH5Api.Areas.Form.Models;
 using DcMateH5Api.Areas.Form.Interfaces;
 using DcMateH5Api.Areas.Form.ViewModels;
@@ -16,7 +17,8 @@ namespace DcMateH5Api.Areas.Form.Controllers;
 public class FormController : ControllerBase
 {
     private readonly IFormService _formService;
-
+    private readonly FormFunctionType _funcType = FormFunctionType.NotMasterDetail;
+    
     public FormController(IFormService formService)
     {
         _formService = formService;
@@ -50,15 +52,15 @@ public class FormController : ControllerBase
             });
         }
         
-        var vm = _formService.GetFormList(request);
+        var vm = _formService.GetFormList( _funcType, request );
         return Ok(vm);
     }
     
     /// <summary>
     /// 取得編輯/檢視/新增資料表單
     /// </summary>
-    /// <param name="formId">FORM_FIELD_Master.ID</param>
-    /// <param name="pk">資料主鍵，不傳為新增</param>
+    /// <param name="formId">上隻 Api 取得的 BaseId</param>
+    /// <param name="pk">上隻 Api 取得的 Pk，不傳為新增</param>
     /// <returns>回傳填寫表單的畫面</returns>
     [HttpPost("{formId}")]
     public IActionResult GetForm(Guid formId, string? pk)
