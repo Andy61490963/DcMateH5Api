@@ -18,14 +18,21 @@ public class FormDesignerService : IFormDesignerService
     private readonly IConfiguration _configuration;
     private readonly ISchemaService _schemaService;
     private readonly SQLGenerateHelper _sqlHelper;
+    private readonly IDropdownSqlSyncService _dropdownSqlSyncService;
     private readonly string _relationColumnSuffix;
 
-    public FormDesignerService(SQLGenerateHelper sqlHelper, SqlConnection connection, IConfiguration configuration, ISchemaService schemaService)
+    public FormDesignerService(
+        SQLGenerateHelper sqlHelper,
+        SqlConnection connection,
+        IConfiguration configuration,
+        ISchemaService schemaService,
+        IDropdownSqlSyncService dropdownSqlSyncService)
     {
         _con = connection;
         _configuration = configuration;
         _schemaService = schemaService;
         _sqlHelper = sqlHelper;
+        _dropdownSqlSyncService = dropdownSqlSyncService;
         _excludeColumns = _configuration.GetSection("DropdownSqlSettings:ExcludeColumns").Get<List<string>>() ?? new();
         _requiredColumns = _configuration.GetSection("FormDesignerSettings:RequiredColumns").Get<List<string>>() ?? new();
         _relationColumnSuffix = _configuration.GetValue<string>("FormSettings:RelationColumnSuffix") ?? "_NO";
@@ -695,13 +702,35 @@ ORDER BY TABLE_SCHEMA, TABLE_NAME;";
     
     public async Task<List<FormFieldDropdownOptionsDto>> GetDropdownOptions( Guid dropDownId, CancellationToken ct = default )
     {
-        var where = new WhereBuilder<FormFieldDropdownOptionsDto>()
-            .AndEq(x => x.FORM_FIELD_DROPDOWN_ID, dropDownId)
-            // .AndEq(x => x.OPTION_TABLE!, null)
+        var dropdownWhere = new WhereBuilder<FormDropDownDto>()
+            .AndEq(x => x.ID, dropDownId)
             .AndNotDeleted();
-        
-        var dropDown = await _sqlHelper.SelectWhereAsync( where, ct );
-        return dropDown;
+
+        var dropdown = await _sqlHelper.SelectFirstOrDefaultAsync( dropdownWhere, ct );
+        if ( dropdown is null )
+            return new();
+
+        if ( !dropdown.ISUSESQL )
+        {
+            var optionWhere = new WhereBuilder<FormFieldDropdownOptionsDto>()
+                .AndEq(x => x.FORM_FIELD_DROPDOWN_ID, dropDownId)
+                .AndNotDeleted();
+
+            return await _sqlHelper.SelectWhereAsync( optionWhere, ct );
+        }
+
+        if ( string.IsNullOrWhiteSpace( dropdown.DROPDOWNSQL ) )
+            return new();
+
+        try
+        {
+            var syncResult = _dropdownSqlSyncService.Sync( dropDownId, dropdown.DROPDOWNSQL );
+            return syncResult.Options;
+        }
+        catch ( DropdownSqlSyncException ex )
+        {
+            throw new InvalidOperationException( $"同步下拉選項失敗：{ex.Message}", ex );
+        }
     }
 
     public Guid SaveDropdownOption(Guid? id, Guid dropdownId, string optionText, string optionValue, string? optionTable = null)
@@ -821,112 +850,54 @@ ORDER BY TABLE_SCHEMA, TABLE_NAME;";
     /// </summary>
     public ValidateSqlResultViewModel ImportDropdownOptionsFromSql(string sql, Guid dropdownId)
     {
-        const string ColId   = "ID";
-        const string ColName = "NAME";
-
         var validation = ValidateDropdownSql( sql );
         if ( !validation.Success )
             return validation;
 
-        // 解析來源表名：先用較穩健的 regex（容許 [dbo].[Table] / dbo.Table / Table）
-        var optionTable = TryExtractTableName( sql );
-        if ( string.IsNullOrWhiteSpace( optionTable ) )
-        {
-            return Fail( "無法解析來源表名稱（請使用單一 FROM，並避免子查詢/CTE/多表 JOIN）。" );
-        }
-
         var wasClosed = _con.State != System.Data.ConnectionState.Open;
-        if ( wasClosed ) _con.Open();
+        if ( wasClosed )
+            _con.Open();
 
         using var tx = _con.BeginTransaction();
         try
         {
-            // 要求 SQL 結果一定有兩個別名：ID、NAME
-            var rows = _con.Query<DropdownOptionRow>( sql, transaction: tx );
+            _con.Execute( Sql.UpdateDropdownSql, new { DropdownId = dropdownId, Sql = sql }, tx );
 
-            int i = 0;
-            foreach ( var r in rows )
-            {
-                i++;
-
-                // 明確檢查 NULL 與空白
-                if ( r.ID is null )
-                {
-                    tx.Rollback();
-                    return Fail($"第 {i} 筆資料的 {ColId} 為 NULL，請修正來源 SQL 或清理資料。");
-                }
-                if ( r.NAME is null )
-                {
-                    tx.Rollback();
-                    return Fail($"第 {i} 筆資料的 {ColName} 為 NULL，請修正來源 SQL 或清理資料。");
-                }
-
-                var optionValue = r.ID.Trim();
-                var optionText  = r.NAME.Trim();
-
-                if ( optionValue.Length == 0 )
-                {
-                    tx.Rollback();
-                    return Fail($"第 {i} 筆資料的 {ColId} 為空字串。");
-                }
-                if ( optionText.Length == 0 )
-                {
-                    tx.Rollback();
-                    return Fail($"第 {i} 筆資料的 {ColName} 為空字串。");
-                }
-
-                // 參數化寫入（忽略重複）
-                _con.Execute( Sql.InsertOptionIgnoreDuplicate, new
-                {
-                    DropdownId  = dropdownId,
-                    OptionTable = optionTable,
-                    OptionValue = optionValue,
-                    OptionText  = optionText
-                }, transaction: tx);
-            }
+            var syncResult = _dropdownSqlSyncService.Sync( dropdownId, sql, tx );
 
             tx.Commit();
+
             return new ValidateSqlResultViewModel
             {
                 Success = true,
-                Message = "匯入完成。"
+                Message = "匯入完成。",
+                RowCount = syncResult.RowCount,
+                Rows = syncResult.PreviewRows
             };
         }
-        catch (Exception ex)
+        catch ( DropdownSqlSyncException ex )
         {
             tx.Rollback();
-            return Fail($"匯入失敗：{ex.Message}");
+            return new ValidateSqlResultViewModel
+            {
+                Success = false,
+                Message = ex.Message
+            };
+        }
+        catch ( Exception ex )
+        {
+            tx.Rollback();
+            return new ValidateSqlResultViewModel
+            {
+                Success = false,
+                Message = $"匯入失敗：{ex.Message}"
+            };
         }
         finally
         {
-            if (wasClosed) _con.Close();
+            if ( wasClosed )
+                _con.Close();
         }
-
-        // local helpers
-        static string? TryExtractTableName(string sql)
-        {
-            // 支援 [dbo].[X]、dbo.X、[X]、X，取實際表名那段
-            var m = Regex.Match(sql,
-                @"from\s+(?:\[(?<schema>[^\]]+)\]\.)?\[?(?<table>[A-Za-z0-9_]+)\]?",
-                RegexOptions.IgnoreCase);
-            return m.Success ? m.Groups["table"].Value : null;
-        }
-
-        static ValidateSqlResultViewModel Fail(string msg) => new()
-        {
-            Success = false,
-            Message = msg
-        };
-    }
-
-    /// <summary>
-    /// 強型別承接查詢結果，避免 dynamic 與魔法字串
-    /// </summary>
-    public sealed class DropdownOptionRow
-    {
-        // 欄位名需匹配 SQL 別名：SELECT A AS ID, B AS NAME
-        public string? ID   { get; set; }
-        public string? NAME { get; set; }
     }
     
     public async Task<Guid> SaveFormHeader( FormHeaderViewModel model )
@@ -1282,6 +1253,12 @@ BEGIN
     VALUES (NEWID(), @fieldId, @isUseSql, @sql, 0)
 END
 ";
+
+        public const string UpdateDropdownSql = @"/**/
+UPDATE FORM_FIELD_DROPDOWN
+SET DROPDOWNSQL = @Sql,
+    ISUSESQL = 1
+WHERE ID = @DropdownId;";
         
         public const string UpsertDropdownOption = @"/**/
 MERGE dbo.FORM_FIELD_DROPDOWN_OPTIONS AS target
@@ -1298,7 +1275,8 @@ WHEN MATCHED THEN
     UPDATE SET
         OPTION_TEXT  = source.OPTION_TEXT,
         OPTION_VALUE = source.OPTION_VALUE,
-        OPTION_TABLE = source.OPTION_TABLE
+        OPTION_TABLE = source.OPTION_TABLE,
+        IS_DELETE    = 0
 WHEN NOT MATCHED THEN
     INSERT (ID, FORM_FIELD_DROPDOWN_ID, OPTION_TEXT, OPTION_VALUE, OPTION_TABLE, IS_DELETE)
     VALUES (ISNULL(source.ID, NEWID()),       -- 若 Guid.Empty → 直接 NEWID()

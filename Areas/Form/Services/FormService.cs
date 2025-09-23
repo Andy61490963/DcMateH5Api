@@ -7,7 +7,6 @@ using DcMateH5Api.Areas.Form.Interfaces.FormLogic;
 using DcMateH5Api.Areas.Form.Interfaces.Transaction;
 using DcMateH5Api.Areas.Form.ViewModels;
 using Microsoft.Data.SqlClient;
-using System.Text.RegularExpressions;
 
 namespace DcMateH5Api.Areas.Form.Services;
 
@@ -20,9 +19,10 @@ public class FormService : IFormService
     private readonly IFormFieldConfigService _formFieldConfigService;
     private readonly IFormDataService _formDataService;
     private readonly IDropdownService _dropdownService;
+    private readonly IDropdownSqlSyncService _dropdownSqlSyncService;
     private readonly IConfiguration _configuration;
     
-    public FormService(SqlConnection connection, ITransactionService txService, IFormFieldMasterService formFieldMasterService, ISchemaService schemaService, IFormFieldConfigService formFieldConfigService, IDropdownService dropdownService, IFormDataService formDataService, IConfiguration configuration)
+    public FormService(SqlConnection connection, ITransactionService txService, IFormFieldMasterService formFieldMasterService, ISchemaService schemaService, IFormFieldConfigService formFieldConfigService, IDropdownService dropdownService, IFormDataService formDataService, IConfiguration configuration, IDropdownSqlSyncService dropdownSqlSyncService)
     {
         _con = connection;
         _txService = txService;
@@ -31,6 +31,7 @@ public class FormService : IFormService
         _formFieldConfigService = formFieldConfigService;
         _formDataService = formDataService;
         _dropdownService = dropdownService;
+        _dropdownSqlSyncService = dropdownSqlSyncService;
         _configuration = configuration;
         _excludeColumns = _configuration.GetSection("FormDesignerSettings:RequiredColumns").Get<List<string>>() ?? new();
         _excludeColumnsId = _configuration.GetSection("DropdownSqlSettings:ExcludeColumns").Get<List<string>>() ?? new();
@@ -238,8 +239,10 @@ public class FormService : IFormService
             .Where(cfg => cfg.IS_EDITABLE)
             .ToList();
 
+        var dynamicOptionCache = new Dictionary<Guid, List<FormFieldDropdownOptionsDto>>();
+
         return editableConfigs
-            .Select(cfg => BuildFieldViewModel(cfg, configData, columnTypes, schemaType))
+            .Select(cfg => BuildFieldViewModel(cfg, configData, columnTypes, schemaType, dynamicOptionCache))
             .ToList();
     }
 
@@ -247,16 +250,39 @@ public class FormService : IFormService
         FormFieldConfigDto field,
         FieldConfigData data,
         Dictionary<string, string> columnTypes,
-        TableSchemaQueryType schemaType)
+        TableSchemaQueryType schemaType,
+        Dictionary<Guid, List<FormFieldDropdownOptionsDto>> dynamicOptionCache)
     {
         var dropdown = data.DropdownConfigs.FirstOrDefault(d => d.FORM_FIELD_CONFIG_ID == field.ID);
         var isUseSql = dropdown?.ISUSESQL ?? false;
         var dropdownId = dropdown?.ID ?? Guid.Empty;
 
         var options = data.DropdownOptions.Where(o => o.FORM_FIELD_DROPDOWN_ID == dropdownId).ToList();
-        var finalOptions = isUseSql
-            ? options.Where(x => !string.IsNullOrWhiteSpace(x.OPTION_TABLE)).ToList()
-            : options.Where(x => string.IsNullOrWhiteSpace(x.OPTION_TABLE)).ToList();
+        List<FormFieldDropdownOptionsDto> finalOptions;
+
+        if (isUseSql && dropdownId != Guid.Empty && !string.IsNullOrWhiteSpace(dropdown?.DROPDOWNSQL))
+        {
+            if (!dynamicOptionCache.TryGetValue(dropdownId, out finalOptions))
+            {
+                try
+                {
+                    var syncResult = _dropdownSqlSyncService.Sync(dropdownId, dropdown!.DROPDOWNSQL);
+                    finalOptions = syncResult.Options;
+                }
+                catch (DropdownSqlSyncException ex)
+                {
+                    throw new InvalidOperationException($"同步下拉選項失敗（欄位 {field.COLUMN_NAME}）：{ex.Message}", ex);
+                }
+
+                dynamicOptionCache[dropdownId] = finalOptions;
+            }
+        }
+        else
+        {
+            finalOptions = options
+                .Where(x => string.IsNullOrWhiteSpace(x.OPTION_TABLE))
+                .ToList();
+        }
 
         var rules = data.ValidationRules
             .Where(r => r.FIELD_CONFIG_ID == field.ID)
@@ -285,30 +311,6 @@ public class FormService : IFormService
             DATA_TYPE = dataType,
             SOURCE_TABLE = schemaType,
         };
-    }
-
-    /// <summary>
-    /// 以 <see cref="FormFieldDropdownOptionsDto"/> 設定動態載入下拉選單選項。
-    /// </summary>
-    private List<FormFieldDropdownOptionsDto> LoadDropdownOptions(FormFieldDropdownOptionsDto config)
-    {
-        if (!IsSafeIdentifier(config.OPTION_TABLE) ||
-            !IsSafeIdentifier(config.OPTION_VALUE) ||
-            !IsSafeIdentifier(config.OPTION_TEXT))
-        {
-            return new();
-        }
-
-        var sql = $"SELECT [{config.OPTION_VALUE}] AS OPTION_VALUE, [{config.OPTION_TEXT}] AS OPTION_TEXT FROM [{config.OPTION_TABLE}]";
-        return _con.Query<FormFieldDropdownOptionsDto>(sql).ToList();
-    }
-
-    /// <summary>
-    /// 驗證資料表與欄位識別名稱，避免 SQL Injection。
-    /// </summary>
-    private static bool IsSafeIdentifier(string? identifier)
-    {
-        return !string.IsNullOrWhiteSpace(identifier) && Regex.IsMatch(identifier, "^[A-Za-z0-9_]+$");
     }
 
     /// <summary>
