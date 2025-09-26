@@ -63,8 +63,8 @@ public class FormMasterDetailController : ControllerBase
     /// 此 API 用於提交主檔與明細檔資料，規則如下：  
     ///
     /// 1. **RelationColumn**（例如 `TOL_NO`）是主從關聯欄位，名稱由設定推得，不一定叫 `TOL_NO`。  
-    /// 2. **新增主檔**：當 `MasterPk` 為空時，必須在 `MasterFields` 帶入 RelationColumn 的 `FieldConfigId` 與 `Value`；
-    ///    系統不會自動產生 Relation 值，缺少就會報錯。  
+    /// 2. **新增主檔**：當 `MasterPk` 為空時，不一定要在 `MasterFields` 帶入 RelationColumn 的 `FieldConfigId` 與 `Value`；
+    ///    設定時，缺少 Relation 值，像是主明細應該要都有的 `TOL_NO` ，就會報錯。  
     /// 3. **新增/更新判斷**：  
     ///    - 主檔：`MasterPk` 有值 → 更新（僅當 `MasterFields` 有欄位才會更新）；`MasterPk` 空 → 新增。  
     ///    - 明細：每筆 `Detail.Pk` 獨立判斷；空 → 新增，有值 → 更新（可混搭）。  
@@ -87,7 +87,7 @@ public class FormMasterDetailController : ControllerBase
     ///     },
     ///     {
     ///       "FieldConfigId": "AE2312F9-17FB-4A9D-B7AE-EC933A447D50",
-    ///       "Value": "關聯欄位(這邊是TOL_NO)"
+    ///       "Value": "關聯欄位(這邊是TOL_NO)，如果沒沒傳沒關係，系統會自己分析查找，但如果有傳，且更改了值，可能會造成主明細關聯脫鉤"
     ///     }
     ///   ],
     ///   "DetailRows": [
