@@ -280,9 +280,9 @@ public class FormDesignerMasterDetailController : ControllerBase
         {
             return BadRequest( "查無此設定檔，請確認ID是否正確。" );
         }
-        if (field.SchemaType != TableSchemaQueryType.OnlyTable)
+        if (field.SchemaType != TableSchemaQueryType.OnlyTable && field.SchemaType != TableSchemaQueryType.OnlyDetail)
         {
-            return BadRequest( "下拉選單設定只支援主擋。" );
+            return BadRequest( "下拉選單設定只支援主擋、明細。" );
         }
         _formDesignerService.EnsureDropdownCreated( fieldId );
         var setting = await _formDesignerService.GetDropdownSetting( fieldId );
@@ -304,7 +304,7 @@ public class FormDesignerMasterDetailController : ControllerBase
     }
 
     /// <summary>
-    /// 取得所有下拉選單選項
+    /// 取得所有下拉選單選項(排除Sql)
     /// </summary>
     /// <param name="dropdownId">FORM_FIELD_DROPDOWN 的ID</param>
     /// <param name="ct"></param>
@@ -316,19 +316,19 @@ public class FormDesignerMasterDetailController : ControllerBase
         return Ok( options );
     }
     
-    /// <summary>
-    /// 儲存下拉選單 SQL 查詢
-    /// </summary>
-    /// <param name="dropdownId">FORM_FIELD_DROPDOWN 的ID</param>
-    /// <param name="sql">使用Sql當作下拉選單的條件，Sql的內容</param>
-    /// <param name="ct"></param>
-    /// <returns></returns>
-    [HttpPut("dropdowns/{dropdownId:guid}/sql")]
-    public async Task<IActionResult> SaveDropdownSql( Guid dropdownId, [FromBody] string sql, CancellationToken ct )
-    {
-        await _formDesignerService.SaveDropdownSql( dropdownId, sql, ct );
-        return Ok();
-    }
+    // /// <summary>
+    // /// 儲存下拉選單 SQL 查詢
+    // /// </summary>
+    // /// <param name="dropdownId">FORM_FIELD_DROPDOWN 的ID</param>
+    // /// <param name="sql">使用Sql當作下拉選單的條件，Sql的內容</param>
+    // /// <param name="ct"></param>
+    // /// <returns></returns>
+    // [HttpPut("dropdowns/{dropdownId:guid}/sql")]
+    // public async Task<IActionResult> SaveDropdownSql( Guid dropdownId, [FromBody] string sql, CancellationToken ct )
+    // {
+    //     await _formDesignerService.SaveDropdownSql( dropdownId, sql, ct );
+    //     return Ok();
+    // }
 
     /// <summary>
     /// 驗證下拉 SQL 語法

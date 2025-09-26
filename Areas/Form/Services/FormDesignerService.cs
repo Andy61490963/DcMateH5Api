@@ -203,9 +203,6 @@ public class FormDesignerService : IFormDesignerService
         const string sql = @"/**/
 SELECT TABLE_SCHEMA + '.' + TABLE_NAME
 FROM INFORMATION_SCHEMA.TABLES
-WHERE TABLE_TYPE = @tableType
-  AND (@schema IS NULL OR TABLE_SCHEMA = @schema)
-  AND (@name   IS NULL OR TABLE_NAME LIKE '%' + @name + '%')
 ORDER BY TABLE_SCHEMA, TABLE_NAME;";
 
         var param = new { tableType, schema, name };
@@ -1232,7 +1229,7 @@ SET IS_REQUIRED = CASE WHEN @isRequired = 1 AND IS_EDITABLE = 1 THEN 1 ELSE 0 EN
 WHERE FORM_FIELD_Master_ID = @formMasterId";
         
         public const string CountValidationRules     = @"/**/
-SELECT COUNT(1) FROM FORM_FIELD_VALIDATION_RULE WHERE FIELD_CONFIG_ID = @fieldId";
+SELECT COUNT(1) FROM FORM_FIELD_VALIDATION_RULE WHERE FIELD_CONFIG_ID = @fieldId AND IS_DELETE = 0";
 
         public const string GetNextValidationOrder   = @"/**/
 SELECT ISNULL(MAX(VALIDATION_ORDER), 0) + 1 FROM FORM_FIELD_VALIDATION_RULE WHERE FIELD_CONFIG_ID = @fieldId";

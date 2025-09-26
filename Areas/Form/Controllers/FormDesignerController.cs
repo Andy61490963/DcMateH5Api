@@ -318,19 +318,19 @@ public class FormDesignerController : ControllerBase
         return Ok( options );
     }
     
-    /// <summary>
-    /// 儲存下拉選單 SQL 查詢
-    /// </summary>
-    /// <param name="dropdownId">FORM_FIELD_DROPDOWN 的ID</param>
-    /// <param name="sql">使用Sql當作下拉選單的條件，Sql的內容</param>
-    /// <param name="ct"></param>
-    /// <returns></returns>
-    [HttpPut("dropdowns/{dropdownId:guid}/sql")]
-    public async Task<IActionResult> SaveDropdownSql( Guid dropdownId, [FromBody] string sql, CancellationToken ct )
-    {
-        await _formDesignerService.SaveDropdownSql( dropdownId, sql, ct );
-        return Ok();
-    }
+    // /// <summary>
+    // /// 儲存下拉選單 SQL 查詢
+    // /// </summary>
+    // /// <param name="dropdownId">FORM_FIELD_DROPDOWN 的ID</param>
+    // /// <param name="sql">使用Sql當作下拉選單的條件，Sql的內容</param>
+    // /// <param name="ct"></param>
+    // /// <returns></returns>
+    // [HttpPut("dropdowns/{dropdownId:guid}/sql")]
+    // public async Task<IActionResult> SaveDropdownSql( Guid dropdownId, [FromBody] string sql, CancellationToken ct )
+    // {
+    //     await _formDesignerService.SaveDropdownSql( dropdownId, sql, ct );
+    //     return Ok();
+    // }
 
     /// <summary>
     /// 驗證下拉 SQL 語法

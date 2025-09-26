@@ -20,6 +20,34 @@ public class DropdownSqlSyncService : IDropdownSqlSyncService
     private const string ExistingOptionsSql =
         "SELECT ID, OPTION_VALUE, OPTION_TEXT, OPTION_TABLE, IS_DELETE FROM FORM_FIELD_DROPDOWN_OPTIONS WHERE FORM_FIELD_DROPDOWN_ID = @DropdownId";
 
+    public const string UpsertDropdownOption = @"/**/
+MERGE dbo.FORM_FIELD_DROPDOWN_OPTIONS AS target
+USING (
+    SELECT
+        @Id             AS ID,                 -- Guid (可能是空)
+        @DropdownId     AS FORM_FIELD_DROPDOWN_ID,
+        @OptionText     AS OPTION_TEXT,
+        @OptionValue    AS OPTION_VALUE,
+        @OptionTable    AS OPTION_TABLE
+) AS source
+ON target.ID = source.ID                     -- 只比對 PK
+WHEN MATCHED THEN
+    UPDATE SET
+        OPTION_TEXT  = source.OPTION_TEXT,
+        OPTION_VALUE = source.OPTION_VALUE,
+        OPTION_TABLE = source.OPTION_TABLE,
+        IS_DELETE    = 0
+WHEN NOT MATCHED THEN
+    INSERT (ID, FORM_FIELD_DROPDOWN_ID, OPTION_TEXT, OPTION_VALUE, OPTION_TABLE, IS_DELETE)
+    VALUES (ISNULL(source.ID, NEWID()),       -- 若 Guid.Empty → 直接 NEWID()
+            source.FORM_FIELD_DROPDOWN_ID,
+            source.OPTION_TEXT,
+            source.OPTION_VALUE,
+            source.OPTION_TABLE,
+            0)
+OUTPUT INSERTED.ID;                          -- 把 ID 回傳給 Dapper
+";
+    
     public DropdownSqlSyncService(SqlConnection connection)
     {
         _con = connection;
@@ -72,7 +100,7 @@ public class DropdownSqlSyncService : IDropdownSqlSyncService
                 existing.TryGetValue(row.OptionValue, out var existingRow);
                 existing.Remove(row.OptionValue);
 
-                var upsertId = _con.ExecuteScalar<Guid>(FormDesignerService.Sql.UpsertDropdownOption, new
+                var upsertId = _con.ExecuteScalar<Guid>(UpsertDropdownOption, new
                 {
                     Id = existingRow?.ID,
                     DropdownId = dropdownId,
