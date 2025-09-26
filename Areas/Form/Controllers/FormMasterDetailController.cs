@@ -16,6 +16,9 @@ namespace DcMateH5Api.Areas.Form.Controllers;
 [Route("[area]/[controller]")]
 public class FormMasterDetailController : ControllerBase
 {
+    private const int DefaultDetailPage = 1;
+    private const int DefaultDetailPageSize = 50;
+
     private readonly IFormMasterDetailService _service;
     private readonly FormFunctionType _funcType = FormFunctionType.MasterDetail;
     public FormMasterDetailController(IFormMasterDetailService service)
@@ -58,10 +61,12 @@ public class FormMasterDetailController : ControllerBase
     /// 取得指定主明細設定下所有明細資料列，供資料轉移或比對使用。
     /// </summary>
     /// <param name="formId">主明細表頭的 FORM_FIELD_Master.ID。</param>
+    /// <param name="page">頁碼（從 1 起算）。</param>
+    /// <param name="pageSize">每頁筆數。</param>
     [HttpGet("{formId:guid}/details")]
-    public IActionResult GetDetailRows(Guid formId)
+    public IActionResult GetDetailRows(Guid formId, [FromQuery] int page = DefaultDetailPage, [FromQuery] int pageSize = DefaultDetailPageSize)
     {
-        var rows = _service.GetAllDetailRows(formId);
+        var rows = _service.GetDetailRows(formId, page, pageSize);
         return Ok(rows);
     }
 
@@ -71,21 +76,21 @@ public class FormMasterDetailController : ControllerBase
     /// <remarks>
     /// ### 使用說明
     ///
-    /// 此 API 用於提交主檔與明細檔資料，規則如下：  
+    /// 此 API 用於提交主檔與明細檔資料，規則如下：
     ///
-    /// 1. **RelationColumn**（例如 `TOL_NO`）是主從關聯欄位，名稱由設定推得，不一定叫 `TOL_NO`。  
+    /// 1. **RelationColumn**（例如 `TOL_NO`）是主從關聯欄位，名稱由設定推得，不一定叫 `TOL_NO`。
     /// 2. **新增主檔**：當 `MasterPk` 為空時，不一定要在 `MasterFields` 帶入 RelationColumn 的 `FieldConfigId` 與 `Value`；
-    ///    設定時，缺少 Relation 值，像是主明細應該要都有的 `TOL_NO` ，就會報錯。  
-    /// 3. **新增/更新判斷**：  
-    ///    - 主檔：`MasterPk` 有值 → 更新（僅當 `MasterFields` 有欄位才會更新）；`MasterPk` 空 → 新增。  
-    ///    - 明細：每筆 `Detail.Pk` 獨立判斷；空 → 新增，有值 → 更新（可混搭）。  
+    ///    設定時，缺少 Relation 值，像是主明細應該要都有的 `TOL_NO` ，就會報錯。
+    /// 3. **新增/更新判斷**：
+    ///    - 主檔：`MasterPk` 有值 → 更新（僅當 `MasterFields` 有欄位才會更新）；`MasterPk` 空 → 新增。
+    ///    - 明細：每筆 `Detail.Pk` 獨立判斷；空 → 新增，有值 → 更新（可混搭）。
     /// 4. **一致性**：在寫入任何明細前，系統會強制將明細的 RelationColumn 覆蓋為主檔的 Relation 值；
-    ///    即使前端送不同值也會被覆蓋，避免明細被綁錯主檔。  
+    ///    即使前端送不同值也會被覆蓋，避免明細被綁錯主檔。
     /// 5. **設定要求**：請確保「明細的 RelationColumn」在 `FORM_FIELD_CONFIG` 中設為 `IS_EDITABLE = 1`；
-    ///    否則該欄位會在單表提交時被忽略，導致無法寫入 FK。  
+    ///    否則該欄位會在單表提交時被忽略，導致無法寫入 FK。
     ///
     /// ### 範例請求 (Version 1.0.0)
-    /// 下列 JSON 範例展示了新增主檔及兩筆明細的提交格式：  
+    /// 下列 JSON 範例展示了新增主檔及兩筆明細的提交格式：
     ///
     /// ```json
     /// {

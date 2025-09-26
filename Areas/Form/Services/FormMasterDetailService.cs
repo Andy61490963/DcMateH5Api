@@ -1,6 +1,8 @@
 using System;
 using System.Collections.Generic;
 using System.Globalization;
+using System.Linq;
+using System.Text.RegularExpressions;
 using ClassLibrary;
 using Dapper;
 using DcMateH5Api.Areas.Form.Interfaces;
@@ -17,6 +19,8 @@ namespace DcMateH5Api.Areas.Form.Services;
 /// </summary>
 public class FormMasterDetailService : IFormMasterDetailService
 {
+    private const int MaxDetailPageSize = 200;
+    private static readonly Regex IdentifierRegex = new("^[A-Za-z0-9_]+$", RegexOptions.Compiled);
     private readonly SqlConnection _con;
     private readonly IFormService _formService;
     private readonly IFormFieldMasterService _formFieldMasterService;
@@ -119,7 +123,7 @@ public class FormMasterDetailService : IFormMasterDetailService
     }
 
     /// <inheritdoc />
-    public List<FormDetailRowViewModel> GetAllDetailRows(Guid formMasterDetailId)
+    public FormDetailRowPageViewModel GetDetailRows(Guid formMasterDetailId, int page, int pageSize)
     {
         var header = _formFieldMasterService.GetFormFieldMasterFromId(formMasterDetailId)
                      ?? throw new InvalidOperationException($"Form master not found: {formMasterDetailId}");
@@ -134,9 +138,21 @@ public class FormMasterDetailService : IFormMasterDetailService
             throw new InvalidOperationException("Detail table setting is incomplete.");
         }
 
+        var safePage = page < 1 ? 1 : page;
+        var trimmedPageSize = pageSize < 1 ? 1 : pageSize;
+        if (trimmedPageSize > MaxDetailPageSize)
+        {
+            trimmedPageSize = MaxDetailPageSize;
+        }
+
+        ValidateSqlIdentifier(header.DETAIL_TABLE_NAME!, nameof(header.DETAIL_TABLE_NAME));
+
         var relationColumn = GetRelationColumn(header.BASE_TABLE_NAME!, header.DETAIL_TABLE_NAME!);
+        ValidateSqlIdentifier(relationColumn, nameof(relationColumn));
+
         var detailPk = _schemaService.GetPrimaryKeyColumn(header.DETAIL_TABLE_NAME!)
                        ?? throw new InvalidOperationException("Detail table has no primary key.");
+        ValidateSqlIdentifier(detailPk, nameof(detailPk));
 
         var configs = _con.Query<(Guid Id, string Column, string DataType, int Order)>(@"/**/
 SELECT ID, COLUMN_NAME, DATA_TYPE, FIELD_ORDER AS [Order]
@@ -147,7 +163,13 @@ ORDER BY FIELD_ORDER", new { Id = header.DETAIL_TABLE_ID })
 
         if (configs.Count == 0)
         {
-            return new List<FormDetailRowViewModel>();
+            return new FormDetailRowPageViewModel
+            {
+                Page = safePage,
+                PageSize = trimmedPageSize,
+                TotalCount = 0,
+                Rows = new List<FormDetailRowViewModel>()
+            };
         }
 
         if (!configs.Any(c => c.Column.Equals(relationColumn, StringComparison.OrdinalIgnoreCase)))
@@ -156,28 +178,68 @@ ORDER BY FIELD_ORDER", new { Id = header.DETAIL_TABLE_ID })
                 $"Detail relation column '{relationColumn}' has no matching FORM_FIELD_CONFIG entry.");
         }
 
-        var columnTypes = _formDataService.LoadColumnTypes(header.DETAIL_TABLE_NAME!);
-        var rows = _formDataService.GetRows(header.DETAIL_TABLE_NAME!);
-
-        var result = new List<FormDetailRowViewModel>(rows.Count);
-
-        foreach (var rawRow in rows)
+        var totalCount = _con.ExecuteScalar<int>($"/**/SELECT COUNT(1) FROM [{header.DETAIL_TABLE_NAME}]");
+        if (totalCount == 0)
         {
-            var row = new Dictionary<string, object?>(rawRow, StringComparer.OrdinalIgnoreCase);
-            row.TryGetValue(detailPk, out var pkValue);
+            return new FormDetailRowPageViewModel
+            {
+                Page = safePage,
+                PageSize = trimmedPageSize,
+                TotalCount = 0,
+                Rows = new List<FormDetailRowViewModel>()
+            };
+        }
+
+        var columnTypes = _formDataService.LoadColumnTypes(header.DETAIL_TABLE_NAME!);
+
+        var offset = (long)(safePage - 1) * trimmedPageSize;
+        if (offset < 0)
+        {
+            offset = 0;
+        }
+
+        var rows = _con.Query(
+                $"/**/SELECT * FROM [{header.DETAIL_TABLE_NAME}] ORDER BY [{detailPk}] OFFSET @Offset ROWS FETCH NEXT @PageSize ROWS ONLY",
+                new { Offset = offset, PageSize = trimmedPageSize })
+            .Cast<IDictionary<string, object?>>()
+            .ToList();
+
+        var projectedRows = ProjectDetailRows(rows, detailPk, configs, columnTypes);
+
+        return new FormDetailRowPageViewModel
+        {
+            Page = safePage,
+            PageSize = trimmedPageSize,
+            TotalCount = totalCount,
+            Rows = projectedRows
+        };
+    }
+
+    private List<FormDetailRowViewModel> ProjectDetailRows(
+        IEnumerable<IDictionary<string, object?>> rows,
+        string detailPk,
+        IReadOnlyList<(Guid Id, string Column, string DataType, int Order)> configs,
+        IReadOnlyDictionary<string, string> columnTypes)
+    {
+        var result = new List<FormDetailRowViewModel>();
+
+        foreach (var row in rows)
+        {
+            var normalizedRow = CreateCaseInsensitiveRow(row);
+            normalizedRow.TryGetValue(detailPk, out var pkValue);
 
             var fields = new List<FormInputField>(configs.Count);
             var rawData = new Dictionary<string, object?>(StringComparer.OrdinalIgnoreCase);
 
-            foreach (var (columnName, columnValue) in row)
+            foreach (var (columnName, columnValue) in normalizedRow)
             {
                 rawData[columnName] = NormalizeRawValue(columnValue);
             }
 
             foreach (var (id, column, dataType, _) in configs)
             {
-                row.TryGetValue(column, out var value);
-                var sqlType = columnTypes.GetValueOrDefault(column, dataType);
+                normalizedRow.TryGetValue(column, out var value);
+                var sqlType = columnTypes.TryGetValue(column, out var mappedType) ? mappedType : dataType;
                 fields.Add(new FormInputField
                 {
                     FieldConfigId = id,
@@ -194,6 +256,25 @@ ORDER BY FIELD_ORDER", new { Id = header.DETAIL_TABLE_ID })
         }
 
         return result;
+    }
+
+    private static Dictionary<string, object?> CreateCaseInsensitiveRow(IDictionary<string, object?> source)
+    {
+        var normalized = new Dictionary<string, object?>(StringComparer.OrdinalIgnoreCase);
+        foreach (var (key, value) in source)
+        {
+            normalized[key] = value;
+        }
+
+        return normalized;
+    }
+
+    private static void ValidateSqlIdentifier(string identifier, string parameterName)
+    {
+        if (string.IsNullOrWhiteSpace(identifier) || !IdentifierRegex.IsMatch(identifier))
+        {
+            throw new InvalidOperationException($"{parameterName} contains invalid characters.");
+        }
     }
 
     /// <summary>
