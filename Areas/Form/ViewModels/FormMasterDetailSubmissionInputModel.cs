@@ -8,7 +8,7 @@ namespace DcMateH5Api.Areas.Form.ViewModels;
 public class FormMasterDetailSubmissionInputModel
 {
     /// <summary>主表的 FORM_FIELD_Master.ID。</summary>
-    public Guid BaseId { get; set; }
+    public Guid MasterId { get; set; }
 
     /// <summary>主表資料主鍵，新增時可為 null。</summary>
     public string? MasterPk { get; set; }

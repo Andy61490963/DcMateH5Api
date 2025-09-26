@@ -126,8 +126,8 @@ public class FormMasterDetailService : IFormMasterDetailService
         _txService.WithTransaction(tx =>
         {
             // 1) 讀設定：找出主檔/明細要用的關聯欄位名稱
-            var header = _formFieldMasterService.GetFormFieldMasterFromId(input.BaseId, tx)
-                         ?? throw new InvalidOperationException($"Form master not found: {input.BaseId}");
+            var header = _formFieldMasterService.GetFormFieldMasterFromId(input.MasterId, tx)
+                         ?? throw new InvalidOperationException($"Form master not found: {input.MasterId}");
 
             var relationColumn = GetRelationColumn(header.BASE_TABLE_NAME!, header.DETAIL_TABLE_NAME!, tx);
 
@@ -155,7 +155,7 @@ public class FormMasterDetailService : IFormMasterDetailService
                 if (relationValue is null)
                 {
                     var (pkName, _, pkVal) = _schemaService.ResolvePk(header.BASE_TABLE_NAME!, input.MasterPk, tx);
-                    relationValue = _con.ExecuteScalar<object?>(@"/**/
+                    relationValue = _con.ExecuteScalar<object?>($@"/**/
 SELECT [{relationColumn}] FROM [{header.BASE_TABLE_NAME}] WHERE [{pkName}] = @id", new { id = pkVal }, transaction: tx)
                                     ?? throw new InvalidOperationException($"Master not found by PK: {input.MasterPk}");
                 }

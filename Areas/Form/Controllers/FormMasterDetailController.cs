@@ -78,7 +78,7 @@ public class FormMasterDetailController : ControllerBase
     ///
     /// ```json
     /// {
-    ///   "BaseId": "3FA85F64-5717-4562-B3FC-2C963F66AFA1",
+    ///   "MasterId": "3FA85F64-5717-4562-B3FC-2C963F66AFA1",
     ///   "MasterPk": "",
     ///   "MasterFields": [
     ///     {
