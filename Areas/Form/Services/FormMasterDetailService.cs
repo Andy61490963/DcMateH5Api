@@ -193,10 +193,17 @@ SELECT [{relationColumn}] FROM [{header.BASE_TABLE_NAME}] WHERE [{pkName}] = @id
                 }
             }
 
-            // 5) 明細：一律強制帶上 relationValue（覆蓋前端，避免被移到其他 Master）
+            // 5) 明細：若前端未提供 relationValue，才自動回填 Master 的 relationValue
             foreach (var row in input.DetailRows)
             {
-                UpsertField(row.Fields, detailCfgId, relationValue, overwrite: true);
+                var relationField = row.Fields.FirstOrDefault(f => f.FieldConfigId == detailCfgId);
+                var shouldFallbackToMaster =
+                    relationField is null || string.IsNullOrWhiteSpace(relationField.Value);
+
+                if (shouldFallbackToMaster)
+                {
+                    UpsertField(row.Fields, detailCfgId, relationValue, overwrite: relationField != null);
+                }
 
                 var detailInput = new FormSubmissionInputModel
                 {
@@ -210,7 +217,7 @@ SELECT [{relationColumn}] FROM [{header.BASE_TABLE_NAME}] WHERE [{pkName}] = @id
     }
 
     /// <summary>
-    /// 把 relationValue 塞進某 Fields 清單（若已存在就覆蓋）
+    /// 把 relationValue 塞進某 Fields 清單（若已存在就視需求覆蓋）
     /// </summary>
     /// <param name="fields"></param>
     /// <param name="cfgId"></param>
@@ -219,8 +226,16 @@ SELECT [{relationColumn}] FROM [{header.BASE_TABLE_NAME}] WHERE [{pkName}] = @id
     private static void UpsertField(List<FormInputField> fields, Guid cfgId, object? value, bool overwrite)
     {
         var f = fields.FirstOrDefault(x => x.FieldConfigId == cfgId);
-        if (f == null) fields.Add(new FormInputField { FieldConfigId = cfgId, Value = value.ToString() });
-        else if (overwrite) f.Value = value.ToString();
+        var stringValue = value?.ToString();
+
+        if (f == null)
+        {
+            fields.Add(new FormInputField { FieldConfigId = cfgId, Value = stringValue });
+        }
+        else if (overwrite)
+        {
+            f.Value = stringValue;
+        }
     }
 
 }
