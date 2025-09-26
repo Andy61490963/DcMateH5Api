@@ -41,10 +41,10 @@ public class FormMasterDetailService : IFormMasterDetailService
             configuration.GetValue<string>("FormSettings:RelationColumnSuffix") ?? "_NO";
     }
 
-    private string GetRelationColumn(string masterTable, string detailTable)
+    private string GetRelationColumn(string masterTable, string detailTable, SqlTransaction? tx = null)
     {
-        var masterCols = _schemaService.GetFormFieldMaster(masterTable);
-        var detailCols = _schemaService.GetFormFieldMaster(detailTable);
+        var masterCols = _schemaService.GetFormFieldMaster(masterTable, tx);
+        var detailCols = _schemaService.GetFormFieldMaster(detailTable, tx);
         var common = masterCols.Intersect(detailCols, StringComparer.OrdinalIgnoreCase);
         var col = common.FirstOrDefault(c =>
             c.EndsWith(_relationColumnSuffix, StringComparison.OrdinalIgnoreCase));
@@ -129,7 +129,7 @@ public class FormMasterDetailService : IFormMasterDetailService
             var header = _formFieldMasterService.GetFormFieldMasterFromId(input.BaseId, tx)
                          ?? throw new InvalidOperationException($"Form master not found: {input.BaseId}");
 
-            var relationColumn = GetRelationColumn(header.BASE_TABLE_NAME!, header.DETAIL_TABLE_NAME!);
+            var relationColumn = GetRelationColumn(header.BASE_TABLE_NAME!, header.DETAIL_TABLE_NAME!, tx);
 
             // 2) 查出「關聯欄位」在 config 中對應的 ConfigId（Master / Detail 各一）
             var masterCfgId = _con.ExecuteScalar<Guid?>(@"/**/

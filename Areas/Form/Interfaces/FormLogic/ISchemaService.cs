@@ -6,7 +6,7 @@ namespace DcMateH5Api.Areas.Form.Interfaces.FormLogic;
 
 public interface ISchemaService
 {
-    List<string> GetFormFieldMaster(string table);
+    List<string> GetFormFieldMaster(string table, SqlTransaction? tx = null);
 
     string? GetPrimaryKeyColumn(string tableName);
     HashSet<string> GetPrimaryKeyColumns(string tableName);

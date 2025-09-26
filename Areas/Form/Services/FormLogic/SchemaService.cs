@@ -16,11 +16,11 @@ public class SchemaService : ISchemaService
         _con = connection;
     }
 
-    public List<string> GetFormFieldMaster(string table)
+    public List<string> GetFormFieldMaster(string table, SqlTransaction? tx = null)
     {
         return _con.Query<string>(
             "/**/SELECT COLUMN_NAME FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_NAME = @table",
-            new { table }).ToList();
+            new { table }, transaction: tx).ToList();
     }
 
     /// <summary>
