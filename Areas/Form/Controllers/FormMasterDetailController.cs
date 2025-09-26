@@ -101,6 +101,15 @@ public class FormMasterDetailController : ControllerBase
     ///       ]
     ///     },
     ///     {
+    ///       "Pk": "5530380073504692",
+    ///       "Fields": [
+    ///         {
+    ///           "FieldConfigId": "27c4e233-0b96-4608-8a75-9223f54f8a1c",
+    ///           "Value": "修改明細表指向特定主檔 關聯欄位(這邊是TOL_NO)"
+    ///         }
+    ///       ]
+    ///     },
+    ///     {
     ///       "Pk": "",
     ///       "Fields": [
     ///         {
