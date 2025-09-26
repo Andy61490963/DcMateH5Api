@@ -32,4 +32,11 @@ public interface IFormMasterDetailService
     /// </summary>
     /// <param name="input">主明細表單的提交資料。</param>
     void SubmitForm(FormMasterDetailSubmissionInputModel input);
+
+    /// <summary>
+    /// 取得指定主明細設定下所有明細資料列。
+    /// </summary>
+    /// <param name="formMasterDetailId">主明細表單的 FORM_FIELD_Master.ID。</param>
+    /// <returns>所有明細列的主鍵與欄位值。</returns>
+    List<FormDetailRowViewModel> GetAllDetailRows(Guid formMasterDetailId);
 }

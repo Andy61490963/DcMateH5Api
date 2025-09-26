@@ -1,3 +1,6 @@
+using System;
+using System.Collections.Generic;
+using System.Globalization;
 using ClassLibrary;
 using Dapper;
 using DcMateH5Api.Areas.Form.Interfaces;
@@ -110,6 +113,84 @@ public class FormMasterDetailService : IFormMasterDetailService
             var detailPkValue = row[detailPk]?.ToString();
             var detailVm = _formService.GetFormSubmission(header.DETAIL_TABLE_ID, detailPkValue);
             result.Details.Add(detailVm);
+        }
+
+        return result;
+    }
+
+    /// <inheritdoc />
+    public List<FormDetailRowViewModel> GetAllDetailRows(Guid formMasterDetailId)
+    {
+        var header = _formFieldMasterService.GetFormFieldMasterFromId(formMasterDetailId)
+                     ?? throw new InvalidOperationException($"Form master not found: {formMasterDetailId}");
+
+        if (string.IsNullOrWhiteSpace(header.BASE_TABLE_NAME))
+        {
+            throw new InvalidOperationException("Master table name is not configured.");
+        }
+
+        if (string.IsNullOrWhiteSpace(header.DETAIL_TABLE_NAME) || header.DETAIL_TABLE_ID is null)
+        {
+            throw new InvalidOperationException("Detail table setting is incomplete.");
+        }
+
+        var relationColumn = GetRelationColumn(header.BASE_TABLE_NAME!, header.DETAIL_TABLE_NAME!);
+        var detailPk = _schemaService.GetPrimaryKeyColumn(header.DETAIL_TABLE_NAME!)
+                       ?? throw new InvalidOperationException("Detail table has no primary key.");
+
+        var configs = _con.Query<(Guid Id, string Column, string DataType, int Order)>(@"/**/
+SELECT ID, COLUMN_NAME, DATA_TYPE, FIELD_ORDER AS [Order]
+FROM FORM_FIELD_CONFIG
+WHERE FORM_FIELD_Master_ID = @Id
+ORDER BY FIELD_ORDER", new { Id = header.DETAIL_TABLE_ID })
+            .ToList();
+
+        if (configs.Count == 0)
+        {
+            return new List<FormDetailRowViewModel>();
+        }
+
+        if (!configs.Any(c => c.Column.Equals(relationColumn, StringComparison.OrdinalIgnoreCase)))
+        {
+            throw new InvalidOperationException(
+                $"Detail relation column '{relationColumn}' has no matching FORM_FIELD_CONFIG entry.");
+        }
+
+        var columnTypes = _formDataService.LoadColumnTypes(header.DETAIL_TABLE_NAME!);
+        var rows = _formDataService.GetRows(header.DETAIL_TABLE_NAME!);
+
+        var result = new List<FormDetailRowViewModel>(rows.Count);
+
+        foreach (var rawRow in rows)
+        {
+            var row = new Dictionary<string, object?>(rawRow, StringComparer.OrdinalIgnoreCase);
+            row.TryGetValue(detailPk, out var pkValue);
+
+            var fields = new List<FormInputField>(configs.Count);
+            var rawData = new Dictionary<string, object?>(StringComparer.OrdinalIgnoreCase);
+
+            foreach (var (columnName, columnValue) in row)
+            {
+                rawData[columnName] = NormalizeRawValue(columnValue);
+            }
+
+            foreach (var (id, column, dataType, _) in configs)
+            {
+                row.TryGetValue(column, out var value);
+                var sqlType = columnTypes.GetValueOrDefault(column, dataType);
+                fields.Add(new FormInputField
+                {
+                    FieldConfigId = id,
+                    Value = SerializeValue(value, sqlType)
+                });
+            }
+
+            result.Add(new FormDetailRowViewModel
+            {
+                Pk = pkValue?.ToString(),
+                Fields = fields,
+                RawData = rawData
+            });
         }
 
         return result;
@@ -236,6 +317,50 @@ SELECT [{relationColumn}] FROM [{header.BASE_TABLE_NAME}] WHERE [{pkName}] = @id
         {
             f.Value = stringValue;
         }
+    }
+
+    private static object? NormalizeRawValue(object? value)
+    {
+        return value is DBNull ? null : value;
+    }
+
+    private static string? SerializeValue(object? value, string? sqlType)
+    {
+        if (value is DBNull)
+        {
+            return null;
+        }
+
+        if (value is null)
+        {
+            return null;
+        }
+
+        var normalized = sqlType?.ToLowerInvariant();
+
+        return normalized switch
+        {
+            "decimal" or "numeric" or "money" or "smallmoney" or "float" or "real" =>
+                (value as IFormattable)?.ToString(null, CultureInfo.InvariantCulture)
+                ?? Convert.ToString(value, CultureInfo.InvariantCulture),
+            "int" or "bigint" or "smallint" or "tinyint" =>
+                (value as IFormattable)?.ToString(null, CultureInfo.InvariantCulture)
+                ?? Convert.ToString(value, CultureInfo.InvariantCulture),
+            "bit" => value switch
+            {
+                bool b => b ? "1" : "0",
+                byte bt => bt != 0 ? "1" : "0",
+                short s => s != 0 ? "1" : "0",
+                int i => i != 0 ? "1" : "0",
+                long l => l != 0 ? "1" : "0",
+                _ => Convert.ToString(value, CultureInfo.InvariantCulture)
+            },
+            "datetime" or "smalldatetime" or "datetime2" or "date" =>
+                value is DateTime dt
+                    ? dt.ToString("o", CultureInfo.InvariantCulture)
+                    : Convert.ToString(value, CultureInfo.InvariantCulture),
+            _ => Convert.ToString(value, CultureInfo.InvariantCulture)
+        };
     }
 
 }
