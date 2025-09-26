@@ -122,9 +122,18 @@ public class FormMasterDetailService : IFormMasterDetailService
         return result;
     }
 
-    /// <inheritdoc />
+    /// <summary>
+    /// 依 FormFieldMasterId 分頁取得明細資料列表
+    /// 支援：
+    /// - 檢查設定是否完整
+    /// - 驗證欄位是否合法 SQL 識別字
+    /// - 讀取 FORM_FIELD_CONFIG 做欄位對應
+    /// - 分頁查詢 Detail Table
+    /// - 投影成 ViewModel，附帶欄位值與原始資料
+    /// </summary>
     public FormDetailRowPageViewModel GetDetailRows(Guid formMasterDetailId, int page, int pageSize)
     {
+        // 1) 取得主檔/明細表設定（包含 BASE_TABLE_NAME, DETAIL_TABLE_NAME 等）   
         var header = _formFieldMasterService.GetFormFieldMasterFromId(formMasterDetailId)
                      ?? throw new InvalidOperationException($"Form master not found: {formMasterDetailId}");
 
@@ -138,6 +147,7 @@ public class FormMasterDetailService : IFormMasterDetailService
             throw new InvalidOperationException("Detail table setting is incomplete.");
         }
 
+        // 2) 頁碼與 pageSize 合法化，避免被傳入 0、負數或過大值
         var safePage = page < 1 ? 1 : page;
         var trimmedPageSize = pageSize < 1 ? 1 : pageSize;
         if (trimmedPageSize > MaxDetailPageSize)
@@ -145,15 +155,19 @@ public class FormMasterDetailService : IFormMasterDetailService
             trimmedPageSize = MaxDetailPageSize;
         }
 
+        // 3) 驗證 SQL 識別字（避免注入）
         ValidateSqlIdentifier(header.DETAIL_TABLE_NAME!, nameof(header.DETAIL_TABLE_NAME));
 
+        // 4) 找到主檔與明細共用的關聯欄位（例如 *_NO）
         var relationColumn = GetRelationColumn(header.BASE_TABLE_NAME!, header.DETAIL_TABLE_NAME!);
         ValidateSqlIdentifier(relationColumn, nameof(relationColumn));
 
+        // 5) 取得明細表的主鍵欄位
         var detailPk = _schemaService.GetPrimaryKeyColumn(header.DETAIL_TABLE_NAME!)
                        ?? throw new InvalidOperationException("Detail table has no primary key.");
         ValidateSqlIdentifier(detailPk, nameof(detailPk));
 
+        // 6) 從 FORM_FIELD_CONFIG 讀取明細欄位的設定（欄位名稱 / 型別 / 顯示順序）
         var configs = _con.Query<(Guid Id, string Column, string DataType, int Order)>(@"/**/
 SELECT ID, COLUMN_NAME, DATA_TYPE, FIELD_ORDER AS [Order]
 FROM FORM_FIELD_CONFIG
@@ -163,6 +177,7 @@ ORDER BY FIELD_ORDER", new { Id = header.DETAIL_TABLE_ID })
 
         if (configs.Count == 0)
         {
+            // 若沒設定欄位 → 回傳空結果
             return new FormDetailRowPageViewModel
             {
                 Page = safePage,
@@ -173,12 +188,14 @@ ORDER BY FIELD_ORDER", new { Id = header.DETAIL_TABLE_ID })
             };
         }
 
+        // 7) 檢查明細的 config 內是否有 relationColumn
         if (!configs.Any(c => c.Column.Equals(relationColumn, StringComparison.OrdinalIgnoreCase)))
         {
             throw new InvalidOperationException(
                 $"Detail relation column '{relationColumn}' has no matching FORM_FIELD_CONFIG entry.");
         }
 
+        // 8) 計算明細總數（for 分頁 UI）
         var totalCount = _con.ExecuteScalar<int>($"/**/SELECT COUNT(1) FROM [{header.DETAIL_TABLE_NAME}]");
         if (totalCount == 0)
         {
@@ -192,22 +209,27 @@ ORDER BY FIELD_ORDER", new { Id = header.DETAIL_TABLE_ID })
             };
         }
 
+        // 9) 載入明細表每個欄位的 SQL 資料型別
         var columnTypes = _formDataService.LoadColumnTypes(header.DETAIL_TABLE_NAME!);
 
+        // 10) 計算分頁 offset（OFFSET/FETCH NEXT 語法用）
         var offset = (long)(safePage - 1) * trimmedPageSize;
         if (offset < 0)
         {
             offset = 0;
         }
 
+        // 11) 撈取分頁的明細資料
         var rows = _con.Query(
                 $"/**/SELECT * FROM [{header.DETAIL_TABLE_NAME}] ORDER BY [{detailPk}] OFFSET @Offset ROWS FETCH NEXT @PageSize ROWS ONLY",
                 new { Offset = offset, PageSize = trimmedPageSize })
             .Cast<IDictionary<string, object?>>()
             .ToList();
 
+        // 12) 將資料投影成 ViewModel（包含 config → FieldConfigId 映射）
         var projectedRows = ProjectDetailRows(rows, detailPk, configs, columnTypes);
 
+        // 13) 回傳分頁結果
         return new FormDetailRowPageViewModel
         {
             Page = safePage,
@@ -218,95 +240,69 @@ ORDER BY FIELD_ORDER", new { Id = header.DETAIL_TABLE_ID })
         };
     }
 
-    /// <inheritdoc />
-    public List<FormDetailRowViewModel> GetAllDetailRows(Guid formMasterDetailId)
-    {
-        var header = _formFieldMasterService.GetFormFieldMasterFromId(formMasterDetailId)
-                     ?? throw new InvalidOperationException($"Form master not found: {formMasterDetailId}");
-
-        if (string.IsNullOrWhiteSpace(header.BASE_TABLE_NAME))
-        {
-            throw new InvalidOperationException("Master table name is not configured.");
-        }
-
-        if (string.IsNullOrWhiteSpace(header.DETAIL_TABLE_NAME) || header.DETAIL_TABLE_ID is null)
-        {
-            throw new InvalidOperationException("Detail table setting is incomplete.");
-        }
-
-        ValidateSqlIdentifier(header.DETAIL_TABLE_NAME!, nameof(header.DETAIL_TABLE_NAME));
-
-        var relationColumn = GetRelationColumn(header.BASE_TABLE_NAME!, header.DETAIL_TABLE_NAME!);
-        ValidateSqlIdentifier(relationColumn, nameof(relationColumn));
-
-        var detailPk = _schemaService.GetPrimaryKeyColumn(header.DETAIL_TABLE_NAME!)
-                       ?? throw new InvalidOperationException("Detail table has no primary key.");
-        ValidateSqlIdentifier(detailPk, nameof(detailPk));
-
-        var configs = _con.Query<(Guid Id, string Column, string DataType, int Order)>(@"/**/
-SELECT ID, COLUMN_NAME, DATA_TYPE, FIELD_ORDER AS [Order]
-FROM FORM_FIELD_CONFIG
-WHERE FORM_FIELD_Master_ID = @Id
-ORDER BY FIELD_ORDER", new { Id = header.DETAIL_TABLE_ID })
-            .ToList();
-
-        if (configs.Count == 0)
-        {
-            return new List<FormDetailRowViewModel>();
-        }
-
-        if (!configs.Any(c => c.Column.Equals(relationColumn, StringComparison.OrdinalIgnoreCase)))
-        {
-            throw new InvalidOperationException(
-                $"Detail relation column '{relationColumn}' has no matching FORM_FIELD_CONFIG entry.");
-        }
-
-        var columnTypes = _formDataService.LoadColumnTypes(header.DETAIL_TABLE_NAME!);
-
-        var rows = _con.Query(
-                $"/**/SELECT * FROM [{header.DETAIL_TABLE_NAME}] ORDER BY [{detailPk}]")
-            .Cast<IDictionary<string, object?>>()
-            .ToList();
-
-        return ProjectDetailRows(rows, detailPk, configs, columnTypes);
-    }
-
+    /// <summary>
+    /// 將 DB 撈到的明細資料 rows 映射為 ViewModel 列表。
+    /// 規則：
+    /// 1) RawData：保留每欄原始值（DBNull→null）供前端/除錯用
+    /// 2) Fields：依 FORM_FIELD_CONFIG 的順序與型別輸出 (FieldConfigId, ColumnName, Value)
+    /// 3) Pk：以 detailPk 取值（若缺失則為 null）
+    /// </summary>
     private List<FormDetailRowViewModel> ProjectDetailRows(
         IEnumerable<IDictionary<string, object?>> rows,
         string detailPk,
         IReadOnlyList<(Guid Id, string Column, string DataType, int Order)> configs,
         IReadOnlyDictionary<string, string> columnTypes)
     {
+        // 1) 建立大小寫不敏感的 config map，加速查找型別與輸出欄位順序
+        //    （同時把最終要輸出的欄位清單先組好，避免每筆 row 重複 work）
+        var columnsInOrder = new List<(Guid Id, string Column, string SqlType)>(configs.Count);
+        var typeByColumnCI = new Dictionary<string, string>(columnTypes, StringComparer.OrdinalIgnoreCase);
+
+        foreach (var (id, column, configType, _) in configs)
+        {
+            // 若 columnTypes 有覆寫就用覆寫，否則用 config 的型別
+            var sqlType = typeByColumnCI.TryGetValue(column, out var mapped)
+                ? mapped
+                : configType;
+
+            columnsInOrder.Add((id, column, sqlType));
+        }
+
         var result = new List<FormDetailRowViewModel>();
 
+        // 2) 逐列處理
         foreach (var row in rows)
         {
-            var normalizedRow = CreateCaseInsensitiveRow(row);
-            normalizedRow.TryGetValue(detailPk, out var pkValue);
+            // 2-1) 規一化為大小寫不敏感的字典，便於後續查值
+            var normalized = CreateCaseInsensitiveRow(row);
 
-            var fields = new List<FormInputField>(configs.Count);
-            var rawData = new Dictionary<string, object?>(StringComparer.OrdinalIgnoreCase);
+            // 2-2) 取 PK（可能不存在）
+            normalized.TryGetValue(detailPk, out var pkRaw);
 
-            foreach (var (columnName, columnValue) in normalizedRow)
+            // 2-3) 先建立 RawData（DBNull→null）
+            var rawData = new Dictionary<string, object?>(normalized.Count, StringComparer.OrdinalIgnoreCase);
+            foreach (var (col, val) in normalized)
             {
-                rawData[columnName] = NormalizeRawValue(columnValue);
+                rawData[col] = NormalizeRawValue(val);
             }
 
-            foreach (var (id, column, dataType, _) in configs)
+            // 2-4) 依 config 順序輸出 Fields
+            var fields = new List<FormInputField>(columnsInOrder.Count);
+            foreach (var (id, column, sqlType) in columnsInOrder)
             {
-                normalizedRow.TryGetValue(column, out var value);
-                var sqlType = columnTypes.TryGetValue(column, out var mappedType) ? mappedType : dataType;
+                normalized.TryGetValue(column, out var rawVal);
                 fields.Add(new FormInputField
                 {
                     FieldConfigId = id,
-                    ColumnName = column,
-                    Value = SerializeValue(value, sqlType)
+                    ColumnName    = column,
+                    Value         = SerializeValue(rawVal, sqlType)
                 });
             }
 
+            // 2-5) 組合 Row VM
             result.Add(new FormDetailRowViewModel
             {
-                Pk = pkValue?.ToString(),
+                Pk     = pkRaw?.ToString(),
                 Fields = fields,
                 RawData = rawData
             });

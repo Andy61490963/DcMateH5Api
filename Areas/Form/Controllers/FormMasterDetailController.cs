@@ -17,7 +17,7 @@ namespace DcMateH5Api.Areas.Form.Controllers;
 public class FormMasterDetailController : ControllerBase
 {
     private const int DefaultDetailPage = 1;
-    private const int DefaultDetailPageSize = 50;
+    private const int DefaultDetailPageSize = 10;
 
     private readonly IFormMasterDetailService _service;
     private readonly FormFunctionType _funcType = FormFunctionType.MasterDetail;
@@ -67,17 +67,6 @@ public class FormMasterDetailController : ControllerBase
     public IActionResult GetDetailRows(Guid formId, [FromQuery] int page = DefaultDetailPage, [FromQuery] int pageSize = DefaultDetailPageSize)
     {
         var rows = _service.GetDetailRows(formId, page, pageSize);
-        return Ok(rows);
-    }
-
-    /// <summary>
-    /// 取得指定主明細設定的所有明細資料列，供批次轉移或比對使用。
-    /// </summary>
-    /// <param name="formId">主明細表頭的 FORM_FIELD_Master.ID。</param>
-    [HttpGet("{formId:guid}/details/all")]
-    public IActionResult GetAllDetailRows(Guid formId)
-    {
-        var rows = _service.GetAllDetailRows(formId);
         return Ok(rows);
     }
 
