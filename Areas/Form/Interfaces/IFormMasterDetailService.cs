@@ -39,4 +39,11 @@ public interface IFormMasterDetailService
     /// <param name="pageSize">每頁筆數。</param>
     /// <returns>分頁後的明細列資料。</returns>
     FormDetailRowPageViewModel GetDetailRows(Guid formMasterDetailId, int page, int pageSize);
+
+    /// <summary>
+    /// 取得指定主明細設定下所有明細資料列。
+    /// </summary>
+    /// <param name="formMasterDetailId">主明細表單的 FORM_FIELD_Master.ID。</param>
+    /// <returns>所有明細列資料。</returns>
+    List<FormDetailRowViewModel> GetAllDetailRows(Guid formMasterDetailId);
 }

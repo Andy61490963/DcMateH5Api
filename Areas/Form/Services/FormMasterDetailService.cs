@@ -215,6 +215,59 @@ ORDER BY FIELD_ORDER", new { Id = header.DETAIL_TABLE_ID })
         };
     }
 
+    /// <inheritdoc />
+    public List<FormDetailRowViewModel> GetAllDetailRows(Guid formMasterDetailId)
+    {
+        var header = _formFieldMasterService.GetFormFieldMasterFromId(formMasterDetailId)
+                     ?? throw new InvalidOperationException($"Form master not found: {formMasterDetailId}");
+
+        if (string.IsNullOrWhiteSpace(header.BASE_TABLE_NAME))
+        {
+            throw new InvalidOperationException("Master table name is not configured.");
+        }
+
+        if (string.IsNullOrWhiteSpace(header.DETAIL_TABLE_NAME) || header.DETAIL_TABLE_ID is null)
+        {
+            throw new InvalidOperationException("Detail table setting is incomplete.");
+        }
+
+        ValidateSqlIdentifier(header.DETAIL_TABLE_NAME!, nameof(header.DETAIL_TABLE_NAME));
+
+        var relationColumn = GetRelationColumn(header.BASE_TABLE_NAME!, header.DETAIL_TABLE_NAME!);
+        ValidateSqlIdentifier(relationColumn, nameof(relationColumn));
+
+        var detailPk = _schemaService.GetPrimaryKeyColumn(header.DETAIL_TABLE_NAME!)
+                       ?? throw new InvalidOperationException("Detail table has no primary key.");
+        ValidateSqlIdentifier(detailPk, nameof(detailPk));
+
+        var configs = _con.Query<(Guid Id, string Column, string DataType, int Order)>(@"/**/
+SELECT ID, COLUMN_NAME, DATA_TYPE, FIELD_ORDER AS [Order]
+FROM FORM_FIELD_CONFIG
+WHERE FORM_FIELD_Master_ID = @Id
+ORDER BY FIELD_ORDER", new { Id = header.DETAIL_TABLE_ID })
+            .ToList();
+
+        if (configs.Count == 0)
+        {
+            return new List<FormDetailRowViewModel>();
+        }
+
+        if (!configs.Any(c => c.Column.Equals(relationColumn, StringComparison.OrdinalIgnoreCase)))
+        {
+            throw new InvalidOperationException(
+                $"Detail relation column '{relationColumn}' has no matching FORM_FIELD_CONFIG entry.");
+        }
+
+        var columnTypes = _formDataService.LoadColumnTypes(header.DETAIL_TABLE_NAME!);
+
+        var rows = _con.Query(
+                $"/**/SELECT * FROM [{header.DETAIL_TABLE_NAME}] ORDER BY [{detailPk}]")
+            .Cast<IDictionary<string, object?>>()
+            .ToList();
+
+        return ProjectDetailRows(rows, detailPk, configs, columnTypes);
+    }
+
     private List<FormDetailRowViewModel> ProjectDetailRows(
         IEnumerable<IDictionary<string, object?>> rows,
         string detailPk,
@@ -243,6 +296,7 @@ ORDER BY FIELD_ORDER", new { Id = header.DETAIL_TABLE_ID })
                 fields.Add(new FormInputField
                 {
                     FieldConfigId = id,
+                    ColumnName = column,
                     Value = SerializeValue(value, sqlType)
                 });
             }

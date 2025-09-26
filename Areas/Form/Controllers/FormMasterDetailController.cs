@@ -71,6 +71,17 @@ public class FormMasterDetailController : ControllerBase
     }
 
     /// <summary>
+    /// 取得指定主明細設定的所有明細資料列，供批次轉移或比對使用。
+    /// </summary>
+    /// <param name="formId">主明細表頭的 FORM_FIELD_Master.ID。</param>
+    [HttpGet("{formId:guid}/details/all")]
+    public IActionResult GetAllDetailRows(Guid formId)
+    {
+        var rows = _service.GetAllDetailRows(formId);
+        return Ok(rows);
+    }
+
+    /// <summary>
     /// 提交主表與明細表資料
     /// </summary>
     /// <remarks>
