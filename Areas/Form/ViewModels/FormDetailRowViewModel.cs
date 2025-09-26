@@ -10,16 +10,17 @@ public class FormDetailRowViewModel
 {
     /// <summary>明細資料主鍵。</summary>
     public string? Pk { get; set; }
-
-    /// <summary>欄位與值的對應清單。</summary>
-    public List<FormInputField> Fields { get; set; } = new();
-
+    
     /// <summary>
     /// 明細資料中代表主從關聯欄位的設定識別碼，
     /// 供前端在執行資料搬移時能快速比對對應欄位。
     /// </summary>
     public Guid RelationFieldConfigId { get; set; }
 
+
+    /// <summary>欄位與值的對應清單。</summary>
+    public List<FormInputField> Fields { get; set; } = new();
+    
     /// <summary>原始資料庫欄位值對應表。</summary>
     public Dictionary<string, object?> RawData { get; set; } =
         new Dictionary<string, object?>(StringComparer.OrdinalIgnoreCase);
