@@ -16,6 +16,9 @@ public class FormDetailRowPageViewModel
     /// <summary>總筆數，供前端計算頁數。</summary>
     public int TotalCount { get; set; }
 
+    /// <summary>主檔與明細的關聯欄位名稱。</summary>
+    public string RelationColumn { get; set; } = string.Empty;
+
     /// <summary>當前頁面的明細列。</summary>
     public List<FormDetailRowViewModel> Rows { get; set; } = new();
 }

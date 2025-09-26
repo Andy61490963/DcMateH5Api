@@ -168,6 +168,7 @@ ORDER BY FIELD_ORDER", new { Id = header.DETAIL_TABLE_ID })
                 Page = safePage,
                 PageSize = trimmedPageSize,
                 TotalCount = 0,
+                RelationColumn = relationColumn,
                 Rows = new List<FormDetailRowViewModel>()
             };
         }
@@ -186,6 +187,7 @@ ORDER BY FIELD_ORDER", new { Id = header.DETAIL_TABLE_ID })
                 Page = safePage,
                 PageSize = trimmedPageSize,
                 TotalCount = 0,
+                RelationColumn = relationColumn,
                 Rows = new List<FormDetailRowViewModel>()
             };
         }
@@ -211,6 +213,7 @@ ORDER BY FIELD_ORDER", new { Id = header.DETAIL_TABLE_ID })
             Page = safePage,
             PageSize = trimmedPageSize,
             TotalCount = totalCount,
+            RelationColumn = relationColumn,
             Rows = projectedRows
         };
     }
