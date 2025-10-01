@@ -68,10 +68,12 @@ public class FormMasterDetailService : IFormMasterDetailService
     {
         // 取得主明細表頭設定，包含主表與明細表的 FormId
         var header = _formFieldMasterService.GetFormFieldMasterFromId(formMasterDetailId);
+        
         var masterTable = header.BASE_TABLE_NAME
                           ?? throw new InvalidOperationException("Master table name is missing in header configuration.");
         var detailTable = header.DETAIL_TABLE_NAME
                           ?? throw new InvalidOperationException("Detail table name is missing in header configuration.");
+        
         var relationColumn = GetRelationColumn(masterTable, detailTable);
 
         var masterVm = _formService.GetFormSubmission(header.BASE_TABLE_ID, pk);
