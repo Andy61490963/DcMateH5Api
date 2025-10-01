@@ -6,9 +6,11 @@ using DcMateH5Api.Helper;
 using System.Net;
 using System.Text.RegularExpressions;
 using DcMateH5Api.Areas.Form.Interfaces.FormLogic;
+using DcMateH5Api.Areas.Form.Options;
 using DcMateH5Api.Areas.Form.ViewModels;
 using DcMateH5Api.SqlHelper;
 using Microsoft.Data.SqlClient;
+using Microsoft.Extensions.Options;
 
 namespace DcMateH5Api.Areas.Form.Services;
 
@@ -19,14 +21,15 @@ public class FormDesignerService : IFormDesignerService
     private readonly ISchemaService _schemaService;
     private readonly SQLGenerateHelper _sqlHelper;
     private readonly IDropdownSqlSyncService _dropdownSqlSyncService;
-    private readonly string _relationColumnSuffix;
+    private readonly IReadOnlyList<string> _relationColumnSuffixes;
 
     public FormDesignerService(
         SQLGenerateHelper sqlHelper,
         SqlConnection connection,
         IConfiguration configuration,
         ISchemaService schemaService,
-        IDropdownSqlSyncService dropdownSqlSyncService)
+        IDropdownSqlSyncService dropdownSqlSyncService,
+        IOptions<FormSettings> formSettings)
     {
         _con = connection;
         _configuration = configuration;
@@ -35,7 +38,8 @@ public class FormDesignerService : IFormDesignerService
         _dropdownSqlSyncService = dropdownSqlSyncService;
         _excludeColumns = _configuration.GetSection("DropdownSqlSettings:ExcludeColumns").Get<List<string>>() ?? new();
         _requiredColumns = _configuration.GetSection("FormDesignerSettings:RequiredColumns").Get<List<string>>() ?? new();
-        _relationColumnSuffix = _configuration.GetValue<string>("FormSettings:RelationColumnSuffix") ?? "_NO";
+        var resolvedSettings = formSettings?.Value ?? new FormSettings();
+        _relationColumnSuffixes = resolvedSettings.GetRelationColumnSuffixesOrDefault();
     }
 
     private readonly List<string> _excludeColumns;
@@ -1063,16 +1067,18 @@ ORDER BY TABLE_SCHEMA, TABLE_NAME;";
             .GetFormFieldMaster(detailTableName)
             .ToHashSet(StringComparer.OrdinalIgnoreCase);
 
-        var hasRelation = masterCols.Any(c =>
-            detailSet.Contains(c) &&
-            c.EndsWith(_relationColumnSuffix, StringComparison.OrdinalIgnoreCase));
+        var hasRelation = masterCols.Any(columnName =>
+            detailSet.Contains(columnName) &&
+            _relationColumnSuffixes.MatchesRelationSuffix(columnName));
 
         if (!hasRelation)
         {
+            var suffixDisplay = string.Join("', '", _relationColumnSuffixes);
             throw new InvalidOperationException(
-                $"主表與明細表缺少以 '{_relationColumnSuffix}' 結尾的共用關聯欄位");
+                $"主表與明細表缺少以以下任一結尾的共用關聯欄位：'{suffixDisplay}'");
         }
     }
+
 
     /// <summary>
     /// 查詢所有有設定驗證規則的欄位 ID 清單。

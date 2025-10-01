@@ -8,9 +8,11 @@ using Dapper;
 using DcMateH5Api.Areas.Form.Interfaces;
 using DcMateH5Api.Areas.Form.Interfaces.FormLogic;
 using DcMateH5Api.Areas.Form.Interfaces.Transaction;
+using DcMateH5Api.Areas.Form.Options;
 using DcMateH5Api.Areas.Form.Models;
 using DcMateH5Api.Areas.Form.ViewModels;
 using Microsoft.Data.SqlClient;
+using Microsoft.Extensions.Options;
 
 namespace DcMateH5Api.Areas.Form.Services;
 
@@ -25,7 +27,7 @@ public class FormMasterDetailService : IFormMasterDetailService
     private readonly IFormDataService _formDataService;
     private readonly ISchemaService _schemaService;
     private readonly ITransactionService _txService;
-    private readonly string _relationColumnSuffix;
+    private readonly IReadOnlyList<string> _relationColumnSuffixes;
 
     public FormMasterDetailService(
         SqlConnection connection,
@@ -34,7 +36,7 @@ public class FormMasterDetailService : IFormMasterDetailService
         IFormDataService formDataService,
         ISchemaService schemaService,
         ITransactionService txService,
-        IConfiguration configuration)
+        IOptions<FormSettings> formSettings)
     {
         _con = connection;
         _formService = formService;
@@ -42,8 +44,8 @@ public class FormMasterDetailService : IFormMasterDetailService
         _formDataService = formDataService;
         _schemaService = schemaService;
         _txService = txService;
-        _relationColumnSuffix =
-            configuration.GetValue<string>("FormSettings:RelationColumnSuffix") ?? "_NO";
+        var resolvedSettings = formSettings?.Value ?? new FormSettings();
+        _relationColumnSuffixes = resolvedSettings.GetRelationColumnSuffixesOrDefault();
     }
 
     private string GetRelationColumn(string masterTable, string detailTable, SqlTransaction? tx = null)
@@ -51,10 +53,17 @@ public class FormMasterDetailService : IFormMasterDetailService
         var masterCols = _schemaService.GetFormFieldMaster(masterTable, tx);
         var detailCols = _schemaService.GetFormFieldMaster(detailTable, tx);
         var common = masterCols.Intersect(detailCols, StringComparer.OrdinalIgnoreCase);
-        var col = common.FirstOrDefault(c =>
-            c.EndsWith(_relationColumnSuffix, StringComparison.OrdinalIgnoreCase));
-        return col ?? throw new InvalidOperationException(
-            $"No relation column ending with '{_relationColumnSuffix}' found between {masterTable} and {detailTable}.");
+        var relationColumn = common.FirstOrDefault(column =>
+            _relationColumnSuffixes.MatchesRelationSuffix(column));
+
+        if (relationColumn is null)
+        {
+            var suffixDisplay = string.Join("', '", _relationColumnSuffixes);
+            throw new InvalidOperationException(
+                $"No relation column ending with any of '{suffixDisplay}' found between {masterTable} and {detailTable}.");
+        }
+
+        return relationColumn;
     }
 
     /// <inheritdoc />

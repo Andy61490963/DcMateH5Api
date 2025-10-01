@@ -12,6 +12,7 @@ using DcMateH5Api.Areas.Enum.Services;
 using DcMateH5Api.Areas.Form.Interfaces;
 using DcMateH5Api.Areas.Form.Interfaces.FormLogic;
 using DcMateH5Api.Areas.Form.Interfaces.Transaction;
+using DcMateH5Api.Areas.Form.Options;
 using DcMateH5Api.Areas.Form.Services;
 using DcMateH5Api.Areas.Form.Services.FormLogic;
 using DcMateH5Api.Areas.Form.Services.Transaction;
@@ -44,6 +45,7 @@ var jwt = config.GetSection("JwtSettings").Get<JwtSettings>()
 builder.Services.Configure<JwtSettings>(config.GetSection("JwtSettings"));
 builder.Services.Configure<CacheOptions>(config.GetSection("Cache"));
 builder.Services.Configure<DbOptions>(config.GetSection("ConnectionStrings"));
+builder.Services.Configure<FormSettings>(config.GetSection("FormSettings"));
 
 // -------------------- 分散式快取（Redis） --------------------
 builder.Services.AddStackExchangeRedisCache(opt =>
