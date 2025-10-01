@@ -29,7 +29,97 @@ public class FormMasterDetailController : ControllerBase
     /// <summary>
     /// 取得主明細表單的資料列表。
     /// </summary>
-    /// <param name="request">查詢條件與分頁設定。</param>
+    /// <remarks>
+    /// ### 使用說明
+    /// 
+    /// 此 API 用於查詢指定表單的資料列，支援條件篩選與分頁功能。  
+    /// 
+    /// 1. **查詢條件 (`Conditions`)**  
+    ///    - 每個條件包含 `Column`、`ConditionType`、`Value/Value2/Values`、`DataType`。  
+    ///    - `ConditionType` 對應 SQL 運算子（見下方表格）。  
+    ///    - `DataType` 用於轉換正確的 SQL 資料型別（例如 `nvarchar`、`datetime`）。  
+    /// 
+    /// 2. **分頁控制**  
+    ///    - `Page`：頁碼（從 1 開始），預設 1。  
+    ///    - `PageSize`：每頁筆數，預設 20。  
+    /// 
+    /// 3. **欄位轉換**  
+    ///    - 下拉選單（Dropdown）欄位會自動將選項代號轉換成顯示文字（OptionText）。  
+    /// 
+    /// 4. **表單選擇**  
+    ///    - 若指定 `FormMasterId`，則僅查詢該表單。  
+    ///    - 若為空，則依系統的 `funcType` 設定查詢所有可用表單。  
+    /// 
+    /// 5. **錯誤處理**  
+    ///    - 若請求內容為 `null`，回傳 `400 Bad Request`，並附帶錯誤提示與建議。  
+    /// 
+    /// ### ConditionType 對照表
+    /// <table>
+    ///   <tr><th>數值</th><th>名稱 (Enum)</th><th>顯示名稱</th><th>對應 SQL 運算子</th></tr>
+    ///   <tr><td>0</td><td>None</td><td>無</td><td>(不套用條件)</td></tr>
+    ///   <tr><td>1</td><td>Equal</td><td>等於</td><td>=</td></tr>
+    ///   <tr><td>2</td><td>Like</td><td>包含</td><td>LIKE '%value%'</td></tr>
+    ///   <tr><td>3</td><td>Between</td><td>區間</td><td>BETWEEN v1 AND v2</td></tr>
+    ///   <tr><td>4</td><td>GreaterThan</td><td>大於</td><td>&gt;</td></tr>
+    ///   <tr><td>5</td><td>GreaterThanOrEqual</td><td>大於等於</td><td>&gt;=</td></tr>
+    ///   <tr><td>6</td><td>LessThan</td><td>小於</td><td>&lt;</td></tr>
+    ///   <tr><td>7</td><td>LessThanOrEqual</td><td>小於等於</td><td>&lt;=</td></tr>
+    ///   <tr><td>8</td><td>In</td><td>包含於</td><td>IN (...)</td></tr>
+    ///   <tr><td>9</td><td>NotEqual</td><td>不等於</td><td>&lt;&gt;</td></tr>
+    ///   <tr><td>10</td><td>NotIn</td><td>不包含於</td><td>NOT IN (...)</td></tr>
+    /// </table>
+    /// 
+    /// ### 範例請求 (Version 1.0.0)
+    /// ```json
+    /// {
+    ///   "FormMasterId": "3FA85F64-5717-4562-B3FC-2C963F66AFA1",
+    ///   "Page": 1,
+    ///   "PageSize": 10,
+    ///   "Conditions": [
+    ///     {
+    ///       "Column": "CREATE_TIME",
+    ///       "ConditionType": 3,
+    ///       "Value": "2025-01-01",
+    ///       "Value2": "2025-12-31",
+    ///       "DataType": "datetime"
+    ///     },
+    ///     {
+    ///       "Column": "TOL_NO",
+    ///       "ConditionType": 8,
+    ///       "Values": ["FGM-L177-07600", "FGM-L000-00500"],
+    ///       "DataType": "nvarchar"
+    ///     },
+    ///     {
+    ///       "Column": "TOL_NAME",
+    ///       "ConditionType": 2,
+    ///       "Value": "FOAM BLOCK 25A",
+    ///       "DataType": "nvarchar"
+    ///     }
+    ///   ]
+    /// }
+    /// ```
+    /// 
+    /// ### 範例回應 (簡化)
+    /// ```json
+    /// [
+    ///   {
+    ///     "FormMasterId": "3FA85F64-5717-4562-B3FC-2C963F66AFA1",
+    ///     "BaseId": "A1112222-3333-4444-5555-666677778888",
+    ///     "Pk": "12345",
+    ///     "Fields": [
+    ///       {
+    ///         "Column": "TOL_NAME",
+    ///         "CurrentValue": "FOAM BLOCK 25A"
+    ///       },
+    ///       {
+    ///         "Column": "STATUS",
+    ///         "CurrentValue": "Active"
+    ///       }
+    ///     ]
+    ///   }
+    /// ]
+    /// ```
+    /// </remarks>
     [HttpPost("search")]
     public IActionResult GetForms([FromBody] FormSearchRequest? request)
     {
