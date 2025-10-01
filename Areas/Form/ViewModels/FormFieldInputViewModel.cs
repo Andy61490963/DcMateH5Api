@@ -12,6 +12,7 @@ public class FormFieldInputViewModel
     public string? DefaultValue { get; set; }
     public bool IS_REQUIRED { get; set; }
     public bool IS_EDITABLE { get; set; }
+    public bool IS_PK { get; set; }
 
     public List<FormFieldValidationRuleDto>? ValidationRules { get; set; }
 

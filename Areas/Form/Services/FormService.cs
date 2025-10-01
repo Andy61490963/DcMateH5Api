@@ -113,6 +113,7 @@ public class FormService : IFormService
                         DefaultValue = f.DefaultValue,
                         IS_REQUIRED = f.IS_REQUIRED,
                         IS_EDITABLE = f.IS_EDITABLE,
+                        IS_PK = f.IS_PK,
                         ValidationRules = f.ValidationRules,
                         ISUSESQL = f.ISUSESQL,
                         DROPDOWNSQL = f.DROPDOWNSQL,
@@ -233,6 +234,7 @@ public class FormService : IFormService
     {
         var columnTypes = _formDataService.LoadColumnTypes(tableName);
         var configData = _formFieldConfigService.LoadFieldConfigData(masterId);
+        var primaryKeys = _schemaService.GetPrimaryKeyColumns(tableName);
 
         // 只保留可編輯欄位，將不可編輯欄位直接過濾掉以避免出現在前端
         var editableConfigs = configData.FieldConfigs
@@ -242,7 +244,7 @@ public class FormService : IFormService
         var dynamicOptionCache = new Dictionary<Guid, List<FormFieldDropdownOptionsDto>>();
 
         return editableConfigs
-            .Select(cfg => BuildFieldViewModel(cfg, configData, columnTypes, schemaType, dynamicOptionCache))
+            .Select(cfg => BuildFieldViewModel(cfg, configData, columnTypes, schemaType, dynamicOptionCache, primaryKeys))
             .ToList();
     }
 
@@ -251,7 +253,8 @@ public class FormService : IFormService
         FieldConfigData data,
         Dictionary<string, string> columnTypes,
         TableSchemaQueryType schemaType,
-        Dictionary<Guid, List<FormFieldDropdownOptionsDto>> dynamicOptionCache)
+        Dictionary<Guid, List<FormFieldDropdownOptionsDto>> dynamicOptionCache,
+        HashSet<string> primaryKeys)
     {
         var dropdown = data.DropdownConfigs.FirstOrDefault(d => d.FORM_FIELD_CONFIG_ID == field.ID);
         var isUseSql = dropdown?.ISUSESQL ?? false;
@@ -310,6 +313,7 @@ public class FormService : IFormService
             DROPDOWNSQL = dropdown?.DROPDOWNSQL ?? string.Empty,
             DATA_TYPE = dataType,
             SOURCE_TABLE = schemaType,
+            IS_PK = primaryKeys.Contains(field.COLUMN_NAME),
         };
     }
 
