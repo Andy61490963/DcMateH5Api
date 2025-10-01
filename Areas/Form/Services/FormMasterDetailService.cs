@@ -68,7 +68,14 @@ public class FormMasterDetailService : IFormMasterDetailService
     {
         // 取得主明細表頭設定，包含主表與明細表的 FormId
         var header = _formFieldMasterService.GetFormFieldMasterFromId(formMasterDetailId);
+        var masterTable = header.BASE_TABLE_NAME
+                          ?? throw new InvalidOperationException("Master table name is missing in header configuration.");
+        var detailTable = header.DETAIL_TABLE_NAME
+                          ?? throw new InvalidOperationException("Detail table name is missing in header configuration.");
+        var relationColumn = GetRelationColumn(masterTable, detailTable);
+
         var masterVm = _formService.GetFormSubmission(header.BASE_TABLE_ID, pk);
+        MarkRelationField(masterVm.Fields, relationColumn);
 
         var result = new FormMasterDetailSubmissionViewModel
         {
@@ -80,11 +87,10 @@ public class FormMasterDetailService : IFormMasterDetailService
         if (string.IsNullOrEmpty(pk))
         {
             var emptyDetail = _formService.GetFormSubmission(header.DETAIL_TABLE_ID);
+            MarkRelationField(emptyDetail.Fields, relationColumn);
             result.Details.Add(emptyDetail);
             return result;
         }
-
-        var relationColumn = GetRelationColumn(header.BASE_TABLE_NAME, header.DETAIL_TABLE_NAME);
         var detailPk = _schemaService.GetPrimaryKeyColumn(header.DETAIL_TABLE_NAME)
             ?? throw new InvalidOperationException("Detail table has no primary key.");
 
@@ -114,6 +120,7 @@ public class FormMasterDetailService : IFormMasterDetailService
         {
             var detailPkValue = row[detailPk]?.ToString();
             var detailVm = _formService.GetFormSubmission(header.DETAIL_TABLE_ID, detailPkValue);
+            MarkRelationField(detailVm.Fields, relationColumn);
             result.Details.Add(detailVm);
         }
 
@@ -240,6 +247,14 @@ SELECT [{relationColumn}] FROM [{header.BASE_TABLE_NAME}] WHERE [{pkName}] = @id
         else if (overwrite)
         {
             f.Value = stringValue;
+        }
+    }
+
+    private static void MarkRelationField(IEnumerable<FormFieldInputViewModel> fields, string relationColumn)
+    {
+        foreach (var field in fields)
+        {
+            field.IS_RELATION = string.Equals(field.Column, relationColumn, StringComparison.OrdinalIgnoreCase);
         }
     }
 

@@ -114,6 +114,7 @@ public class FormService : IFormService
                         IS_REQUIRED = f.IS_REQUIRED,
                         IS_EDITABLE = f.IS_EDITABLE,
                         IS_PK = f.IS_PK,
+                        IS_RELATION = f.IS_RELATION,
                         ValidationRules = f.ValidationRules,
                         ISUSESQL = f.ISUSESQL,
                         DROPDOWNSQL = f.DROPDOWNSQL,
@@ -314,6 +315,7 @@ public class FormService : IFormService
             DATA_TYPE = dataType,
             SOURCE_TABLE = schemaType,
             IS_PK = primaryKeys.Contains(field.COLUMN_NAME),
+            IS_RELATION = false,
         };
     }
 
