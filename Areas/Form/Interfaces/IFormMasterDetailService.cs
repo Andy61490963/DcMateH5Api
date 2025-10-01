@@ -30,13 +30,4 @@ public interface IFormMasterDetailService
     /// </summary>
     /// <param name="input">主明細表單的提交資料。</param>
     void SubmitForm(FormMasterDetailSubmissionInputModel input);
-
-    /// <summary>
-    /// 依分頁取得指定主明細設定下的明細資料列。
-    /// </summary>
-    /// <param name="formMasterDetailId">主明細表單的 FORM_FIELD_Master.ID。</param>
-    /// <param name="page">頁碼（從 1 起算）。</param>
-    /// <param name="pageSize">每頁筆數。</param>
-    /// <returns>分頁後的明細列資料。</returns>
-    FormDetailRowPageViewModel GetDetailRows(Guid formMasterDetailId, int page, int pageSize);
 }

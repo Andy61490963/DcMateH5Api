@@ -58,19 +58,6 @@ public class FormMasterDetailController : ControllerBase
     }
 
     /// <summary>
-    /// 取得指定主明細設定下所有明細資料列，供資料轉移或比對使用。
-    /// </summary>
-    /// <param name="formId">主明細表頭的 FORM_FIELD_Master.ID。</param>
-    /// <param name="page">頁碼（從 1 起算）。</param>
-    /// <param name="pageSize">每頁筆數。</param>
-    [HttpGet("{formId:guid}/details")]
-    public IActionResult GetDetailRows(Guid formId, [FromQuery] int page = DefaultDetailPage, [FromQuery] int pageSize = DefaultDetailPageSize)
-    {
-        var rows = _service.GetDetailRows(formId, page, pageSize);
-        return Ok(rows);
-    }
-
-    /// <summary>
     /// 提交主表與明細表資料
     /// </summary>
     /// <remarks>
