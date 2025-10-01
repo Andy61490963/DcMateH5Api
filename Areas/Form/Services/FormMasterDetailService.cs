@@ -11,6 +11,7 @@ using DcMateH5Api.Areas.Form.Interfaces.Transaction;
 using DcMateH5Api.Areas.Form.Models;
 using DcMateH5Api.Areas.Form.ViewModels;
 using Microsoft.Data.SqlClient;
+using Microsoft.Extensions.Configuration;
 
 namespace DcMateH5Api.Areas.Form.Services;
 
@@ -71,6 +72,7 @@ public class FormMasterDetailService : IFormMasterDetailService
         // 取得主明細表頭設定，包含主表與明細表的 FormId
         var header = _formFieldMasterService.GetFormFieldMasterFromId(formMasterDetailId);
         var masterVm = _formService.GetFormSubmission(header.BASE_TABLE_ID, pk);
+        var detailTemplate = _formService.GetFormSubmission(header.DETAIL_TABLE_ID);
 
         var result = new FormMasterDetailSubmissionViewModel
         {
@@ -81,8 +83,7 @@ public class FormMasterDetailService : IFormMasterDetailService
         // 若為新增，僅回傳空白的明細欄位模板
         if (string.IsNullOrEmpty(pk))
         {
-            var emptyDetail = _formService.GetFormSubmission(header.DETAIL_TABLE_ID);
-            result.Details.Add(emptyDetail);
+            result.Details.Add(detailTemplate);
             return result;
         }
 
@@ -112,11 +113,30 @@ public class FormMasterDetailService : IFormMasterDetailService
                 }
             });
 
-        foreach (var row in rows)
+        if (!rows.Any())
         {
-            var detailPkValue = row[detailPk]?.ToString();
-            var detailVm = _formService.GetFormSubmission(header.DETAIL_TABLE_ID, detailPkValue);
-            result.Details.Add(detailVm);
+            return result;
+        }
+
+        var normalizedRows = rows
+            .Select(CreateCaseInsensitiveRow)
+            .ToList();
+
+        if (normalizedRows.Count == 0)
+        {
+            return result;
+        }
+
+        var dropdownAnswers = LoadDetailDropdownAnswers(normalizedRows, detailPk);
+
+        foreach (var row in normalizedRows)
+        {
+            var projected = BuildDetailSubmission(
+                detailTemplate,
+                row,
+                detailPk,
+                dropdownAnswers);
+            result.Details.Add(projected);
         }
 
         return result;
@@ -451,6 +471,116 @@ SELECT [{relationColumn}] FROM [{header.BASE_TABLE_NAME}] WHERE [{pkName}] = @id
                     ? dt.ToString("o", CultureInfo.InvariantCulture)
                     : Convert.ToString(value, CultureInfo.InvariantCulture),
             _ => Convert.ToString(value, CultureInfo.InvariantCulture)
+        };
+    }
+
+    private Dictionary<string, Dictionary<Guid, Guid>> LoadDetailDropdownAnswers(
+        IEnumerable<IDictionary<string, object?>> rows,
+        string detailPk)
+    {
+        var rowIds = rows
+            .Select(r => r.TryGetValue(detailPk, out var pk) ? pk?.ToString() : null)
+            .Where(id => !string.IsNullOrWhiteSpace(id))
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToList();
+
+        if (rowIds.Count == 0)
+        {
+            return new Dictionary<string, Dictionary<Guid, Guid>>(StringComparer.OrdinalIgnoreCase);
+        }
+
+        var answers = _con.Query<(string RowId, Guid FieldId, Guid OptionId)>(
+            @"/**/SELECT ROW_ID AS RowId,
+                           FORM_FIELD_CONFIG_ID AS FieldId,
+                           FORM_FIELD_DROPDOWN_OPTIONS_ID AS OptionId
+                FROM FORM_FIELD_DROPDOWN_ANSWER
+                WHERE ROW_ID IN @Ids",
+            new { Ids = rowIds });
+
+        var result = new Dictionary<string, Dictionary<Guid, Guid>>(StringComparer.OrdinalIgnoreCase);
+
+        foreach (var answer in answers)
+        {
+            if (!result.TryGetValue(answer.RowId, out var fieldMap))
+            {
+                fieldMap = new Dictionary<Guid, Guid>();
+                result[answer.RowId] = fieldMap;
+            }
+
+            fieldMap[answer.FieldId] = answer.OptionId;
+        }
+
+        return result;
+    }
+
+    private FormSubmissionViewModel BuildDetailSubmission(
+        FormSubmissionViewModel template,
+        IDictionary<string, object?> row,
+        string detailPk,
+        IReadOnlyDictionary<string, Dictionary<Guid, Guid>> dropdownAnswers)
+    {
+        row.TryGetValue(detailPk, out var pkValue);
+        var pkString = pkValue?.ToString();
+
+        Dictionary<Guid, Guid>? dropdownMap = null;
+        if (!string.IsNullOrWhiteSpace(pkString))
+        {
+            dropdownAnswers.TryGetValue(pkString, out dropdownMap);
+        }
+
+        var clonedFields = new List<FormFieldInputViewModel>(template.Fields.Count);
+
+        foreach (var field in template.Fields)
+        {
+            var clonedField = CloneFieldDefinition(field);
+
+            if (field.CONTROL_TYPE == FormControlType.Dropdown && dropdownMap != null &&
+                dropdownMap.TryGetValue(field.FieldConfigId, out var selectedOption))
+            {
+                clonedField.CurrentValue = selectedOption;
+            }
+            else if (row.TryGetValue(field.Column, out var rawValue))
+            {
+                clonedField.CurrentValue = NormalizeRawValue(rawValue);
+            }
+            else
+            {
+                clonedField.CurrentValue = null;
+            }
+
+            clonedFields.Add(clonedField);
+        }
+
+        return new FormSubmissionViewModel
+        {
+            FormId = template.FormId,
+            FormName = template.FormName,
+            TargetTableToUpsert = template.TargetTableToUpsert,
+            Pk = pkString,
+            Fields = clonedFields
+        };
+    }
+
+    private static FormFieldInputViewModel CloneFieldDefinition(FormFieldInputViewModel field)
+    {
+        return new FormFieldInputViewModel
+        {
+            FieldConfigId = field.FieldConfigId,
+            Column = field.Column,
+            DATA_TYPE = field.DATA_TYPE,
+            CONTROL_TYPE = field.CONTROL_TYPE,
+            DefaultValue = field.DefaultValue,
+            IS_REQUIRED = field.IS_REQUIRED,
+            IS_EDITABLE = field.IS_EDITABLE,
+            ValidationRules = field.ValidationRules,
+            ISUSESQL = field.ISUSESQL,
+            DROPDOWNSQL = field.DROPDOWNSQL,
+            QUERY_COMPONENT = field.QUERY_COMPONENT,
+            QUERY_CONDITION = field.QUERY_CONDITION,
+            CAN_QUERY = field.CAN_QUERY,
+            OptionList = field.OptionList,
+            SOURCE_TABLE = field.SOURCE_TABLE,
+            CurrentValue = null
         };
     }
 
