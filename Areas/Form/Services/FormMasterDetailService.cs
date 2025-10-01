@@ -76,11 +76,12 @@ public class FormMasterDetailService : IFormMasterDetailService
             Details = new List<FormSubmissionViewModel>()
         };
 
+        var detailTemplate = _formService.GetFormSubmission(header.DETAIL_TABLE_ID);
+
         // 若為新增，僅回傳空白的明細欄位模板
         if (string.IsNullOrEmpty(pk))
         {
-            var emptyDetail = _formService.GetFormSubmission(header.DETAIL_TABLE_ID);
-            result.Details.Add(emptyDetail);
+            result.Details.Add(detailTemplate);
             return result;
         }
 
@@ -110,10 +111,26 @@ public class FormMasterDetailService : IFormMasterDetailService
                 }
             });
 
+        var detailPkValues = rows
+            .Select(row => row.TryGetValue(detailPk, out var pkValue) ? pkValue?.ToString() : null)
+            .Where(value => !string.IsNullOrWhiteSpace(value))
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToList();
+
+        var dropdownAnswersByRow = LoadDetailDropdownAnswers(detailPkValues);
+
         foreach (var row in rows)
         {
-            var detailPkValue = row[detailPk]?.ToString();
-            var detailVm = _formService.GetFormSubmission(header.DETAIL_TABLE_ID, detailPkValue);
+            row.TryGetValue(detailPk, out var detailPkObj);
+            var detailPkValue = detailPkObj?.ToString();
+            var detailVm = BuildDetailSubmission(
+                detailTemplate,
+                row,
+                detailPkValue,
+                detailPkValue != null &&
+                dropdownAnswersByRow.TryGetValue(detailPkValue, out var dropdowns)
+                    ? dropdowns
+                    : null);
             result.Details.Add(detailVm);
         }
 
@@ -219,6 +236,99 @@ SELECT [{relationColumn}] FROM [{header.BASE_TABLE_NAME}] WHERE [{pkName}] = @id
                 _formService.SubmitForm(detailInput, tx);
             }
         });
+    }
+
+    private Dictionary<string, Dictionary<Guid, Guid>> LoadDetailDropdownAnswers(IEnumerable<string> rowIds)
+    {
+        var idList = rowIds?.Where(id => !string.IsNullOrWhiteSpace(id))
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToList()
+            ?? new List<string>();
+
+        if (idList.Count == 0)
+        {
+            return new Dictionary<string, Dictionary<Guid, Guid>>(StringComparer.OrdinalIgnoreCase);
+        }
+
+        var answers = _con.Query<(string RowId, Guid FieldId, Guid OptionId)>(
+            @"/**/SELECT ROW_ID AS RowId,
+                    FORM_FIELD_CONFIG_ID AS FieldId,
+                    FORM_FIELD_DROPDOWN_OPTIONS_ID AS OptionId
+              FROM FORM_FIELD_DROPDOWN_ANSWER
+              WHERE ROW_ID IN @RowIds",
+            new { RowIds = idList });
+
+        return answers
+            .GroupBy(a => a.RowId, StringComparer.OrdinalIgnoreCase)
+            .ToDictionary(
+                g => g.Key,
+                g => g.ToDictionary(x => x.FieldId, x => x.OptionId),
+                StringComparer.OrdinalIgnoreCase);
+    }
+
+    private static FormSubmissionViewModel BuildDetailSubmission(
+        FormSubmissionViewModel template,
+        IDictionary<string, object?> row,
+        string? pk,
+        IReadOnlyDictionary<Guid, Guid>? dropdownAnswers)
+    {
+        var fieldValues = new Dictionary<string, object?>(row, StringComparer.OrdinalIgnoreCase);
+
+        var fields = template.Fields
+            .Select(field => CloneField(field, fieldValues, dropdownAnswers))
+            .ToList();
+
+        return new FormSubmissionViewModel
+        {
+            FormId = template.FormId,
+            FormName = template.FormName,
+            TargetTableToUpsert = template.TargetTableToUpsert,
+            Pk = pk,
+            Fields = fields
+        };
+    }
+
+    private static FormFieldInputViewModel CloneField(
+        FormFieldInputViewModel source,
+        IReadOnlyDictionary<string, object?> values,
+        IReadOnlyDictionary<Guid, Guid>? dropdownAnswers)
+    {
+        var cloned = new FormFieldInputViewModel
+        {
+            FieldConfigId = source.FieldConfigId,
+            Column = source.Column,
+            DATA_TYPE = source.DATA_TYPE,
+            CONTROL_TYPE = source.CONTROL_TYPE,
+            DefaultValue = source.DefaultValue,
+            IS_REQUIRED = source.IS_REQUIRED,
+            IS_EDITABLE = source.IS_EDITABLE,
+            ValidationRules = source.ValidationRules != null
+                ? new List<FormFieldValidationRuleDto>(source.ValidationRules)
+                : null,
+            ISUSESQL = source.ISUSESQL,
+            DROPDOWNSQL = source.DROPDOWNSQL,
+            QUERY_COMPONENT = source.QUERY_COMPONENT,
+            QUERY_CONDITION = source.QUERY_CONDITION,
+            CAN_QUERY = source.CAN_QUERY,
+            OptionList = new List<FormFieldDropdownOptionsDto>(source.OptionList),
+            SOURCE_TABLE = source.SOURCE_TABLE
+        };
+
+        if (source.CONTROL_TYPE == FormControlType.Dropdown &&
+            dropdownAnswers?.TryGetValue(source.FieldConfigId, out var optionId) == true)
+        {
+            cloned.CurrentValue = optionId;
+        }
+        else if (values.TryGetValue(source.Column, out var value))
+        {
+            cloned.CurrentValue = value;
+        }
+        else
+        {
+            cloned.CurrentValue = null;
+        }
+
+        return cloned;
     }
 
     /// <summary>
