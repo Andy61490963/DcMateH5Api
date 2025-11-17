@@ -11,12 +11,12 @@ namespace DcMateH5Api.Controllers
     [ApiController]
     public abstract class BaseController : ControllerBase
     {
-        // -------- CurrentUser：強型別取用（未登入時 IsAuthenticated=false、Id=Guid.Empty） --------
+        // -------- CurrentUser：（未登入時 IsAuthenticated=false、Id=Guid.Empty） --------
         protected CurrentUserSnapshot CurrentUser => CurrentUserSnapshot.From(User);
     }
 
     /// <summary>
-    /// 以 Claims 建立的當前使用者快照（強型別；避免魔法字串）。
+    /// 以 Claims 建立的當前使用者快照
     /// </summary>
     public sealed class CurrentUserSnapshot
     {

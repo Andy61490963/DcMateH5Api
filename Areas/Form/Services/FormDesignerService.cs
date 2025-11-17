@@ -1007,10 +1007,18 @@ ORDER BY TABLE_SCHEMA, TABLE_NAME;";
         return id;
     }
 
-    public bool CheckMasterDetailFormMasterExists(Guid masterTableId, Guid detailTableId, Guid viewTableId, Guid? excludeId = null)
+    public async Task<bool> CheckMasterDetailFormMasterExistsAsync(
+        Guid masterTableId, 
+        Guid detailTableId, 
+        Guid viewTableId, 
+        Guid? excludeId = null)
     {
-        var count = _con.ExecuteScalar<int>(Sql.CheckMasterDetailFormMasterExists,
-            new { masterTableId, detailTableId, viewTableId, excludeId });
+        // ExecuteScalarAsync 本身就是 async，不會阻塞 ThreadPool
+        var count = await _con.ExecuteScalarAsync<int>(
+            Sql.CheckMasterDetailFormMasterExists,
+            new { masterTableId, detailTableId, viewTableId, excludeId }
+        );
+
         return count > 0;
     }
 
@@ -1141,6 +1149,8 @@ WHEN MATCHED THEN
         VIEW_TABLE_NAME  = @VIEW_TABLE_NAME,
         BASE_TABLE_ID    = @BASE_TABLE_ID,
         VIEW_TABLE_ID    = @VIEW_TABLE_ID,
+        STATUS            = @STATUS,          
+        SCHEMA_TYPE       = @SCHEMA_TYPE,    
         IS_MASTER_DETAIL = @IS_MASTER_DETAIL
 WHEN NOT MATCHED THEN
     INSERT (
@@ -1170,6 +1180,8 @@ WHEN MATCHED THEN
         BASE_TABLE_ID     = @BASE_TABLE_ID,
         DETAIL_TABLE_ID   = @DETAIL_TABLE_ID,
         VIEW_TABLE_ID     = @VIEW_TABLE_ID,
+        STATUS            = @STATUS,          
+        SCHEMA_TYPE       = @SCHEMA_TYPE,    
         IS_MASTER_DETAIL  = @IS_MASTER_DETAIL
 WHEN NOT MATCHED THEN
     INSERT (

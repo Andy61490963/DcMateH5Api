@@ -407,15 +407,15 @@ public class FormDesignerController : ControllerBase
     /// <param name="model"></param>
     /// <returns></returns>
     [HttpPost("headers")]
-    public IActionResult SaveFormHeader( [FromBody] FormHeaderViewModel model )
+    public async Task<IActionResult> SaveFormHeader( [FromBody] FormHeaderViewModel model )
     {
         if ( model.BASE_TABLE_ID == Guid.Empty || model.VIEW_TABLE_ID == Guid.Empty )
             return BadRequest("BASE_TABLE_ID / VIEW_TABLE_ID 不可為空");
 
-        if ( _formDesignerService.CheckFormMasterExists( model.BASE_TABLE_ID, model.VIEW_TABLE_ID, model.ID ) )
-            return Conflict("相同的表格及 View 組合已存在");
+        // if ( _formDesignerService.CheckFormMasterExists( model.BASE_TABLE_ID, model.VIEW_TABLE_ID, model.ID ) )
+        //     return Conflict("相同的表格及 View 組合已存在");
 
-        var id = _formDesignerService.SaveFormHeader( model );
+        var id = await _formDesignerService.SaveFormHeader( model );
         return Ok( new { id } );
     }
 }

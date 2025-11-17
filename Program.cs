@@ -5,7 +5,6 @@ using Microsoft.AspNetCore.Authorization;
 using Microsoft.Extensions.Diagnostics.HealthChecks;
 using Microsoft.IdentityModel.Tokens;
 using Microsoft.OpenApi.Models;
-
 using DcMateH5Api.Authorization;
 using DcMateH5Api.Areas.Enum.Interfaces;
 using DcMateH5Api.Areas.Enum.Services;

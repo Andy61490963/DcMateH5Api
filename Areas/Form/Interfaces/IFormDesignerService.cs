@@ -85,5 +85,9 @@ public interface IFormDesignerService
     /// <returns>若存在相同組合則回傳 true</returns>
     bool CheckFormMasterExists(Guid baseTableId, Guid viewTableId, Guid? excludeId = null);
 
-    bool CheckMasterDetailFormMasterExists(Guid masterTableId, Guid detailTableId, Guid viewTableId, Guid? excludeId = null);
+    Task<bool> CheckMasterDetailFormMasterExistsAsync(
+        Guid masterTableId,
+        Guid detailTableId,
+        Guid viewTableId,
+        Guid? excludeId = null);
 }
