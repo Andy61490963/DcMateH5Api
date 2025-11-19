@@ -59,7 +59,7 @@ public class FormController : ControllerBase
     /// <summary>
     /// 取得編輯/檢視/新增資料表單
     /// </summary>
-    /// <param name="formId">上隻 Api 取得的 MasterId</param>
+    /// <param name="formId">上隻 Api 取得的 BaseId</param>
     /// <param name="pk">上隻 Api 取得的 Pk，不傳為新增</param>
     /// <returns>回傳填寫表單的畫面</returns>
     [HttpPost("{formId}")]
