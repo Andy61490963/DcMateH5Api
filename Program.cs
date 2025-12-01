@@ -19,6 +19,8 @@ using DcMateH5Api.Areas.Log.Interfaces;
 using DcMateH5Api.Areas.Log.Services;
 using DcMateH5Api.Areas.Permission.Interfaces;
 using DcMateH5Api.Areas.Permission.Services;
+using DcMateH5Api.Areas.RouteOperation.Interfaces;
+using DcMateH5Api.Areas.RouteOperation.Services;
 using DcMateH5Api.Areas.Security.Interfaces;
 using DcMateH5Api.Areas.Security.Models;
 using DcMateH5Api.Areas.Security.Services;
@@ -70,7 +72,7 @@ builder.Services.AddSingleton<ISqlConnectionFactory, SqlConnectionFactory>();
 builder.Services.AddScoped<IDbExecutor, DbExecutor>();
 builder.Services.AddScoped<SQLGenerateHelper>();    
 
-// 業務服務
+// 核心功能
 builder.Services.AddScoped<ILogService, LogService>();
 builder.Services.AddScoped<IEnumListService, EnumListService>();
 builder.Services.AddScoped<IFormDesignerService, FormDesignerService>();
@@ -86,6 +88,14 @@ builder.Services.AddScoped<IFormService, FormService>();
 builder.Services.AddScoped<IFormMasterDetailService, FormMasterDetailService>();
 builder.Services.AddScoped<IDropdownSqlSyncService, DropdownSqlSyncService>();
 builder.Services.AddScoped<IPermissionService, PermissionService>();
+
+// 工作站
+builder.Services.AddScoped<IBasRouteService, BasRouteService>();
+builder.Services.AddScoped<IBasOperationService, BasOperationService>();
+builder.Services.AddScoped<IBasConditionService, BasConditionService>();
+builder.Services.AddScoped<IRouteOperationService, RouteOperationService>();
+
+// 交易
 builder.Services.AddScoped<ITransactionService, TransactionService>();
 
 // 快取服務
@@ -144,7 +154,8 @@ var swaggerGroups = new[]
     SwaggerGroups.Security,
     SwaggerGroups.Enum,
     SwaggerGroups.ApiStats,
-    SwaggerGroups.Log
+    SwaggerGroups.Log,
+    SwaggerGroups.RouteOperation
 };
 
 builder.Services.AddEndpointsApiExplorer();

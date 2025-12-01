@@ -1,9 +1,7 @@
-﻿using System;
-using System.Collections.Concurrent;
+﻿using System.Collections.Concurrent;
 using System.ComponentModel.DataAnnotations;
 using System.ComponentModel.DataAnnotations.Schema;
 using System.IdentityModel.Tokens.Jwt;
-using System.Linq;
 using System.Linq.Expressions;
 using System.Reflection;
 using Dapper;
@@ -55,7 +53,7 @@ namespace DcMateH5Api.SqlHelper
         }
 
         private Task<DateTime> GetDbUtcNowAsync(CancellationToken ct)
-            => _db.ExecuteScalarAsync<DateTime>("SELECT SYSUTCDATETIME();", ct: ct);
+            => _db.ExecuteScalarAsync<DateTime>("SELECT SYSDATETIME();", ct: ct);
 
         private static void AddAuditForInsert(List<string> cols, List<string> vals, DynamicParameters dp, Guid uid, DateTime now)
         {

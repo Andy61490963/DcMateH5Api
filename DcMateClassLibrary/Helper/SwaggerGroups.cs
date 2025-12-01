@@ -15,6 +15,8 @@ public static class SwaggerGroups
     public const string FormWithMasterDetail = nameof(FormWithMasterDetail);
     public const string Log = nameof(Log);
     
+    public const string RouteOperation = nameof(RouteOperation);
+    
     public static readonly Dictionary<string, string> DisplayNames = new()
     {
         { ApiStats, "所有 API 列表" },
@@ -23,6 +25,8 @@ public static class SwaggerGroups
         { Enum, "列舉" },
         { Form, "主檔維護" },
         { FormWithMasterDetail, "主明細維護" },
-        { Log, "系統紀錄" }
+        { Log, "系統紀錄" },
+        
+        { RouteOperation, "流程工作站設定" }
     };
 }
