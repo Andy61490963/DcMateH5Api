@@ -122,16 +122,16 @@ public class FormService : IFormService
                         SOURCE_TABLE = f.SOURCE_TABLE,
                         CurrentValue = row.GetValue(f.Column) // 根據欄位名稱取出該欄位的實際值
                     })
-                    .Where(f =>
-                        // 1. 排除固定欄位（精確比對）
-                        !_excludeColumns.Any(col => col.Equals(f.Column, StringComparison.OrdinalIgnoreCase))
-
-                        // 2. 排除 ID/SID 相關欄位（_excludeColumnsId 模糊比對，含 ABC_ID / XYZ_SID）
-                        && !_excludeColumnsId.Any(col =>
-                                f.Column.Equals(col, StringComparison.OrdinalIgnoreCase) ||       // 精確
-                                f.Column.EndsWith($"_{col}", StringComparison.OrdinalIgnoreCase)  // 結尾為 _ID / _SID
-                        )
-                    )
+                    // .Where(f =>
+                    //     // 1. 排除固定欄位（精確比對）
+                    //     !_excludeColumns.Any(col => col.Equals(f.Column, StringComparison.OrdinalIgnoreCase))
+                    //
+                    //     // 2. 排除 ID/SID 相關欄位（_excludeColumnsId 模糊比對，含 ABC_ID / XYZ_SID）
+                    //     && !_excludeColumnsId.Any(col =>
+                    //             f.Column.Equals(col, StringComparison.OrdinalIgnoreCase) ||       // 精確
+                    //             f.Column.EndsWith($"_{col}", StringComparison.OrdinalIgnoreCase)  // 結尾為 _ID / _SID
+                    //     )
+                    // )
                     .ToList();
                 
                 // 組合單筆表單的資料 ViewModel
