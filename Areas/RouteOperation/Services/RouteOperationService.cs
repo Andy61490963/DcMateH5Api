@@ -101,17 +101,20 @@ namespace DcMateH5Api.Areas.RouteOperation.Services
             // 2. 主線站別（BAS_ROUTE_OPERATION + BAS_OPERATION）
             const string sqlOperations = @"
 SELECT 
-    ro.SID              AS RouteOperationSid,
-    ro.BAS_ROUTE_SID    AS RouteSid,
+    ro.SID               AS RouteOperationSid,
+    ro.BAS_ROUTE_SID     AS RouteSid,
     ro.BAS_OPERATION_SID AS OperationSid,
     ro.SEQ,
-    ro.ERP_STAGE AS ErpStage,
-    ro.END_FLAG AS EndFlag,
-    op.OPERATION_CODE AS OperationCode,
-    op.OPERATION_NAME AS OperationName
+    ro.ERP_STAGE         AS ErpStage,
+    ro.END_FLAG          AS EndFlag,
+    op.OPERATION_CODE    AS OperationCode,
+    op.OPERATION_NAME    AS OperationName
 FROM BAS_ROUTE_OPERATION ro
-JOIN BAS_OPERATION op ON op.SID = ro.BAS_OPERATION_SID
+JOIN BAS_OPERATION op 
+    ON op.SID = ro.BAS_OPERATION_SID
+   AND op.IS_DELETE = 0
 WHERE ro.BAS_ROUTE_SID = @RouteSid
+  AND ro.IS_DELETE = 0
 ORDER BY ro.SEQ;";
 
             var operations = (await _db.QueryAsync<RouteOperationDetailViewModel>(
@@ -123,14 +126,17 @@ ORDER BY ro.SEQ;";
             // 3. Extra 站（BAS_ROUTE_OPERATION_EXTRA + BAS_OPERATION）
             const string sqlExtra = @"
 SELECT 
-    extra.SID              AS RouteExtraSid,
-    extra.BAS_ROUTE_SID    AS RouteSid,
+    extra.SID               AS RouteExtraSid,
+    extra.BAS_ROUTE_SID     AS RouteSid,
     extra.BAS_OPERATION_SID AS OperationSid,
-    op.OPERATION_CODE AS OperationCode,
-    op.OPERATION_NAME AS OperationName
+    op.OPERATION_CODE       AS OperationCode,
+    op.OPERATION_NAME       AS OperationName
 FROM BAS_ROUTE_OPERATION_EXTRA extra
-JOIN BAS_OPERATION op ON op.SID = extra.BAS_OPERATION_SID
-WHERE extra.BAS_ROUTE_SID = @RouteSid;";
+JOIN BAS_OPERATION op 
+    ON op.SID = extra.BAS_OPERATION_SID
+   AND op.IS_DELETE = 0
+WHERE extra.BAS_ROUTE_SID = @RouteSid
+  AND extra.IS_DELETE = 0;";
 
             var extraOperations = (await _db.QueryAsync<RouteExtraOperationViewModel>(
                 sqlExtra,
@@ -141,36 +147,50 @@ WHERE extra.BAS_ROUTE_SID = @RouteSid;";
             // 4. 條件（BAS_ROUTE_OPERATION_CONDITION + BAS_CONDITION + 下一站 + Extra）
             const string sqlConditions = @"
 SELECT 
-    roc.SID                         AS ConditionSid,
-    roc.BAS_ROUTE_OPERATION_SID     AS RouteOperationSid,
-    roc.BAS_CONDITION_SID           AS ConditionDefinitionSid,
-    ISNULL(roc.SEQ, 0)             AS Seq,
-    roc.NEXT_ROUTE_OPERATION_SID    AS NextRouteOperationSid,
+    roc.SID                          AS ConditionSid,
+    roc.BAS_ROUTE_OPERATION_SID      AS RouteOperationSid,
+    roc.BAS_CONDITION_SID            AS ConditionDefinitionSid,
+    ISNULL(roc.SEQ, 0)               AS Seq,
+    roc.NEXT_ROUTE_OPERATION_SID     AS NextRouteOperationSid,
     roc.NEXT_ROUTE_EXTRA_OPERATION_SID AS NextRouteExtraOperationSid,
-    roc.HOLD                        AS Hold,
+    roc.HOLD                         AS Hold,
 
-    c.CONDITION_CODE                AS ConditionCode,
-    c.LEFT_EXPRESSION               AS LeftExpression,
-    c.OPERATOR                      AS [Operator],
-    c.RIGHT_VALUE                   AS RightValue,
+    c.CONDITION_CODE                 AS ConditionCode,
+    c.LEFT_EXPRESSION                AS LeftExpression,
+    c.OPERATOR                       AS [Operator],
+    c.RIGHT_VALUE                    AS RightValue,
 
-    nextRo.SID                      AS NextRouteOperationSidInternal,
-    nextRo.SEQ                      AS NextRouteOperationSeq,
-    nextOp.OPERATION_CODE           AS NextOperationCode,
-    nextOp.OPERATION_NAME           AS NextOperationName,
+    nextRo.SID                       AS NextRouteOperationSidInternal,
+    nextRo.SEQ                       AS NextRouteOperationSeq,
+    nextOp.OPERATION_CODE            AS NextOperationCode,
+    nextOp.OPERATION_NAME            AS NextOperationName,
 
-    extra.SID                       AS ExtraSid,
-    extraOp.OPERATION_CODE          AS ExtraOperationCode,
-    extraOp.OPERATION_NAME          AS ExtraOperationName
+    extra.SID                        AS ExtraSid,
+    extraOp.OPERATION_CODE           AS ExtraOperationCode,
+    extraOp.OPERATION_NAME           AS ExtraOperationName
 FROM BAS_ROUTE_OPERATION_CONDITION roc
-JOIN BAS_CONDITION c ON c.SID = roc.BAS_CONDITION_SID
-LEFT JOIN BAS_ROUTE_OPERATION nextRo ON nextRo.SID = roc.NEXT_ROUTE_OPERATION_SID
-LEFT JOIN BAS_OPERATION nextOp ON nextOp.SID = nextRo.BAS_OPERATION_SID
-LEFT JOIN BAS_ROUTE_OPERATION_EXTRA extra ON extra.SID = roc.NEXT_ROUTE_EXTRA_OPERATION_SID
-LEFT JOIN BAS_OPERATION extraOp ON extraOp.SID = extra.BAS_OPERATION_SID
+JOIN BAS_CONDITION c 
+    ON c.SID = roc.BAS_CONDITION_SID
+   AND c.IS_DELETE = 0
+LEFT JOIN BAS_ROUTE_OPERATION nextRo 
+    ON nextRo.SID = roc.NEXT_ROUTE_OPERATION_SID
+   AND nextRo.IS_DELETE = 0
+LEFT JOIN BAS_OPERATION nextOp 
+    ON nextOp.SID = nextRo.BAS_OPERATION_SID
+   AND nextOp.IS_DELETE = 0
+LEFT JOIN BAS_ROUTE_OPERATION_EXTRA extra 
+    ON extra.SID = roc.NEXT_ROUTE_EXTRA_OPERATION_SID
+   AND extra.IS_DELETE = 0
+LEFT JOIN BAS_OPERATION extraOp 
+    ON extraOp.SID = extra.BAS_OPERATION_SID
+   AND extraOp.IS_DELETE = 0
 WHERE roc.BAS_ROUTE_OPERATION_SID IN (
-    SELECT SID FROM BAS_ROUTE_OPERATION WHERE BAS_ROUTE_SID = @RouteSid
+    SELECT SID 
+    FROM BAS_ROUTE_OPERATION 
+    WHERE BAS_ROUTE_SID = @RouteSid
+      AND IS_DELETE = 0
 )
+  AND roc.IS_DELETE = 0
 ORDER BY roc.BAS_ROUTE_OPERATION_SID, roc.SEQ;";
 
             var conditionRows = (await _db.QueryAsync<dynamic>(
