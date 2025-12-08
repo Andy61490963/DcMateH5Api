@@ -360,11 +360,11 @@ namespace DcMateH5Api.Areas.RouteOperation.Controllers
                 return ValidationProblem($"不存在的工作站 OperationSid：{request.OperationSid}");
             }
 
-            // 一條 Route 裡 SEQ 不可重複
-            if (await _routeOperationService.SeqExistsAsync(routeSid, request.Seq, ct))
-            {
-                return Conflict($"在 Route {routeSid} 中，流程順序 SEQ = {request.Seq} 已被使用。");
-            }
+            // // 一條 Route 裡 SEQ 不可重複
+            // if (await _routeOperationService.SeqExistsAsync(routeSid, request.Seq, ct))
+            // {
+            //     return Conflict($"在 Route {routeSid} 中，流程順序 SEQ = {request.Seq} 已被使用。");
+            // }
 
             var newSid = await _routeOperationService.CreateRouteOperationAsync(request, ct);
             var detail = await _routeOperationService.GetRouteOperationAsync(newSid, ct);
@@ -414,11 +414,11 @@ namespace DcMateH5Api.Areas.RouteOperation.Controllers
             }
 
             // 如果有調整 SEQ，要檢查同 Route 內是否衝突
-            if (request.Seq.HasValue &&
-                await _routeOperationService.SeqExistsAsync(routeSid, request.Seq.Value, ct, routeOperationSid))
-            {
-                return Conflict($"在 Route {routeSid} 中，流程順序 SEQ = {request.Seq} 已被使用。");
-            }
+            // if (request.Seq.HasValue &&
+            //     await _routeOperationService.SeqExistsAsync(routeSid, request.Seq.Value, ct, routeOperationSid))
+            // {
+            //     return Conflict($"在 Route {routeSid} 中，流程順序 SEQ = {request.Seq} 已被使用。");
+            // }
 
             await _routeOperationService.UpdateRouteOperationAsync(routeOperationSid, request, ct);
             return NoContent();
@@ -572,10 +572,10 @@ namespace DcMateH5Api.Areas.RouteOperation.Controllers
                 return ValidationProblem($"不存在的額外站 RouteOperationExtra：{request.NextRouteExtraOperationSid.Value}");
             }
 
-            if (await _routeOperationService.ConditionSeqExistsAsync(routeOperationSid, request.Seq, ct))
-            {
-                return Conflict($"該工作站下，條件順序 SEQ = {request.Seq} 已被使用。");
-            }
+            // if (await _routeOperationService.ConditionSeqExistsAsync(routeOperationSid, request.Seq, ct))
+            // {
+            //     return Conflict($"該工作站下，條件順序 SEQ = {request.Seq} 已被使用。");
+            // }
 
             var newSid = await _routeOperationService.CreateConditionAsync(request, ct);
             var detail = await _routeOperationService.GetConditionAsync(newSid, ct);
@@ -624,11 +624,11 @@ namespace DcMateH5Api.Areas.RouteOperation.Controllers
                 return NotFound();
             }
 
-            if (request.Seq.HasValue &&
-                await _routeOperationService.ConditionSeqExistsAsync(routeOperationSid, request.Seq.Value, ct, conditionSid))
-            {
-                return Conflict($"該工作站下，條件順序 SEQ = {request.Seq} 已被使用。");
-            }
+            // if (request.Seq.HasValue &&
+            //     await _routeOperationService.ConditionSeqExistsAsync(routeOperationSid, request.Seq.Value, ct, conditionSid))
+            // {
+            //     return Conflict($"該工作站下，條件順序 SEQ = {request.Seq} 已被使用。");
+            // }
 
             if (request.NextRouteOperationSid.HasValue &&
                 !await _routeOperationService.RouteOperationExistsAsync(request.NextRouteOperationSid.Value, ct))
