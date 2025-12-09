@@ -12,6 +12,9 @@ namespace DcMateH5Api.Areas.RouteOperation.Interfaces
         Task<bool> RouteExistsAsync(decimal routeSid, CancellationToken ct);
         Task<RouteConfigViewModel?> GetRouteConfigAsync(decimal routeSid, CancellationToken ct);
 
+        // 調整指定 Route 下主線站別的排序（SEQ）
+        Task<bool> ReorderRouteOperationsAsync(decimal routeSid, IReadOnlyList<decimal> orderedRouteOperationSids, CancellationToken ct);
+        
         // Operation / Extra master 檢查
         Task<bool> OperationExistsAsync(decimal operationSid, CancellationToken ct);
         Task<bool> ExtraOperationExistsAsync(decimal extraSid, CancellationToken ct);

@@ -259,6 +259,108 @@ ORDER BY roc.BAS_ROUTE_OPERATION_SID, roc.SEQ;";
 
         #endregion
 
+        #region 調整指定 Route 下主線站別的排序（SEQ）
+        public async Task<bool> ReorderRouteOperationsAsync(
+            decimal routeSid,
+            IReadOnlyList<decimal> orderedRouteOperationSids,
+            CancellationToken ct)
+        {
+            // 0. 確認 Route 存在（可選，但比較友善）
+            var routeWhere = new WhereBuilder<BAS_ROUTE>()
+                .AndEq(x => x.SID, routeSid)
+                .AndNotDeleted();
+
+            var route = await _sqlHelper.SelectFirstOrDefaultAsync(routeWhere, ct);
+            if (route is null)
+                return false;
+
+            // 1. 撈出這個 Route 目前的主線站別（透過 DbExecutor.QueryAsync）
+            const string sqlSelectOps = @"
+        SELECT SID, BAS_ROUTE_SID, SEQ
+        FROM BAS_ROUTE_OPERATION
+        WHERE BAS_ROUTE_SID = @RouteSid
+        AND IS_DELETE = 0";
+
+            var dbOps = await _db.QueryAsync<RouteOperationRow>(
+                sqlSelectOps,
+                new { RouteSid = routeSid },
+                timeoutSeconds: 30,
+                ct: ct);
+
+            if (dbOps.Count == 0)
+            {
+                // 沒有任何站別，其實也不需要 reorder，這裡回 false, 讓 controller 回 404
+                return false;
+            }
+
+            // 2. 驗證前端送來的 SID 集合是否跟 DB 對得上
+            if (orderedRouteOperationSids.Count != dbOps.Count)
+            {
+                // 這邊建議丟 DomainException / BusinessException，而不是裸 Exception
+                throw new Exception("前端傳入的站別數量與資料庫不一致。");
+            }
+
+            var dbSidSet = dbOps.Select(x => x.SID).ToHashSet();
+            var reqSidSet = orderedRouteOperationSids.ToHashSet();
+
+            if (!dbSidSet.SetEquals(reqSidSet))
+            {
+                throw new Exception("前端傳入的站別 SID 與資料庫不一致，可能有遺漏或包含其他 Route 的資料。");
+            }
+
+            // 3. 準備更新資料（建議 SEQ 用 10, 20, 30... 保留插入空間）
+            var userId = Guid.Empty;
+
+            var updates = orderedRouteOperationSids
+                .Select((sid, index) => new
+                {
+                    Sid = sid,
+                    Seq = (index + 1) * 10, // 新排序值
+                    UpdateUser = userId
+                })
+                .ToList();
+
+            // 4. 用 DbExecutor.TxAsync 包交易 + ExecuteAsync(conn, tx, ...)
+            const string sqlUpdate = @"
+        UPDATE BAS_ROUTE_OPERATION
+        SET SEQ         = @Seq,
+            EDIT_USER = @UpdateUser,
+            EDIT_TIME = GETDATE()
+        WHERE SID       = @Sid
+        AND IS_DELETE = 0;";
+
+            await _db.TxAsync(async (conn, tx, token) =>
+            {
+                foreach (var item in updates)
+                {
+                    var affected = await _db.ExecuteAsync(
+                        conn,
+                        tx,
+                        sqlUpdate,
+                        item,
+                        timeoutSeconds: 30,
+                        ct: token);
+
+                    if (affected == 0)
+                    {
+                        // TxAsync 裡面會自動 Rollback + rethrow，所以這邊只要丟錯
+                        throw new Exception($"更新 RouteOperation (SID={item.Sid}) 失敗。");
+                    }
+                }
+            }, ct: ct);
+
+            return true;
+        }
+
+        private sealed class RouteOperationRow
+        {
+            public decimal SID { get; set; }
+            public decimal BAS_ROUTE_SID { get; set; }
+            public int SEQ { get; set; }
+        }
+
+        #endregion
+        
         #region RouteOperation CRUD
 
         public async Task<bool> SeqExistsAsync(decimal routeSid, int seq, CancellationToken ct, decimal? excludeSid = null)

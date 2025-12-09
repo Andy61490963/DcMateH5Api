@@ -40,6 +40,9 @@ namespace DcMateH5Api.Areas.RouteOperation.Controllers
             // ===== Route 組態查詢 =====
             public const string RouteConfig        = "routes/{routeSid:decimal}/config";
 
+            // ===== Route Operation 拖拉排序 =====
+            public const string ReorderOperations    = "routes/{routeSid:decimal}/operations/reorder";
+            
             // ===== 工作站節點（BAS_ROUTE_OPERATION） =====
             public const string RouteOperations    = "routes/{routeSid:decimal}/operations";
             public const string RouteOperationById = "routes/{routeSid:decimal}/operations/{routeOperationSid:decimal}";
@@ -329,6 +332,42 @@ namespace DcMateH5Api.Areas.RouteOperation.Controllers
 
         #endregion
 
+        #region Route Seq 拖拉排序 (BAS_ROUTE_OPERATION)
+        
+        /// <summary>
+        /// 調整指定 Route 下主線站別的排序（SEQ）。
+        /// </summary>
+        /// <remarks>
+        /// 前端在「流程工作站設定畫面」中拖拉排序後，
+        /// 將新的 RouteOperationSid 順序整包丟給這支 API，即會更新 BAS_ROUTE_OPERATION.SEQ。
+        /// </remarks>
+        [HttpPut(Routes.ReorderOperations)]
+        [ProducesResponseType(StatusCodes.Status204NoContent)]
+        [ProducesResponseType(StatusCodes.Status400BadRequest)]
+        [ProducesResponseType(StatusCodes.Status404NotFound)]
+        public async Task<IActionResult> ReorderRouteOperationsAsync(
+            [FromRoute] decimal routeSid,
+            [FromBody] ReorderRouteOperationsRequest request,
+            CancellationToken ct)
+        {
+            if (request is null || request.OrderedRouteOperationSids is null || request.OrderedRouteOperationSids.Count == 0)
+            {
+                return BadRequest("請提供至少一筆 RouteOperationSid。");
+            }
+
+            var success = await _routeOperationService.ReorderRouteOperationsAsync(
+                routeSid,
+                request.OrderedRouteOperationSids,
+                ct);
+
+            if (!success)
+                return NotFound(); // 可能 route 不存在，或資料不完整
+
+            return NoContent();
+        }
+
+        #endregion
+        
         #region RouteOperation CRUD（常規流程工作站節點）
 
         /// <summary>
