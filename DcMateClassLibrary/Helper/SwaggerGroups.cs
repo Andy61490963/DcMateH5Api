@@ -13,6 +13,7 @@ public static class SwaggerGroups
     public const string Enum = nameof(Enum);
     public const string Form = nameof(Form);
     public const string FormWithMasterDetail = nameof(FormWithMasterDetail);
+    public const string FormWithMultipleMapping = nameof(FormWithMultipleMapping);
     public const string Log = nameof(Log);
     
     public const string RouteOperation = nameof(RouteOperation);
@@ -25,6 +26,7 @@ public static class SwaggerGroups
         { Enum, "列舉" },
         { Form, "主檔維護" },
         { FormWithMasterDetail, "主明細維護" },
+        { FormWithMultipleMapping, "多對多維護" },
         { Log, "系統紀錄" },
         
         { RouteOperation, "流程工作站設定" }

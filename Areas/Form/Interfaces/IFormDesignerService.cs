@@ -75,6 +75,12 @@ public interface IFormDesignerService
     Task<Guid> SaveFormHeader( FormHeaderViewModel model );
 
     Task<Guid> SaveMasterDetailFormHeader(MasterDetailFormHeaderViewModel model);
+    
+    /// <summary>
+    /// 儲存多對多表單主檔設定，並回傳 FORM_FIELD_Master 主鍵。
+    /// </summary>
+    Task<Guid> SaveMultipleMappingFormHeader(MultipleMappingFormHeaderViewModel model);
+    Task<Guid> SaveMultipleMappingFormHeader(MultipleMappingFormHeaderViewModel model);
 
     /// <summary>
     /// 檢查表格名稱與 View 名稱的組合是否已存在於 FORM_FIELD_Master

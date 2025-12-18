@@ -7,20 +7,20 @@ using System.Threading.Tasks;
 
 namespace DcMateH5Api.Tests.ApiControllerTest;
 
-public class FormDesignerMasterDetailControllerTests
+public class FormDesignerMultipleMappingControllerTests
 {
     private readonly Mock<IFormDesignerService> _serviceMock = new();
 
-    private FormDesignerMasterDetailController CreateController()
-        => new FormDesignerMasterDetailController(_serviceMock.Object);
+    private FormDesignerMultipleMappingController CreateController()
+        => new FormDesignerMultipleMappingController(_serviceMock.Object);
 
     [Fact]
-    public async Task SaveMasterDetailFormHeader_MissingIds_ReturnsBadRequest()
+    public async Task SaveMultipleMappingFormHeader_MissingIds_ReturnsBadRequest()
     {
         var controller = CreateController();
-        var vm = new MasterDetailFormHeaderViewModel();
+        var vm = new MultipleMappingFormHeaderViewModel();
 
-        var result = await controller.SaveMasterDetailFormHeader(vm);
+        var result = await controller.SaveMultipleMappingFormHeader(vm);
 
         Assert.IsType<BadRequestObjectResult>(result);
     }

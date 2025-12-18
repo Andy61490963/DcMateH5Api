@@ -35,7 +35,7 @@ public class FormControllerTests
     {
         var request = new FormSearchRequest(Guid.NewGuid());
         var vm = new List<FormListDataViewModel>();
-        _serviceMock.Setup(s => s.GetFormList(FormFunctionType.NotMasterDetail, request)).Returns(vm);
+        _serviceMock.Setup(s => s.GetFormList(FormFunctionType.MasterMaintenance, request)).Returns(vm);
 
         var result = _controller.GetForms(request) as OkObjectResult;
 

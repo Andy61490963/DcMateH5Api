@@ -5,8 +5,11 @@ namespace ClassLibrary;
 public enum FormFunctionType
 {
     [Display(Name = "主檔維護", Description = "主檔維護")]
-    NotMasterDetail = 0,   
-    
-    [Display(Name = "主明細維護", Description = "主明細維護")]
-    MasterDetail = 1,   
+    MasterMaintenance = 0,
+
+    [Display(Name = "一對多維護", Description = "一對多維護")]
+    MasterDetailMaintenance = 1,
+
+    [Display(Name = "多對多維護", Description = "多對多維護")]
+    MultipleMappingMaintenance = 2
 }

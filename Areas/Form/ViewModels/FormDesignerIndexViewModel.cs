@@ -23,5 +23,9 @@ public class FormDesignerIndexViewModel
     /// 檢視表欄位設定清單
     /// </summary>
     public FormFieldListViewModel ViewFields { get; set; } = new();
-}
 
+    /// <summary>
+    /// 多對多關聯表欄位設定清單
+    /// </summary>
+    public FormFieldListViewModel MappingFields { get; set; } = new();
+}

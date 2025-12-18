@@ -1,6 +1,6 @@
 using ClassLibrary;
-using DcMateH5Api.Areas.Form.Models;
 using DcMateH5Api.Areas.Form.Interfaces;
+using DcMateH5Api.Areas.Form.Models;
 using DcMateH5Api.Areas.Form.ViewModels;
 using Microsoft.AspNetCore.Mvc;
 using DcMateH5Api.Helper;
@@ -9,15 +9,18 @@ namespace DcMateH5Api.Areas.Form.Controllers;
 
 [Area("Form")]
 [ApiController]
-[ApiExplorerSettings(GroupName = SwaggerGroups.Form)]
+[ApiExplorerSettings(GroupName = SwaggerGroups.FormWithMultipleMapping)]
 [Route("[area]/[controller]")]
-public class FormDesignerController : ControllerBase
+[Produces("application/json")]
+/// <summary>
+/// 多對多表單設計 API，提供主檔、目標表與關聯表的欄位設計與表頭設定。
+/// </summary>
+public class FormDesignerMultipleMappingController : ControllerBase
 {
     private readonly IFormDesignerService _formDesignerService;
-    private readonly FormFunctionType _funcType = FormFunctionType.MasterMaintenance;
+    private readonly FormFunctionType _funcType = FormFunctionType.MultipleMappingMaintenance;
     
-    public FormDesignerController(
-        IFormDesignerService formDesignerService)
+    public FormDesignerMultipleMappingController(IFormDesignerService formDesignerService)
     {
         _formDesignerService = formDesignerService;
     }
@@ -30,51 +33,49 @@ public class FormDesignerController : ControllerBase
     /// <param name="ct">CancellationToken</param>
     /// <returns>表單主檔清單</returns>
     [HttpGet]
-    public async Task<ActionResult<List<FormFieldMasterDto>>> GetFormMasters( [FromQuery] string? q, CancellationToken ct )
+    public async Task<ActionResult<List<FormFieldMasterDto>>> GetFormMasters(
+        [FromQuery] string? q,
+        CancellationToken ct)
     {
-        var masters = await _formDesignerService.GetFormMasters( _funcType, q, ct );
-        return Ok( masters.ToList() );
+        var masters = await _formDesignerService.GetFormMasters(_funcType, q, ct);
+
+        return Ok(masters.ToList());
     }
     
     /// <summary>
     /// 更新主檔 or 明細 or 檢視表 名稱
     /// </summary>
-    /// <param name="model"></param>
-    /// <param name="ct">CancellationToken</param>
-    /// <returns></returns>
     [HttpPut("form-name")]
-    public async Task<IActionResult> UpdateFormName( [FromBody] UpdateFormNameViewModel model, CancellationToken ct )
+    public async Task<IActionResult> UpdateFormName([FromBody] UpdateFormNameViewModel model, CancellationToken ct)
     {
-        await _formDesignerService.UpdateFormName( model, ct );
+        await _formDesignerService.UpdateFormName(model, ct);   
         return Ok();
     }
     
     /// <summary>
-    /// 刪除指定的主檔或明細或檢視表資料
+    /// 刪除指定的主檔 or 明細 or 檢視表資料
     /// </summary>
-    /// <param name="id">FORM_FIELD_Master 的ID</param>
+    /// <param name="id">FORM_FIELD_Master 的唯一識別編號</param>
     /// <returns>NoContent 回應</returns>
     [HttpDelete("{id}")]
-    public IActionResult Delete( Guid id )
+    public IActionResult Delete(Guid id)
     {
-        _formDesignerService.DeleteFormMaster( id );
+        _formDesignerService.DeleteFormMaster(id);
         return NoContent();
     }
     
     // ────────── Form Designer 入口 ──────────
     /// <summary>
-    /// 取得指定的 主檔、檢視表 主畫面資料(請傳入父節點 masterId)
+    /// 取得指定的主檔、目標表與關聯表（含檢視表）主畫面資料(請傳入父節點 masterId)
     /// </summary>
-    /// <param name="id">FORM_FIELD_Master 的ID</param>
-    /// <param name="ct"></param>
-    /// <returns></returns>
+    // [RequirePermission(ActionAuthorizeHelper.View)]
     [HttpGet("{id:guid}")]
-    public async Task<IActionResult> GetDesigner( Guid id, CancellationToken ct )
+    public async Task<IActionResult> GetDesigner(Guid id, CancellationToken ct)
     {
-        var model = await _formDesignerService.GetFormDesignerIndexViewModel( _funcType, id, ct );
-        return Ok( model );
+        var model = await _formDesignerService.GetFormDesignerIndexViewModel(_funcType, id, ct);
+        return Ok(model);
     }
-
+    
     // ────────── 欄位相關 ──────────
 
     /// <summary>
@@ -121,7 +122,7 @@ public class FormDesignerController : ControllerBase
             return StatusCode( (int)ex.StatusCode, ex.Message );
         }
     }
-
+    
     /// <summary>
     /// 依欄位設定 ID 取得單一欄位設定 ( GetFields搜尋時就會先預先建立完成 )
     /// </summary>
@@ -134,7 +135,7 @@ public class FormDesignerController : ControllerBase
         if ( field == null ) return NotFound();
         return Ok( field );
     }
-
+    
     /// <summary>
     /// 新增或更新單一欄位設定（ID 有值為更新，無值為新增）
     /// </summary>
@@ -146,22 +147,22 @@ public class FormDesignerController : ControllerBase
         try
         {
             if ( model.SchemaType == TableSchemaQueryType.OnlyTable &&
-                ( model.QUERY_COMPONENT != QueryComponentType.None ||
-                 model.CAN_QUERY == true ) )
+                 ( model.QUERY_COMPONENT != QueryComponentType.None ||
+                   model.CAN_QUERY == true ) )
                 return Conflict( "無法往主表寫入查詢條件" );
             
             if ( model.SchemaType == TableSchemaQueryType.OnlyTable &&
-                ( model.QUERY_DEFAULT_VALUE != null ||
-                 model.CAN_QUERY == true ) )
+                 ( model.QUERY_DEFAULT_VALUE != null ||
+                   model.CAN_QUERY == true ) )
                 return Conflict( "無法往主表寫入查詢預設值" );
             
             if ( model.SchemaType == TableSchemaQueryType.OnlyView &&
-                ( model.CAN_QUERY == false && model.QUERY_COMPONENT != QueryComponentType.None ) )
+                 ( model.CAN_QUERY == false && model.QUERY_COMPONENT != QueryComponentType.None ) )
                 return Conflict( "無法更改未開放查詢條件的查詢元件" );
             
             if ( model.ID != Guid.Empty &&
-                _formDesignerService.HasValidationRules( model.ID ) &&
-                _formDesignerService.GetControlTypeByFieldId( model.ID ) != model.CONTROL_TYPE )
+                 _formDesignerService.HasValidationRules( model.ID ) &&
+                 _formDesignerService.GetControlTypeByFieldId( model.ID ) != model.CONTROL_TYPE )
                 return Conflict( "已有驗證規則，無法變更控制元件類型" );
 
             var master = new FormFieldMasterDto { ID = model.FORM_FIELD_Master_ID };
@@ -176,7 +177,7 @@ public class FormDesignerController : ControllerBase
             return StatusCode( (int)ex.StatusCode, ex.Message );
         }
     }
-
+    
     // ────────── 批次設定 ──────────
 
     /// <summary>
@@ -193,7 +194,7 @@ public class FormDesignerController : ControllerBase
         var fields = await _formDesignerService.GetFieldsByTableName( model, formMasterId, TableSchemaQueryType.OnlyTable );
         return Ok( fields );
     }
-
+    
     /// <summary>
     /// 批次設定所有欄位為必填/非必填
     /// </summary>
@@ -208,7 +209,7 @@ public class FormDesignerController : ControllerBase
         var fields = await _formDesignerService.GetFieldsByTableName( tableName, formMasterId,  TableSchemaQueryType.OnlyTable );
         return Ok( fields );
     }
-
+    
     // ────────── 欄位驗證規則 ──────────
 
     /// <summary>
@@ -221,7 +222,7 @@ public class FormDesignerController : ControllerBase
     public async Task<IActionResult> AddEmptyValidationRule( Guid fieldId, CancellationToken ct = default )
     {
         var rule = _formDesignerService.CreateEmptyValidationRule( fieldId );
-        await _formDesignerService.InsertValidationRule(rule);
+        await _formDesignerService.InsertValidationRule( rule, ct );
         var rules = await _formDesignerService.GetValidationRulesByFieldId( fieldId, ct );
         return Ok( new { rules } );
     }
@@ -282,9 +283,9 @@ public class FormDesignerController : ControllerBase
         {
             return BadRequest( "查無此設定檔，請確認ID是否正確。" );
         }
-        if (field.SchemaType != TableSchemaQueryType.OnlyTable)
+        if (field.SchemaType != TableSchemaQueryType.OnlyTable && field.SchemaType != TableSchemaQueryType.OnlyDetail)
         {
-            return BadRequest( "下拉選單設定只支援主擋。" );
+            return BadRequest( "下拉選單設定只支援主擋、明細。" );
         }
         _formDesignerService.EnsureDropdownCreated( fieldId );
         var setting = await _formDesignerService.GetDropdownSetting( fieldId );
@@ -306,7 +307,7 @@ public class FormDesignerController : ControllerBase
     }
 
     /// <summary>
-    /// 取得所有下拉選單選項
+    /// 取得所有下拉選單選項(排除Sql)
     /// </summary>
     /// <param name="dropdownId">FORM_FIELD_DROPDOWN 的ID</param>
     /// <param name="ct"></param>
@@ -398,24 +399,23 @@ public class FormDesignerController : ControllerBase
         var options = await _formDesignerService.GetDropdownOptions( dropdownId );
         return Ok(options);
     }
-
+    
     // ────────── Form Header ──────────
-
+    
     /// <summary>
-    /// 儲存表單主檔資訊
+    /// 儲存多對多表單主檔資訊並建立對應的主 / 目標 / 關聯表設定。
     /// </summary>
-    /// <param name="model"></param>
-    /// <returns></returns>
     [HttpPost("headers")]
-    public async Task<IActionResult> SaveFormHeader( [FromBody] FormHeaderViewModel model )
+    public async Task<IActionResult> SaveMultipleMappingFormHeader([FromBody] MultipleMappingFormHeaderViewModel model)
     {
-        if ( model.BASE_TABLE_ID == Guid.Empty || model.VIEW_TABLE_ID == Guid.Empty )
-            return BadRequest("BASE_TABLE_ID / VIEW_TABLE_ID 不可為空");
+        if (model.BASE_TABLE_ID == Guid.Empty ||
+            model.DETAIL_TABLE_ID == Guid.Empty ||
+            model.MAPPING_TABLE_ID == Guid.Empty)
+        {
+            return BadRequest("BASE_TABLE_ID / DETAIL_TABLE_ID / MAPPING_TABLE_ID 不可為空");
+        }
 
-        // if ( _formDesignerService.CheckFormMasterExists( model.BASE_TABLE_ID, model.VIEW_TABLE_ID, model.ID ) )
-        //     return Conflict("相同的表格及 View 組合已存在");
-
-        var id = await _formDesignerService.SaveFormHeader( model );
-        return Ok( new { id } );
+        var id = await _formDesignerService.SaveMultipleMappingFormHeader(model);
+        return Ok(new { id });
     }
 }

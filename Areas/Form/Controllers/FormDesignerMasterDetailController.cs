@@ -15,7 +15,7 @@ namespace DcMateH5Api.Areas.Form.Controllers;
 public class FormDesignerMasterDetailController : ControllerBase
 {
     private readonly IFormDesignerService _formDesignerService;
-    private readonly FormFunctionType _funcType = FormFunctionType.MasterDetail;
+    private readonly FormFunctionType _funcType = FormFunctionType.MasterDetailMaintenance;
     
     public FormDesignerMasterDetailController(IFormDesignerService formDesignerService)
     {

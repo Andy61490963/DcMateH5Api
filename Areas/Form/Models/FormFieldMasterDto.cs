@@ -38,10 +38,14 @@ public class FormFieldMasterDto
     [Column("VIEW_TABLE_ID")]
     public Guid? VIEW_TABLE_ID { get; set; }
     
-    
+    [Column("MAPPING_TABLE_NAME")]
+    public string? MAPPING_TABLE_NAME { get; set; }
 
-    [Column("IS_MASTER_DETAIL")]
-    public FormFunctionType? IS_MASTER_DETAIL { get; set; }
+    [Column("MAPPING_TABLE_ID")]
+    public Guid? MAPPING_TABLE_ID { get; set; }
+
+    [Column("FUNCTION_TYPE")]
+    public FormFunctionType? FUNCTION_TYPE { get; set; }
     
     [Column("STATUS")]
     public int STATUS { get; set; }  

@@ -33,7 +33,7 @@ public class FormFieldMasterService : IFormFieldMasterService
     public List<(FormFieldMasterDto Master, List<FormFieldConfigDto> FieldConfigs)> GetFormMetaAggregates( FormFunctionType funcType, TableSchemaQueryType type )
     {
         var masters = _con.Query<FormFieldMasterDto>(
-            "/**/SELECT * FROM FORM_FIELD_Master WHERE SCHEMA_TYPE = @TYPE AND IS_MASTER_DETAIL = @funcType",
+            "/**/SELECT * FROM FORM_FIELD_Master WHERE SCHEMA_TYPE = @TYPE AND FUNCTION_TYPE = @funcType",
             new { TYPE = type.ToInt(), funcType = funcType.ToInt() })
             .ToList();
 
@@ -52,4 +52,3 @@ public class FormFieldMasterService : IFormFieldMasterService
         return result;
     }
 }
-

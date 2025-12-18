@@ -20,7 +20,7 @@ public class FormMasterDetailController : ControllerBase
     private const int DefaultDetailPageSize = 5;
 
     private readonly IFormMasterDetailService _service;
-    private readonly FormFunctionType _funcType = FormFunctionType.MasterDetail;
+    private readonly FormFunctionType _funcType = FormFunctionType.MasterDetailMaintenance;
     public FormMasterDetailController(IFormMasterDetailService service)
     {
         _service = service;

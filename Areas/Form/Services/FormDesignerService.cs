@@ -56,7 +56,7 @@ public class FormDesignerService : IFormDesignerService
         CancellationToken ct)
     {
         var where = new WhereBuilder<FormFieldMasterDto>()
-            .AndEq(x => x.IS_MASTER_DETAIL!, functionType)
+            .AndEq(x => x.FUNCTION_TYPE!, functionType)
             .AndNotDeleted();
 
         if (!string.IsNullOrWhiteSpace(q))
@@ -101,8 +101,8 @@ public class FormDesignerService : IFormDesignerService
     }
     
     /// <summary>
-    /// 根據 functionType 取得 主檔維護 或 主明細維護 畫面資料，提供前端建樹狀結構使用。
-    /// NotMasterDetail(0) → 只顯示 Base + View；MasterDetail(1) → 顯示 Base + Detail + View。
+    /// 根據 functionType 取得 主檔維護 / 一對多維護 / 多對多維護 畫面資料，提供前端建樹狀結構使用。
+    /// 主檔維護：Base + View；一對多維護：Base + Detail + View；多對多維護：Base + Detail + Mapping (+View 選填)。
     /// 若功能模組與表單型態不匹配，直接丟出可讀的 Domain 例外。
     /// </summary>
     public async Task<FormDesignerIndexViewModel> GetFormDesignerIndexViewModel(
@@ -112,24 +112,19 @@ public class FormDesignerService : IFormDesignerService
     {
         var master = await GetFormMasterAsync(id, ct) ?? throw new Exception("查無主檔。");
 
-        // 判斷「表單是否主明細」與「功能模組」是否相容
-        var isMasterDetail = master.IS_MASTER_DETAIL == FormFunctionType.MasterDetail;
-        if (functionType == FormFunctionType.NotMasterDetail && isMasterDetail)
-            throw new Exception("此表單為『主明細』型態，無法在『主檔維護』模組開啟。");
-        if (functionType == FormFunctionType.MasterDetail && !isMasterDetail)
-            throw new Exception("此表單為『非主明細』型態，請改在『主檔維護』模組開啟。");
+        if (master.FUNCTION_TYPE.HasValue && master.FUNCTION_TYPE != functionType)
+            throw new Exception("表單功能模組與表單型態不一致，請使用對應的維護模組。");
         if (string.IsNullOrWhiteSpace(master.BASE_TABLE_NAME) || master.BASE_TABLE_ID is null)
             throw new Exception("缺少主檔（Base）表設定：請檢查 BASE_TABLE_NAME / BASE_TABLE_ID。");
-        if (string.IsNullOrWhiteSpace(master.VIEW_TABLE_NAME) || master.VIEW_TABLE_ID is null)
-            throw new Exception("缺少檢視表（View）表設定：請檢查 VIEW_TABLE_NAME / VIEW_TABLE_ID。");
-        
+
         // 準備回傳物件，先放表頭
         var result = new FormDesignerIndexViewModel
         {
             FormHeader = master,
             BaseFields = null!,
             DetailFields = null!,
-            ViewFields = null!
+            ViewFields = null!,
+            MappingFields = null!
         };
 
         var baseFields = await GetFieldsByTableName(
@@ -139,38 +134,75 @@ public class FormDesignerService : IFormDesignerService
 
         result.BaseFields = baseFields;
 
-        // 依功能模組決定要不要載 Detail / View
-        if (functionType == FormFunctionType.NotMasterDetail)
+        switch (functionType)
         {
-            // NotMasterDetail：只載 View（可缺省 → 回傳 null，前端不渲染該節點）
-            if (!string.IsNullOrWhiteSpace(master.VIEW_TABLE_NAME) && master.VIEW_TABLE_ID is not null)
-            {
+            case FormFunctionType.MasterMaintenance:
+                if (string.IsNullOrWhiteSpace(master.VIEW_TABLE_NAME) || master.VIEW_TABLE_ID is null)
+                    throw new Exception("缺少檢視表（View）表設定：請檢查 VIEW_TABLE_NAME / VIEW_TABLE_ID。");
+
+                result.DetailFields = null!;
+                result.MappingFields = null!;
+
+                if (!string.IsNullOrWhiteSpace(master.VIEW_TABLE_NAME) && master.VIEW_TABLE_ID is not null)
+                {
+                    var viewFields = await GetFieldsByTableName(
+                        master.VIEW_TABLE_NAME,
+                        master.VIEW_TABLE_ID.Value,
+                        TableSchemaQueryType.OnlyView);
+
+                    result.ViewFields = viewFields;
+                }
+                break;
+            case FormFunctionType.MasterDetailMaintenance:
+                if (string.IsNullOrWhiteSpace(master.DETAIL_TABLE_NAME) || master.DETAIL_TABLE_ID is null)
+                    throw new Exception("缺少明細表設定：請檢查 DETAIL_TABLE_NAME / DETAIL_TABLE_ID。");
+                if (string.IsNullOrWhiteSpace(master.VIEW_TABLE_NAME) || master.VIEW_TABLE_ID is null)
+                    throw new Exception("缺少檢視表（View）表設定：請檢查 VIEW_TABLE_NAME / VIEW_TABLE_ID。");
+
+                result.MappingFields = null!;
+
+                var detailFields = await GetFieldsByTableName(
+                    master.DETAIL_TABLE_NAME,
+                    master.DETAIL_TABLE_ID.Value,
+                    TableSchemaQueryType.OnlyDetail);
+
+                result.DetailFields = detailFields;
+
                 var viewFields = await GetFieldsByTableName(
                     master.VIEW_TABLE_NAME,
                     master.VIEW_TABLE_ID.Value,
                     TableSchemaQueryType.OnlyView);
-
                 result.ViewFields = viewFields;
-            }
-            // 明細不需要
-            result.DetailFields = null!;
-        }
-        else // MasterDetail
-        {
-            
+                break;
+            case FormFunctionType.MultipleMappingMaintenance:
+                if (string.IsNullOrWhiteSpace(master.DETAIL_TABLE_NAME) || master.DETAIL_TABLE_ID is null)
+                    throw new Exception("缺少對應的明細表設定：請檢查 DETAIL_TABLE_NAME / DETAIL_TABLE_ID。");
+                if (string.IsNullOrWhiteSpace(master.MAPPING_TABLE_NAME) || master.MAPPING_TABLE_ID is null)
+                    throw new Exception("缺少關聯表設定：請檢查 MAPPING_TABLE_NAME / MAPPING_TABLE_ID。");
 
-            var detailFields = await GetFieldsByTableName(
-                master.DETAIL_TABLE_NAME,
-                master.DETAIL_TABLE_ID.Value,
-                TableSchemaQueryType.OnlyDetail);
+                var multiDetailFields = await GetFieldsByTableName(
+                    master.DETAIL_TABLE_NAME,
+                    master.DETAIL_TABLE_ID.Value,
+                    TableSchemaQueryType.OnlyDetail);
+                result.DetailFields = multiDetailFields;
 
-            result.DetailFields = detailFields;
+                var mappingFields = await GetFieldsByTableName(
+                    master.MAPPING_TABLE_NAME,
+                    master.MAPPING_TABLE_ID.Value,
+                    TableSchemaQueryType.OnlyMapping);
+                result.MappingFields = mappingFields;
 
-            var viewFields = await GetFieldsByTableName(
-                master.VIEW_TABLE_NAME,
-                master.VIEW_TABLE_ID.Value,
-                TableSchemaQueryType.OnlyView);
-            result.ViewFields = viewFields;
+                if (!string.IsNullOrWhiteSpace(master.VIEW_TABLE_NAME) && master.VIEW_TABLE_ID is not null)
+                {
+                    var mappingViewFields = await GetFieldsByTableName(
+                        master.VIEW_TABLE_NAME,
+                        master.VIEW_TABLE_ID.Value,
+                        TableSchemaQueryType.OnlyView);
+                    result.ViewFields = mappingViewFields;
+                }
+                break;
+            default:
+                throw new InvalidOperationException("不支援的功能模組型態。");
         }
 
         return result;
@@ -227,14 +259,14 @@ ORDER BY TABLE_SCHEMA, TABLE_NAME;";
         _con.Execute(@"
         INSERT INTO FORM_FIELD_Master
     (ID, FORM_NAME, STATUS, SCHEMA_TYPE,
-     BASE_TABLE_NAME, VIEW_TABLE_NAME, DETAIL_TABLE_NAME,
-     BASE_TABLE_ID,  VIEW_TABLE_ID,  DETAIL_TABLE_ID,
-     IS_MASTER_DETAIL, IS_DELETE)
+     BASE_TABLE_NAME, VIEW_TABLE_NAME, DETAIL_TABLE_NAME, MAPPING_TABLE_NAME,
+     BASE_TABLE_ID,  VIEW_TABLE_ID,  DETAIL_TABLE_ID, MAPPING_TABLE_ID,
+     FUNCTION_TYPE, IS_DELETE)
     VALUES
     (@ID, @FORM_NAME, @STATUS, @SCHEMA_TYPE,
-     @BASE_TABLE_NAME, @VIEW_TABLE_NAME, @DETAIL_TABLE_NAME,
-     @BASE_TABLE_ID,  @VIEW_TABLE_ID,  @DETAIL_TABLE_ID,
-     @IS_MASTER_DETAIL, 0);", new
+     @BASE_TABLE_NAME, @VIEW_TABLE_NAME, @DETAIL_TABLE_NAME, @MAPPING_TABLE_NAME,
+     @BASE_TABLE_ID,  @VIEW_TABLE_ID,  @DETAIL_TABLE_ID, @MAPPING_TABLE_ID,
+     @FUNCTION_TYPE, 0);", new
         {
             ID = insertId,
             model.FORM_NAME,
@@ -243,12 +275,14 @@ ORDER BY TABLE_SCHEMA, TABLE_NAME;";
             model.BASE_TABLE_NAME,
             model.VIEW_TABLE_NAME,
             model.DETAIL_TABLE_NAME,
+            model.MAPPING_TABLE_NAME,
 
             BASE_TABLE_ID   = HasValue(model.BASE_TABLE_NAME)   ? insertId : (Guid?)null,
             VIEW_TABLE_ID   = HasValue(model.VIEW_TABLE_NAME)   ? insertId : (Guid?)null,
             DETAIL_TABLE_ID = HasValue(model.DETAIL_TABLE_NAME) ? insertId : (Guid?)null,
+            MAPPING_TABLE_ID = HasValue(model.MAPPING_TABLE_NAME) ? insertId : (Guid?)null,
 
-            model.IS_MASTER_DETAIL,
+            FUNCTION_TYPE = model.FUNCTION_TYPE,
         });
 
         return insertId;
@@ -335,6 +369,7 @@ ORDER BY TABLE_SCHEMA, TABLE_NAME;";
         switch (schemaType)
         {
             case TableSchemaQueryType.OnlyTable:
+            case TableSchemaQueryType.OnlyMapping:
                 // 純表維運：查詢相關關閉/清空
                 f.CAN_QUERY = null;
                 f.QUERY_COMPONENT = null;
@@ -413,7 +448,10 @@ ORDER BY TABLE_SCHEMA, TABLE_NAME;";
         var missingColumns = _requiredColumns
             .Where(req => !columns.Any(c => c.COLUMN_NAME.Equals(req, StringComparison.OrdinalIgnoreCase)))
             .ToList();
-        if ((missingColumns.Count > 0 && schemaType == TableSchemaQueryType.OnlyTable) || missingColumns.Count > 0 && schemaType == TableSchemaQueryType.OnlyDetail)
+        if (missingColumns.Count > 0 &&
+            (schemaType == TableSchemaQueryType.OnlyTable ||
+             schemaType == TableSchemaQueryType.OnlyDetail ||
+             schemaType == TableSchemaQueryType.OnlyMapping))
             throw new HttpStatusCodeException(
                 HttpStatusCode.BadRequest,
                 $"缺少必要欄位：{string.Join(", ", missingColumns)}");
@@ -426,6 +464,7 @@ ORDER BY TABLE_SCHEMA, TABLE_NAME;";
             BASE_TABLE_NAME   = null,
             DETAIL_TABLE_NAME = null,
             VIEW_TABLE_NAME   = null,
+            MAPPING_TABLE_NAME = null
         };
 
         switch (schemaType)
@@ -438,6 +477,9 @@ ORDER BY TABLE_SCHEMA, TABLE_NAME;";
                 break;
             case TableSchemaQueryType.OnlyDetail:
                 master.DETAIL_TABLE_NAME = tableName;
+                break;
+            case TableSchemaQueryType.OnlyMapping:
+                master.MAPPING_TABLE_NAME = tableName;
                 break;
         }
         
@@ -940,9 +982,11 @@ ORDER BY TABLE_SCHEMA, TABLE_NAME;";
             model.VIEW_TABLE_ID,
             BASE_TABLE_NAME = baseTableName,
             VIEW_TABLE_NAME = viewTableName,
+            MAPPING_TABLE_NAME = (string?)null,
+            MAPPING_TABLE_ID = (Guid?)null,
             STATUS = (int)TableStatusType.Active,
             SCHEMA_TYPE = TableSchemaQueryType.All,
-            IS_MASTER_DETAIL = false
+            FUNCTION_TYPE = FormFunctionType.MasterMaintenance
         });
         return id;
     }
@@ -983,7 +1027,7 @@ ORDER BY TABLE_SCHEMA, TABLE_NAME;";
             throw new InvalidOperationException("顯示用 View 名稱查無資料");
 
         // 確保主表與明細表具有共用的關聯欄位，避免 SubmitForm 發生錯誤
-        EnsureRelationColumn(masterTableName, detailTableName);
+        EnsureRelationColumn(masterTableName, detailTableName, "主表與明細表");
 
         if (model.ID == Guid.Empty)
         {
@@ -1000,9 +1044,11 @@ ORDER BY TABLE_SCHEMA, TABLE_NAME;";
             MASTER_TABLE_NAME = masterTableName,
             DETAIL_TABLE_NAME = detailTableName,
             VIEW_TABLE_NAME = viewTableName,
+            MAPPING_TABLE_NAME = (string?)null,
+            MAPPING_TABLE_ID = (Guid?)null,
             STATUS = (int)TableStatusType.Active,
             SCHEMA_TYPE = TableSchemaQueryType.All,
-            IS_MASTER_DETAIL = true
+            FUNCTION_TYPE = FormFunctionType.MasterDetailMaintenance
         });
         return id;
     }
@@ -1020,6 +1066,88 @@ ORDER BY TABLE_SCHEMA, TABLE_NAME;";
         );
 
         return count > 0;
+    }
+
+    /// <summary>
+    /// 儲存多對多表單主檔設定並回寫 FORM_FIELD_Master。
+    /// </summary>
+    /// <param name="model">多對多主檔設定</param>
+    /// <remarks>會同步檢查主表、目標表與關聯表的實體存在性與關聯欄位，以避免後續填寫階段出錯。</remarks>
+    public async Task<Guid> SaveMultipleMappingFormHeader(MultipleMappingFormHeaderViewModel model)
+    {
+        var whereBase = new WhereBuilder<FormFieldMasterDto>()
+            .AndEq(x => x.ID, model.BASE_TABLE_ID)
+            .AndNotDeleted();
+        var whereDetail = new WhereBuilder<FormFieldMasterDto>()
+            .AndEq(x => x.ID, model.DETAIL_TABLE_ID)
+            .AndNotDeleted();
+        var whereMapping = new WhereBuilder<FormFieldMasterDto>()
+            .AndEq(x => x.ID, model.MAPPING_TABLE_ID)
+            .AndNotDeleted();
+
+        var viewTableId = model.VIEW_TABLE_ID == Guid.Empty ? (Guid?)null : model.VIEW_TABLE_ID;
+        var whereView = viewTableId.HasValue
+            ? new WhereBuilder<FormFieldMasterDto>().AndEq(x => x.ID, viewTableId).AndNotDeleted()
+            : null;
+
+        var baseMaster = await _sqlHelper.SelectFirstOrDefaultAsync(whereBase)
+                         ?? throw new InvalidOperationException("主表查無資料");
+        var detailMaster = await _sqlHelper.SelectFirstOrDefaultAsync(whereDetail)
+                           ?? throw new InvalidOperationException("目標表查無資料");
+        var mappingMaster = await _sqlHelper.SelectFirstOrDefaultAsync(whereMapping)
+                            ?? throw new InvalidOperationException("關聯表查無資料");
+        var viewMaster = whereView == null
+            ? null
+            : await _sqlHelper.SelectFirstOrDefaultAsync(whereView)
+              ?? throw new InvalidOperationException("檢視表查無資料");
+
+        var baseTableName = baseMaster.BASE_TABLE_NAME;
+        var detailTableName = detailMaster.DETAIL_TABLE_NAME ?? detailMaster.BASE_TABLE_NAME;
+        var mappingTableName = mappingMaster.MAPPING_TABLE_NAME ?? mappingMaster.BASE_TABLE_NAME ?? mappingMaster.DETAIL_TABLE_NAME;
+        var viewTableName = viewMaster?.VIEW_TABLE_NAME;
+
+        if (string.IsNullOrWhiteSpace(baseTableName))
+            throw new InvalidOperationException("主表名稱查無設定");
+        if (string.IsNullOrWhiteSpace(detailTableName))
+            throw new InvalidOperationException("目標表名稱查無設定");
+        if (string.IsNullOrWhiteSpace(mappingTableName))
+            throw new InvalidOperationException("關聯表名稱查無設定");
+
+        if (GetTableSchema(baseTableName).Count == 0)
+            throw new InvalidOperationException("主表名稱查無資料");
+        if (GetTableSchema(detailTableName).Count == 0)
+            throw new InvalidOperationException("目標表名稱查無資料");
+        if (GetTableSchema(mappingTableName).Count == 0)
+            throw new InvalidOperationException("關聯表名稱查無資料");
+        if (!string.IsNullOrWhiteSpace(viewTableName) && GetTableSchema(viewTableName).Count == 0)
+            throw new InvalidOperationException("檢視表名稱查無資料");
+
+        EnsureRelationColumn(mappingTableName, baseTableName, "關聯表與主表");
+        EnsureRelationColumn(mappingTableName, detailTableName, "關聯表與目標表");
+
+        if (model.ID == Guid.Empty)
+        {
+            model.ID = Guid.NewGuid();
+        }
+
+        var id = _con.ExecuteScalar<Guid>(Sql.UpsertMultipleMappingFormMaster, new
+        {
+            model.ID,
+            model.FORM_NAME,
+            model.BASE_TABLE_ID,
+            model.DETAIL_TABLE_ID,
+            model.MAPPING_TABLE_ID,
+            VIEW_TABLE_ID = viewTableId,
+            MASTER_TABLE_NAME = baseTableName,
+            DETAIL_TABLE_NAME = detailTableName,
+            MAPPING_TABLE_NAME = mappingTableName,
+            VIEW_TABLE_NAME = viewTableName,
+            STATUS = (int)TableStatusType.Active,
+            SCHEMA_TYPE = TableSchemaQueryType.All,
+            FUNCTION_TYPE = FormFunctionType.MultipleMappingMaintenance
+        });
+
+        return id;
     }
 
     public bool CheckFormMasterExists(Guid baseTableId, Guid viewTableId, Guid? excludeId = null)
@@ -1063,16 +1191,17 @@ ORDER BY TABLE_SCHEMA, TABLE_NAME;";
     }
 
     /// <summary>
-    /// 驗證主表與明細表是否存在共用的關聯欄位。
+    /// 驗證指定資料表是否存在共用的關聯欄位。
     /// </summary>
-    /// <param name="masterTableName">主表名稱</param>
-    /// <param name="detailTableName">明細表名稱</param>
+    /// <param name="leftTableName">左側資料表名稱</param>
+    /// <param name="rightTableName">右側資料表名稱</param>
+    /// <param name="relationDescription">業務描述，便於錯誤訊息辨識</param>
     /// <exception cref="InvalidOperationException">當找不到符合條件的欄位時拋出</exception>
-    private void EnsureRelationColumn(string masterTableName, string detailTableName)
+    private void EnsureRelationColumn(string leftTableName, string rightTableName, string relationDescription)
     {
-        var masterCols = _schemaService.GetFormFieldMaster(masterTableName);
+        var masterCols = _schemaService.GetFormFieldMaster(leftTableName);
         var detailSet = _schemaService
-            .GetFormFieldMaster(detailTableName)
+            .GetFormFieldMaster(rightTableName)
             .ToHashSet(StringComparer.OrdinalIgnoreCase);
 
         var hasRelation = masterCols.Any(columnName =>
@@ -1083,7 +1212,7 @@ ORDER BY TABLE_SCHEMA, TABLE_NAME;";
         {
             var suffixDisplay = string.Join("', '", _relationColumnSuffixes);
             throw new InvalidOperationException(
-                $"主表與明細表缺少以以下任一結尾的共用關聯欄位：'{suffixDisplay}'");
+                $"{relationDescription}缺少以以下任一結尾的共用關聯欄位：'{suffixDisplay}'");
         }
     }
 
@@ -1144,21 +1273,23 @@ USING (SELECT @ID AS ID) AS src
 ON target.ID = src.ID
 WHEN MATCHED THEN
     UPDATE SET
-        FORM_NAME        = @FORM_NAME,
-        BASE_TABLE_NAME  = @BASE_TABLE_NAME,
-        VIEW_TABLE_NAME  = @VIEW_TABLE_NAME,
-        BASE_TABLE_ID    = @BASE_TABLE_ID,
-        VIEW_TABLE_ID    = @VIEW_TABLE_ID,
-        STATUS            = @STATUS,          
-        SCHEMA_TYPE       = @SCHEMA_TYPE,    
-        IS_MASTER_DETAIL = @IS_MASTER_DETAIL
+        FORM_NAME          = @FORM_NAME,
+        BASE_TABLE_NAME    = @BASE_TABLE_NAME,
+        VIEW_TABLE_NAME    = @VIEW_TABLE_NAME,
+        MAPPING_TABLE_NAME = @MAPPING_TABLE_NAME,
+        BASE_TABLE_ID      = @BASE_TABLE_ID,
+        VIEW_TABLE_ID      = @VIEW_TABLE_ID,
+        MAPPING_TABLE_ID   = @MAPPING_TABLE_ID,
+        STATUS             = @STATUS,          
+        SCHEMA_TYPE        = @SCHEMA_TYPE,    
+        FUNCTION_TYPE      = @FUNCTION_TYPE
 WHEN NOT MATCHED THEN
     INSERT (
-        ID, FORM_NAME, BASE_TABLE_NAME, VIEW_TABLE_NAME,
-        BASE_TABLE_ID, VIEW_TABLE_ID, STATUS, SCHEMA_TYPE, IS_MASTER_DETAIL, IS_DELETE)
+        ID, FORM_NAME, BASE_TABLE_NAME, VIEW_TABLE_NAME, MAPPING_TABLE_NAME,
+        BASE_TABLE_ID, VIEW_TABLE_ID, MAPPING_TABLE_ID, STATUS, SCHEMA_TYPE, FUNCTION_TYPE, IS_DELETE)
     VALUES (
-        @ID, @FORM_NAME, @BASE_TABLE_NAME, @VIEW_TABLE_NAME,
-        @BASE_TABLE_ID, @VIEW_TABLE_ID, @STATUS, @SCHEMA_TYPE, @IS_MASTER_DETAIL, 0)
+        @ID, @FORM_NAME, @BASE_TABLE_NAME, @VIEW_TABLE_NAME, @MAPPING_TABLE_NAME,
+        @BASE_TABLE_ID, @VIEW_TABLE_ID, @MAPPING_TABLE_ID, @STATUS, @SCHEMA_TYPE, @FUNCTION_TYPE, 0)
 OUTPUT INSERTED.ID;";
 
         public const string CheckFormMasterExists = @"/**/
@@ -1182,14 +1313,16 @@ WHEN MATCHED THEN
         VIEW_TABLE_ID     = @VIEW_TABLE_ID,
         STATUS            = @STATUS,          
         SCHEMA_TYPE       = @SCHEMA_TYPE,    
-        IS_MASTER_DETAIL  = @IS_MASTER_DETAIL
+        MAPPING_TABLE_NAME = @MAPPING_TABLE_NAME,
+        MAPPING_TABLE_ID   = @MAPPING_TABLE_ID,
+        FUNCTION_TYPE      = @FUNCTION_TYPE
 WHEN NOT MATCHED THEN
     INSERT (
-        ID, FORM_NAME, BASE_TABLE_NAME, DETAIL_TABLE_NAME, VIEW_TABLE_NAME,
-        BASE_TABLE_ID, DETAIL_TABLE_ID, VIEW_TABLE_ID, STATUS, SCHEMA_TYPE, IS_MASTER_DETAIL, IS_DELETE)
+        ID, FORM_NAME, BASE_TABLE_NAME, DETAIL_TABLE_NAME, VIEW_TABLE_NAME, MAPPING_TABLE_NAME,
+        BASE_TABLE_ID, DETAIL_TABLE_ID, VIEW_TABLE_ID, MAPPING_TABLE_ID, STATUS, SCHEMA_TYPE, FUNCTION_TYPE, IS_DELETE)
     VALUES (
-        @ID, @FORM_NAME, @MASTER_TABLE_NAME, @DETAIL_TABLE_NAME, @VIEW_TABLE_NAME,
-        @BASE_TABLE_ID, @DETAIL_TABLE_ID, @VIEW_TABLE_ID, @STATUS, @SCHEMA_TYPE, @IS_MASTER_DETAIL, 0)
+        @ID, @FORM_NAME, @MASTER_TABLE_NAME, @DETAIL_TABLE_NAME, @VIEW_TABLE_NAME, @MAPPING_TABLE_NAME,
+        @BASE_TABLE_ID, @DETAIL_TABLE_ID, @VIEW_TABLE_ID, @MAPPING_TABLE_ID, @STATUS, @SCHEMA_TYPE, @FUNCTION_TYPE, 0)
 OUTPUT INSERTED.ID;";
 
         public const string CheckMasterDetailFormMasterExists = @"/**/
@@ -1198,6 +1331,33 @@ WHERE BASE_TABLE_ID = @masterTableId
   AND DETAIL_TABLE_ID = @detailTableId
   AND VIEW_TABLE_ID = @viewTableId
   AND (@excludeId IS NULL OR ID <> @excludeId)";
+
+        public const string UpsertMultipleMappingFormMaster = @"/**/
+MERGE FORM_FIELD_Master AS target
+USING (SELECT @ID AS ID) AS src
+ON target.ID = src.ID
+WHEN MATCHED THEN
+    UPDATE SET
+        FORM_NAME          = @FORM_NAME,
+        BASE_TABLE_NAME    = @MASTER_TABLE_NAME,
+        DETAIL_TABLE_NAME  = @DETAIL_TABLE_NAME,
+        MAPPING_TABLE_NAME = @MAPPING_TABLE_NAME,
+        VIEW_TABLE_NAME    = @VIEW_TABLE_NAME,
+        BASE_TABLE_ID      = @BASE_TABLE_ID,
+        DETAIL_TABLE_ID    = @DETAIL_TABLE_ID,
+        MAPPING_TABLE_ID   = @MAPPING_TABLE_ID,
+        VIEW_TABLE_ID      = @VIEW_TABLE_ID,
+        STATUS             = @STATUS,          
+        SCHEMA_TYPE        = @SCHEMA_TYPE,    
+        FUNCTION_TYPE      = @FUNCTION_TYPE
+WHEN NOT MATCHED THEN
+    INSERT (
+        ID, FORM_NAME, BASE_TABLE_NAME, DETAIL_TABLE_NAME, MAPPING_TABLE_NAME, VIEW_TABLE_NAME,
+        BASE_TABLE_ID, DETAIL_TABLE_ID, MAPPING_TABLE_ID, VIEW_TABLE_ID, STATUS, SCHEMA_TYPE, FUNCTION_TYPE, IS_DELETE)
+    VALUES (
+        @ID, @FORM_NAME, @MASTER_TABLE_NAME, @DETAIL_TABLE_NAME, @MAPPING_TABLE_NAME, @VIEW_TABLE_NAME,
+        @BASE_TABLE_ID, @DETAIL_TABLE_ID, @MAPPING_TABLE_ID, @VIEW_TABLE_ID, @STATUS, @SCHEMA_TYPE, @FUNCTION_TYPE, 0)
+OUTPUT INSERTED.ID;";
         
         public const string UpsertField = @"
 MERGE FORM_FIELD_CONFIG AS target
