@@ -24,6 +24,16 @@ public class FormMultipleMappingController : ControllerBase
     }
 
     /// <summary>
+    /// 取得多對多設定檔清單，供前端呈現可選的維護方案。
+    /// </summary>
+    [HttpGet("masters")]
+    public ActionResult<IEnumerable<MultipleMappingConfigViewModel>> GetFormMasters(CancellationToken ct)
+    {
+        var masters = _service.GetFormMasters(ct);
+        return Ok(masters);
+    }
+
+    /// <summary>
     /// 取得多對多維護可用的主檔資料清單，前端可透過回傳的 Pk 作為 BaseId 呼叫 GetMappingList。
     /// </summary>
     /// <param name="request">查詢條件與分頁設定，需帶入多對多設定檔 FormMasterId。</param>
@@ -43,17 +53,6 @@ public class FormMultipleMappingController : ControllerBase
         var vm = _service.GetForms(request, ct);
         return Ok(vm);
     }
-
-    /// <summary>
-    /// 取得多對多設定檔清單，供前端呈現可選的維護方案。
-    /// </summary>
-    [HttpGet("masters")]
-    public ActionResult<IEnumerable<MultipleMappingConfigViewModel>> GetFormMasters(CancellationToken ct)
-    {
-        var masters = _service.GetFormMasters(ct);
-        return Ok(masters);
-    }
-
     /// <summary>
     /// 依設定檔與主表主鍵取得左右清單（已關聯 / 未關聯）。
     /// </summary>
