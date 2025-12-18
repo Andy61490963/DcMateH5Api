@@ -134,6 +134,7 @@ public class FormDesignerService : IFormDesignerService
 
         result.BaseFields = baseFields;
 
+        FormFieldListViewModel? viewFields;
         switch (functionType)
         {
             case FormFunctionType.MasterMaintenance:
@@ -145,7 +146,7 @@ public class FormDesignerService : IFormDesignerService
 
                 if (!string.IsNullOrWhiteSpace(master.VIEW_TABLE_NAME) && master.VIEW_TABLE_ID is not null)
                 {
-                    var viewFields = await GetFieldsByTableName(
+                    viewFields = await GetFieldsByTableName(
                         master.VIEW_TABLE_NAME,
                         master.VIEW_TABLE_ID.Value,
                         TableSchemaQueryType.OnlyView);
@@ -168,7 +169,7 @@ public class FormDesignerService : IFormDesignerService
 
                 result.DetailFields = detailFields;
 
-                var viewFields = await GetFieldsByTableName(
+                viewFields = await GetFieldsByTableName(
                     master.VIEW_TABLE_NAME,
                     master.VIEW_TABLE_ID.Value,
                     TableSchemaQueryType.OnlyView);

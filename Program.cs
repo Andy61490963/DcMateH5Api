@@ -150,6 +150,7 @@ var swaggerGroups = new[]
 {
     SwaggerGroups.Form,
     SwaggerGroups.FormWithMasterDetail,
+    SwaggerGroups.FormWithMultipleMapping,
     SwaggerGroups.Permission,
     SwaggerGroups.Security,
     SwaggerGroups.Enum,
