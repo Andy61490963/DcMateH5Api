@@ -1,7 +1,4 @@
-﻿using System;
-using System.Collections.Generic;
-using System.Threading;
-using DcMateH5Api.Areas.Form.Interfaces;
+﻿using DcMateH5Api.Areas.Form.Interfaces;
 using DcMateH5Api.Areas.Form.ViewModels;
 using DcMateH5Api.Helper;
 using Microsoft.AspNetCore.Mvc;
@@ -60,7 +57,7 @@ public class FormMultipleMappingController : ControllerBase
     }
 
     /// <summary>
-    /// 將未關聯的明細批次加入關聯（右 → 左）。
+    /// 將未關聯的明細批次加入關聯（右 → 左），BaseId 傳入上支 api取得的 BasePk
     /// </summary>
     /// <param name="formMasterId">多對多設定檔識別碼。</param>
     /// <param name="request">包含 Base 主鍵與明細主鍵清單的請求模型。</param>
@@ -79,7 +76,7 @@ public class FormMultipleMappingController : ControllerBase
     }
 
     /// <summary>
-    /// 將已關聯的明細批次移除關聯（左 → 右）。
+    /// 將已關聯的明細批次移除關聯（左 → 右），BaseId 傳入上上支 api取得的 BasePk
     /// </summary>
     /// <param name="formMasterId">多對多設定檔識別碼。</param>
     /// <param name="request">包含 Base 主鍵與明細主鍵清單的請求模型。</param>
