@@ -24,17 +24,20 @@ public class FormMultipleMappingService : IFormMultipleMappingService
     private readonly IFormFieldMasterService _formFieldMasterService;
     private readonly ISchemaService _schemaService;
     private readonly ITransactionService _txService;
+    private readonly IFormService _formService;
 
     public FormMultipleMappingService(
         SqlConnection connection,
         IFormFieldMasterService formFieldMasterService,
         ISchemaService schemaService,
-        ITransactionService txService)
+        ITransactionService txService,
+        IFormService formService)
     {
         _con = connection;
         _formFieldMasterService = formFieldMasterService;
         _schemaService = schemaService;
         _txService = txService;
+        _formService = formService;
     }
 
     /// <inheritdoc />
@@ -56,6 +59,13 @@ SELECT ID AS Id,
 
         return _con.Query<MultipleMappingConfigViewModel>(sql,
             new { funcType = FormFunctionType.MultipleMappingMaintenance.ToInt() });
+    }
+
+    /// <inheritdoc />
+    public List<FormListDataViewModel> GetForms(FormSearchRequest? request = null, CancellationToken ct = default)
+    {
+        ct.ThrowIfCancellationRequested();
+        return _formService.GetFormList(FormFunctionType.MultipleMappingMaintenance, request);
     }
 
     /// <inheritdoc />

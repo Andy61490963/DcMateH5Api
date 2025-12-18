@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Threading;
 using DcMateH5Api.Areas.Form.Controllers;
 using DcMateH5Api.Areas.Form.Interfaces;
+using DcMateH5Api.Areas.Form.Models;
 using DcMateH5Api.Areas.Form.ViewModels;
 using Microsoft.AspNetCore.Mvc;
 using Moq;
@@ -15,6 +16,31 @@ public class FormMultipleMappingControllerTests
 
     private FormMultipleMappingController CreateController()
         => new(_service.Object);
+
+    [Fact]
+    public void GetForms_RequestIsNull_ReturnsBadRequest()
+    {
+        var controller = CreateController();
+
+        var result = controller.GetForms(null!, CancellationToken.None);
+
+        Assert.IsType<BadRequestObjectResult>(result);
+    }
+
+    [Fact]
+    public void GetForms_RequestIsValid_ReturnsOkWithResult()
+    {
+        var controller = CreateController();
+        var request = new FormSearchRequest(Guid.NewGuid());
+        var expected = new List<FormListDataViewModel> { new() };
+        _service.Setup(s => s.GetForms(request, It.IsAny<CancellationToken>())).Returns(expected);
+
+        var result = controller.GetForms(request, CancellationToken.None) as OkObjectResult;
+
+        _service.Verify(s => s.GetForms(request, It.IsAny<CancellationToken>()), Times.Once);
+        Assert.NotNull(result);
+        Assert.Same(expected, result.Value);
+    }
 
     [Fact]
     public void GetMappingList_BaseIdMissing_ReturnsBadRequest()

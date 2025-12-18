@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Threading;
+using DcMateH5Api.Areas.Form.Models;
 using DcMateH5Api.Areas.Form.ViewModels;
 
 namespace DcMateH5Api.Areas.Form.Interfaces;
@@ -14,6 +15,11 @@ public interface IFormMultipleMappingService
     /// 取得所有多對多設定檔清單。
     /// </summary>
     IEnumerable<MultipleMappingConfigViewModel> GetFormMasters(CancellationToken ct = default);
+
+    /// <summary>
+    /// 取得可進行多對多關聯的主檔資料清單，供前端選擇 Base 主鍵。
+    /// </summary>
+    List<FormListDataViewModel> GetForms(FormSearchRequest? request = null, CancellationToken ct = default);
 
     /// <summary>
     /// 依設定檔與主鍵取得已關聯/未關聯的左右清單。

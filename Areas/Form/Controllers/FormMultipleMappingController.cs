@@ -1,4 +1,5 @@
 ﻿using DcMateH5Api.Areas.Form.Interfaces;
+using DcMateH5Api.Areas.Form.Models;
 using DcMateH5Api.Areas.Form.ViewModels;
 using DcMateH5Api.Helper;
 using Microsoft.AspNetCore.Mvc;
@@ -20,6 +21,27 @@ public class FormMultipleMappingController : ControllerBase
     public FormMultipleMappingController(IFormMultipleMappingService service)
     {
         _service = service;
+    }
+
+    /// <summary>
+    /// 取得多對多維護可用的主檔資料清單，前端可透過回傳的 Pk 作為 BaseId 呼叫 GetMappingList。
+    /// </summary>
+    /// <param name="request">查詢條件與分頁設定，需帶入多對多設定檔 FormMasterId。</param>
+    /// <param name="ct">取消工作，避免長時間查詢阻塞。</param>
+    [HttpPost("search")]
+    public IActionResult GetForms([FromBody] FormSearchRequest? request, CancellationToken ct)
+    {
+        if (request == null)
+        {
+            return BadRequest(new
+            {
+                Error = "Request body is null",
+                Hint = "請確認傳入的 JSON 是否正確，至少需要提供查詢條件或分頁參數"
+            });
+        }
+
+        var vm = _service.GetForms(request, ct);
+        return Ok(vm);
     }
 
     /// <summary>
