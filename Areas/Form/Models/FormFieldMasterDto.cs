@@ -44,6 +44,12 @@ public class FormFieldMasterDto
     [Column("MAPPING_TABLE_ID")]
     public Guid? MAPPING_TABLE_ID { get; set; }
 
+    [Column("MAPPING_BASE_FK_COLUMN")]
+    public string? MAPPING_BASE_FK_COLUMN { get; set; }
+
+    [Column("MAPPING_DETAIL_FK_COLUMN")]
+    public string? MAPPING_DETAIL_FK_COLUMN { get; set; }
+
     [Column("FUNCTION_TYPE")]
     public FormFunctionType? FUNCTION_TYPE { get; set; }
     

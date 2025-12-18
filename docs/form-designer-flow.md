@@ -6,6 +6,7 @@
 - **MultipleMappingMaintenance (多對多維護)**：維護 BASE/DETAIL/MAPPING/(VIEW)，對應 `FormDesignerMultipleMappingController`。
 
 FORM_FIELD_Master 新增 `MAPPING_TABLE_NAME`、`MAPPING_TABLE_ID`，並以 `FUNCTION_TYPE` (int) 標示功能模組。 【F:Areas/Form/Models/FormFieldMasterDto.cs†L15-L53】【F:Areas/Form/Services/FormDesignerService.cs†L48-L205】
+多對多設定檔再新增 `MAPPING_BASE_FK_COLUMN`、`MAPPING_DETAIL_FK_COLUMN`，由 `SaveMultipleMappingFormHeader` 寫入，用於後續 AB 關聯表操作。 【F:Areas/Form/Services/FormDesignerService.cs†L1072-L1153】
 
 ## 主要 API 與流程
 1. **列表/名稱維護/刪除**

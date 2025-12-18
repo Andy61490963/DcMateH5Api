@@ -1076,6 +1076,15 @@ ORDER BY TABLE_SCHEMA, TABLE_NAME;";
     /// <remarks>會同步檢查主表、目標表與關聯表的實體存在性與關聯欄位，以避免後續填寫階段出錯。</remarks>
     public async Task<Guid> SaveMultipleMappingFormHeader(MultipleMappingFormHeaderViewModel model)
     {
+        if (string.IsNullOrWhiteSpace(model.MAPPING_BASE_FK_COLUMN) ||
+            string.IsNullOrWhiteSpace(model.MAPPING_DETAIL_FK_COLUMN))
+        {
+            throw new InvalidOperationException("必須設定對應的關聯欄位名稱");
+        }
+
+        ValidateColumnName(model.MAPPING_BASE_FK_COLUMN);
+        ValidateColumnName(model.MAPPING_DETAIL_FK_COLUMN);
+
         var whereBase = new WhereBuilder<FormFieldMasterDto>()
             .AndEq(x => x.ID, model.BASE_TABLE_ID)
             .AndNotDeleted();
@@ -1123,8 +1132,13 @@ ORDER BY TABLE_SCHEMA, TABLE_NAME;";
         if (!string.IsNullOrWhiteSpace(viewTableName) && GetTableSchema(viewTableName).Count == 0)
             throw new InvalidOperationException("檢視表名稱查無資料");
 
-        EnsureRelationColumn(mappingTableName, baseTableName, "關聯表與主表");
-        EnsureRelationColumn(mappingTableName, detailTableName, "關聯表與目標表");
+        EnsureColumnExists(mappingTableName, model.MAPPING_BASE_FK_COLUMN, "關聯表缺少指向主表的外鍵欄位");
+        EnsureColumnExists(mappingTableName, model.MAPPING_DETAIL_FK_COLUMN, "關聯表缺少指向明細表的外鍵欄位");
+        EnsureColumnExists(baseTableName, model.MAPPING_BASE_FK_COLUMN, "主表缺少對應的主鍵欄位");
+        EnsureColumnExists(detailTableName, model.MAPPING_DETAIL_FK_COLUMN, "目標表缺少對應的主鍵欄位");
+
+        _schemaService.ResolvePk(baseTableName);
+        _schemaService.ResolvePk(detailTableName);
 
         if (model.ID == Guid.Empty)
         {
@@ -1139,6 +1153,8 @@ ORDER BY TABLE_SCHEMA, TABLE_NAME;";
             model.DETAIL_TABLE_ID,
             model.MAPPING_TABLE_ID,
             VIEW_TABLE_ID = viewTableId,
+            model.MAPPING_BASE_FK_COLUMN,
+            model.MAPPING_DETAIL_FK_COLUMN,
             MASTER_TABLE_NAME = baseTableName,
             DETAIL_TABLE_NAME = detailTableName,
             MAPPING_TABLE_NAME = mappingTableName,
@@ -1214,6 +1230,31 @@ ORDER BY TABLE_SCHEMA, TABLE_NAME;";
             var suffixDisplay = string.Join("', '", _relationColumnSuffixes);
             throw new InvalidOperationException(
                 $"{relationDescription}缺少以以下任一結尾的共用關聯欄位：'{suffixDisplay}'");
+        }
+    }
+
+    /// <summary>
+    /// 驗證欄位名稱僅包含英數與底線，避免 SQL Injection 與錯誤設定。
+    /// </summary>
+    private static void ValidateColumnName(string columnName)
+    {
+        if (!Regex.IsMatch(columnName, "^[A-Za-z0-9_]+$", RegexOptions.CultureInvariant))
+        {
+            throw new InvalidOperationException($"欄位名稱僅允許英數與底線：{columnName}");
+        }
+    }
+
+    /// <summary>
+    /// 確認指定資料表存在目標欄位。
+    /// </summary>
+    private void EnsureColumnExists(string tableName, string columnName, string errorMessage)
+    {
+        var columns = _schemaService.GetFormFieldMaster(tableName)
+            .ToHashSet(StringComparer.OrdinalIgnoreCase);
+
+        if (!columns.Contains(columnName))
+        {
+            throw new InvalidOperationException(errorMessage);
         }
     }
 
@@ -1348,16 +1389,20 @@ WHEN MATCHED THEN
         DETAIL_TABLE_ID    = @DETAIL_TABLE_ID,
         MAPPING_TABLE_ID   = @MAPPING_TABLE_ID,
         VIEW_TABLE_ID      = @VIEW_TABLE_ID,
+        MAPPING_BASE_FK_COLUMN = @MAPPING_BASE_FK_COLUMN,
+        MAPPING_DETAIL_FK_COLUMN = @MAPPING_DETAIL_FK_COLUMN,
         STATUS             = @STATUS,          
         SCHEMA_TYPE        = @SCHEMA_TYPE,    
         FUNCTION_TYPE      = @FUNCTION_TYPE
 WHEN NOT MATCHED THEN
     INSERT (
         ID, FORM_NAME, BASE_TABLE_NAME, DETAIL_TABLE_NAME, MAPPING_TABLE_NAME, VIEW_TABLE_NAME,
-        BASE_TABLE_ID, DETAIL_TABLE_ID, MAPPING_TABLE_ID, VIEW_TABLE_ID, STATUS, SCHEMA_TYPE, FUNCTION_TYPE, IS_DELETE)
+        BASE_TABLE_ID, DETAIL_TABLE_ID, MAPPING_TABLE_ID, VIEW_TABLE_ID, STATUS, SCHEMA_TYPE, FUNCTION_TYPE, IS_DELETE,
+        MAPPING_BASE_FK_COLUMN, MAPPING_DETAIL_FK_COLUMN)
     VALUES (
         @ID, @FORM_NAME, @MASTER_TABLE_NAME, @DETAIL_TABLE_NAME, @MAPPING_TABLE_NAME, @VIEW_TABLE_NAME,
-        @BASE_TABLE_ID, @DETAIL_TABLE_ID, @MAPPING_TABLE_ID, @VIEW_TABLE_ID, @STATUS, @SCHEMA_TYPE, @FUNCTION_TYPE, 0)
+        @BASE_TABLE_ID, @DETAIL_TABLE_ID, @MAPPING_TABLE_ID, @VIEW_TABLE_ID, @STATUS, @SCHEMA_TYPE, @FUNCTION_TYPE, 0,
+        @MAPPING_BASE_FK_COLUMN, @MAPPING_DETAIL_FK_COLUMN)
 OUTPUT INSERTED.ID;";
         
         public const string UpsertField = @"

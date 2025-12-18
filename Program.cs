@@ -86,6 +86,7 @@ builder.Services.AddScoped<IDropdownService, DropdownService>();
 builder.Services.AddScoped<IFormDataService, FormDataService>();
 builder.Services.AddScoped<IFormService, FormService>();
 builder.Services.AddScoped<IFormMasterDetailService, FormMasterDetailService>();
+builder.Services.AddScoped<IFormMultipleMappingService, FormMultipleMappingService>();
 builder.Services.AddScoped<IDropdownSqlSyncService, DropdownSqlSyncService>();
 builder.Services.AddScoped<IPermissionService, PermissionService>();
 

@@ -1,3 +1,4 @@
+using System;
 using DcMateH5Api.Areas.Form.Controllers;
 using DcMateH5Api.Areas.Form.Interfaces;
 using DcMateH5Api.Areas.Form.ViewModels;
@@ -19,6 +20,23 @@ public class FormDesignerMultipleMappingControllerTests
     {
         var controller = CreateController();
         var vm = new MultipleMappingFormHeaderViewModel();
+
+        var result = await controller.SaveMultipleMappingFormHeader(vm);
+
+        Assert.IsType<BadRequestObjectResult>(result);
+    }
+
+    [Fact]
+    public async Task SaveMultipleMappingFormHeader_MissingMappingColumns_ReturnsBadRequest()
+    {
+        var controller = CreateController();
+        var vm = new MultipleMappingFormHeaderViewModel
+        {
+            BASE_TABLE_ID = Guid.NewGuid(),
+            DETAIL_TABLE_ID = Guid.NewGuid(),
+            MAPPING_TABLE_ID = Guid.NewGuid(),
+            FORM_NAME = "RouteOperation"
+        };
 
         var result = await controller.SaveMultipleMappingFormHeader(vm);
 

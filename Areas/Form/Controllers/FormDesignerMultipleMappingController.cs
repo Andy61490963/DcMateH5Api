@@ -415,6 +415,12 @@ public class FormDesignerMultipleMappingController : ControllerBase
             return BadRequest("BASE_TABLE_ID / DETAIL_TABLE_ID / MAPPING_TABLE_ID 不可為空");
         }
 
+        if (string.IsNullOrWhiteSpace(model.MAPPING_BASE_FK_COLUMN) ||
+            string.IsNullOrWhiteSpace(model.MAPPING_DETAIL_FK_COLUMN))
+        {
+            return BadRequest("MAPPING_BASE_FK_COLUMN / MAPPING_DETAIL_FK_COLUMN 不可為空");
+        }
+
         var id = await _formDesignerService.SaveMultipleMappingFormHeader(model);
         return Ok(new { id });
     }
