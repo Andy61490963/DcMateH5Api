@@ -1137,9 +1137,6 @@ ORDER BY TABLE_SCHEMA, TABLE_NAME;";
         EnsureColumnExists(baseTableName, model.MAPPING_BASE_FK_COLUMN, "主表缺少對應的主鍵欄位");
         EnsureColumnExists(detailTableName, model.MAPPING_DETAIL_FK_COLUMN, "目標表缺少對應的主鍵欄位");
 
-        _schemaService.ResolvePk(baseTableName);
-        _schemaService.ResolvePk(detailTableName);
-
         if (model.ID == Guid.Empty)
         {
             model.ID = Guid.NewGuid();

@@ -7,6 +7,7 @@ using ClassLibrary;
 using Dapper;
 using DcMateH5Api.Areas.Form.Interfaces;
 using DcMateH5Api.Areas.Form.Interfaces.FormLogic;
+using DcMateH5Api.Areas.Form.Interfaces.Transaction;
 using DcMateH5Api.Areas.Form.Models;
 using DcMateH5Api.Areas.Form.ViewModels;
 using DcMateH5Api.Helper;
@@ -65,13 +66,17 @@ SELECT ID AS Id,
         var header = GetMappingHeader(formMasterId);
 
         var (basePkName, _, basePkValue) = _schemaService.ResolvePk(header.BASE_TABLE_NAME!, baseId);
-        var (detailPkName, _, _) = _schemaService.ResolvePk(header.DETAIL_TABLE_NAME!, null);
+        var (detailPkName, detailPkType, _) = _schemaService.ResolvePk(header.DETAIL_TABLE_NAME!, null);
 
         EnsureRowExists(header.BASE_TABLE_NAME!, basePkName, basePkValue!);
 
-        var linkedDetailIds = _con.Query<object>($@"/**/
-SELECT [{header.MAPPING_DETAIL_FK_COLUMN}] FROM [{header.MAPPING_TABLE_NAME}]
-WHERE [{header.MAPPING_BASE_FK_COLUMN}] = @BaseId", new { BaseId = basePkValue })
+        // 這裡改成 scalar：先抓字串，再用既有 helper 轉成正確 PK 型別
+        var linkedDetailIds = _con.Query<string>($@"/**/
+SELECT CAST([{header.MAPPING_DETAIL_FK_COLUMN}] AS NVARCHAR(4000)) AS Id
+  FROM [{header.MAPPING_TABLE_NAME}]
+ WHERE [{header.MAPPING_BASE_FK_COLUMN}] = @BaseId",
+                new { BaseId = basePkValue })
+            .Select(x => ConvertToColumnTypeHelper.ConvertPkType(x, detailPkType))
             .ToList();
 
         var linkedItems = LoadDetailRows(header.DETAIL_TABLE_NAME!, detailPkName, linkedDetailIds);
@@ -117,10 +122,10 @@ IF NOT EXISTS (
       AND [{header.MAPPING_DETAIL_FK_COLUMN}] = @DetailId)
 BEGIN
     INSERT INTO [{header.MAPPING_TABLE_NAME}]
-        ([{header.MAPPING_BASE_FK_COLUMN}], [{header.MAPPING_DETAIL_FK_COLUMN}])
-    VALUES (@BaseId, @DetailId);
+        (SID, [{header.MAPPING_BASE_FK_COLUMN}], [{header.MAPPING_DETAIL_FK_COLUMN}], CREATE_TIME, EDIT_TIME, IS_DELETE)
+    VALUES (@SID, @BaseId, @DetailId, @CreateTime, @EditTime, @IsDelete);
 END",
-                    new { BaseId = basePkValue, DetailId = detailId }, transaction: tx);
+                    new { SID = RandomHelper.GenerateRandomDecimal(), BaseId = basePkValue, DetailId = detailId, CreateTime = DateTime.Now, EditTime = DateTime.Now, IsDelete = 0  }, transaction: tx);
             }
         });
     }
