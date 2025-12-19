@@ -20,7 +20,7 @@ public static class SwaggerGroups
     
     public static readonly Dictionary<string, string> DisplayNames = new()
     {
-        { ApiStats, "所有 API 列表" },
+        { ApiStats, "所有列表" },
         { Security, "登入、測試 API 權限" },
         { Permission, "群組、功能、權限設定" },
         { Enum, "列舉" },

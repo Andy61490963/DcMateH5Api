@@ -1,5 +1,4 @@
 using ClassLibrary;
-using DcMateH5Api.Areas.Enum.Interfaces;
 using DcMateH5Api.Areas.Enum.Models;
 using Microsoft.AspNetCore.Mvc;
 using DcMateH5Api.Helper;
@@ -15,33 +14,6 @@ namespace DcMateH5Api.Areas.Enum.Controllers;
 [Route("[area]/[controller]")]
 public class EnumListController : ControllerBase
 {
-    private readonly IEnumListService _service;
-
-    /// <summary>
-    /// 建構式注入 FormListService。
-    /// </summary>
-    /// <param name="service">表單清單服務介面</param>
-    public EnumListController(IEnumListService service)
-    {
-        _service = service;
-    }
-    
-    /// <summary>
-    /// 1) 不用反射全掃，只暴露想給前端用的 enum（安全、直覺）
-    /// 2) StringComparer.OrdinalIgnoreCase -> 路由大小寫不敏感
-    /// </summary>
-    private static readonly Dictionary<string, Type> EnumMap =
-        new(StringComparer.OrdinalIgnoreCase)
-        {
-            ["actionType"]     = typeof(ActionType),
-            ["tableSchemaQueryType"] = typeof(TableSchemaQueryType),
-            ["tableStatusType"] = typeof(TableStatusType),
-            ["formControlType"] = typeof(FormControlType),
-            ["queryConditionType"] = typeof(QueryComponentType),
-            ["validationType"] = typeof(ValidationType),
-            // 以後加一行就好：["yourEnumName"] = typeof(YourEnum)
-        };
-
     /// <summary>
     /// 取得列舉定義列表
     /// </summary>
@@ -70,4 +42,19 @@ public class EnumListController : ControllerBase
         var list = EnumExtensions.ToDescriptionList(enumType);
         return Ok(list);
     }
+    
+    /// <summary>
+    /// 1) 不用反射全掃，只暴露想給前端用的 enum（安全、直覺）
+    /// </summary>
+    private static readonly Dictionary<string, Type> EnumMap =
+        new(StringComparer.OrdinalIgnoreCase)
+        {
+            ["actionType"]     = typeof(ActionType),
+            ["tableSchemaQueryType"] = typeof(TableSchemaQueryType),
+            ["tableStatusType"] = typeof(TableStatusType),
+            ["formControlType"] = typeof(FormControlType),
+            ["queryConditionType"] = typeof(QueryComponentType),
+            ["validationType"] = typeof(ValidationType),
+            // 以後加一行就好：["yourEnumName"] = typeof(YourEnum)
+        };
 }

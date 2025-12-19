@@ -10,11 +10,11 @@ public enum ValidationType
     [Display(Name = "最小值", Description = "限制條件-最小值")]
     Min = 2,
 
-/// <summary>
-/// 正則表達式（Regular Expression）。
-/// 適用於欄位需要特定格式驗證的情境，例如 Email、手機號碼、數字等。
-/// </summary>
-[Display(
+    /// <summary>
+    /// 正則表達式（Regular Expression）。
+    /// 適用於欄位需要特定格式驗證的情境，例如 Email、手機號碼、數字等。
+    /// </summary>
+    [Display(
     Name = "正則表達式",
     Description =
 @"常用正則表達式範例：
@@ -28,8 +28,8 @@ public enum ValidationType
 8. 日期（yyyy-MM-dd）：^\d{4}-(0[1-9]|1[0-2])-(0[1-9]|[12]\d|3[01])$
 9. URL：^(https?|ftp)://[^\s/$.?#].[^\s]*$
 "
-)]
-Regex = 3
+    )]
+    Regex = 3
 
 
     // [Display(Name = "Email 格式")]

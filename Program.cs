@@ -6,8 +6,6 @@ using Microsoft.Extensions.Diagnostics.HealthChecks;
 using Microsoft.IdentityModel.Tokens;
 using Microsoft.OpenApi.Models;
 using DcMateH5Api.Authorization;
-using DcMateH5Api.Areas.Enum.Interfaces;
-using DcMateH5Api.Areas.Enum.Services;
 using DcMateH5Api.Areas.Form.Interfaces;
 using DcMateH5Api.Areas.Form.Interfaces.FormLogic;
 using DcMateH5Api.Areas.Form.Interfaces.Transaction;
@@ -74,7 +72,6 @@ builder.Services.AddScoped<SQLGenerateHelper>();
 
 // 核心功能
 builder.Services.AddScoped<ILogService, LogService>();
-builder.Services.AddScoped<IEnumListService, EnumListService>();
 builder.Services.AddScoped<IFormDesignerService, FormDesignerService>();
 builder.Services.AddScoped<IAuthenticationService, AuthenticationService>();
 builder.Services.AddScoped<ITokenGenerator, JwtTokenGenerator>();
