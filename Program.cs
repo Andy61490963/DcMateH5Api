@@ -26,6 +26,7 @@ using DcMateH5Api.DbExtensions;
 using DcMateH5Api.Helper;
 using DcMateH5Api.Services.Cache;
 using DcMateH5Api.SqlHelper;
+using Microsoft.AspNetCore.HttpOverrides;
 using Microsoft.Data.SqlClient;
 
 var builder = WebApplication.CreateBuilder(args);
@@ -63,7 +64,6 @@ builder.Services.AddScoped<SqlConnection, SqlConnection>(_ =>
 
 // -------------------- 基礎服務 --------------------
 builder.Services.AddHttpContextAccessor();
-builder.Services.AddOptions();
 
 // Db 工具
 builder.Services.AddSingleton<ISqlConnectionFactory, SqlConnectionFactory>();
@@ -209,6 +209,11 @@ builder.Services.AddSwaggerGen(options =>
 
 var app = builder.Build();
 
+app.UseForwardedHeaders(new ForwardedHeadersOptions
+{
+    ForwardedHeaders = ForwardedHeaders.XForwardedProto | ForwardedHeaders.XForwardedHost
+});
+
 // Pipeline
 app.UseCors(CorsPolicy);
 
@@ -218,20 +223,29 @@ app.UseCors(CorsPolicy);
 app.UseAuthentication();
 app.UseAuthorization();
 
-// Dev/Container 下開 Swagger（若 Prod 想關可用環境變數切）
-app.UseSwagger();
-app.UseSwaggerUI(options =>
+app.UseSwagger(c =>
 {
-    options.SwaggerEndpoint("./swagger/v1/swagger.json", "All APIs v1");
-    foreach (var g in swaggerGroups)
-        options.SwaggerEndpoint($"./swagger/{g}/swagger.json", $"{g} API v1");
-    options.RoutePrefix = string.Empty; // 讓 / 直接是 Swagger UI
+    c.PreSerializeFilters.Add((swaggerDoc, httpReq) =>
+    {
+        var serverUrl = $"{httpReq.Scheme}://{httpReq.Host.Value}";
+        swaggerDoc.Servers = new List<OpenApiServer> { new() { Url = serverUrl } };
+    });
 });
 
+app.UseSwaggerUI(options =>
+{
+    options.SwaggerEndpoint("swagger/v1/swagger.json", "All APIs v1");
+    foreach (var g in swaggerGroups)
+        options.SwaggerEndpoint($"swagger/{g}/swagger.json", $"{g} API v1");
+
+    options.RoutePrefix = string.Empty;
+});
+
+
 // Area + Controllers
-app.MapControllerRoute(
-    name: "areas",
-    pattern: "{area:exists}/{controller=Home}/{action=Index}/{id?}");
+// app.MapControllerRoute(
+//     name: "areas",
+//     pattern: "{area:exists}/{controller=Home}/{action=Index}/{id?}");
 
 app.MapControllers();
 

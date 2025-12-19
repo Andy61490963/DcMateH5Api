@@ -13,27 +13,21 @@ namespace DcMateH5Api.Areas.Security.Services
     public class AuthenticationService : IAuthenticationService
     {
         private readonly SQLGenerateHelper _sqlHelper;
-        private readonly IDbExecutor _db;
-        private readonly SqlConnection _connection;
         private readonly IPasswordHasher _passwordHasher;
         private readonly ITokenGenerator _tokenGenerator;
 
         /// <summary>
         /// 建構函式注入相依物件。
         /// </summary>
-        /// <param name="connection">資料庫連線。</param>
+        /// <param name="sqlHelper">sql產生器。</param>
         /// <param name="passwordHasher">密碼雜湊器。</param>
         /// <param name="tokenGenerator">Token 產生器。</param>
         public AuthenticationService(
             SQLGenerateHelper sqlHelper,
-            IDbExecutor db,
-            SqlConnection connection,
             IPasswordHasher passwordHasher,
             ITokenGenerator tokenGenerator)
         {
             _sqlHelper = sqlHelper;
-            _db = db;
-            _connection = connection;
             _passwordHasher = passwordHasher;
             _tokenGenerator = tokenGenerator;
         }

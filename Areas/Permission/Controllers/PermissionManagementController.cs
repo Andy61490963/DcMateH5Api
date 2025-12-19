@@ -3,7 +3,6 @@ using DcMateH5Api.Areas.Permission.Interfaces;
 using DcMateH5Api.Areas.Permission.Models;
 using DcMateH5Api.Areas.Permission.ViewModels.PermissionManagement;
 using Microsoft.AspNetCore.Mvc;
-using System;
 using DcMateH5Api.Helper;
 
 namespace DcMateH5Api.Areas.Permission.Controllers

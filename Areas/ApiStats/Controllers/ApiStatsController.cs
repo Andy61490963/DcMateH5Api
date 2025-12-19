@@ -1,12 +1,14 @@
 using System.Text.Json.Serialization;
+using DcMateH5Api.DbExtensions;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Mvc.ApiExplorer;
 using DcMateH5Api.Helper;
+using Microsoft.Data.SqlClient;
 
 namespace DcMateH5Api.Areas.ApiStats.Controllers
 {
     /// <summary>
-    /// 提供 API 清單與統計資訊（JSON）
+    /// 提供 API 狀態測試、清單與統計資訊（JSON）
     /// </summary>
     [Area("ApiStats")]
     [ApiController]
@@ -25,14 +27,112 @@ namespace DcMateH5Api.Areas.ApiStats.Controllers
         }
 
         /// <summary>
+        /// API 存活與基本資訊
+        /// </summary>
+        [HttpGet("health")]
+        public IActionResult Health() => Ok(new
+        {
+            Instance = Environment.MachineName,
+            Time = DateTime.Now
+        });
+        
+        /// <summary>
+        /// 測試 LogService 使用的資料庫連線是否正常
+        /// </summary>
+        /// <remarks>
+        /// 功能說明：
+        /// 1. 由 DI 取得 SQL 連線工廠（內部已帶好連線字串）
+        /// 2. 嘗試開啟資料庫連線，並計算連線所需時間
+        /// 3. 執行一筆最簡單的 SQL（SELECT GETDATE()）
+        ///    用來確認「真的連得上資料庫、而且可以執行指令」
+        /// 4. 回傳目前連線的 DB 位置與資料庫名稱，方便確認是否指到正確環境
+        /// </remarks>
+        [HttpGet("db-health-connection")]
+        public async Task<IActionResult> DbHealthConnection(
+            [FromServices] ISqlConnectionFactory factory,
+            CancellationToken ct)
+        {
+            try
+            {
+                // 透過工廠建立 SqlConnection
+                // 此時尚未真正連線，只是建立一個包含連線字串的物件
+                var conn = factory.Create();
+
+                // 解析連線字串，方便後續檢視實際連到哪台 Server / Database
+                var csb = new SqlConnectionStringBuilder(conn.ConnectionString);
+
+                // 使用 await using 確保非同步流程結束後，連線一定會被正確釋放
+                await using (conn)
+                {
+                    // 計算開啟資料庫連線所花費的時間
+                    var sw = System.Diagnostics.Stopwatch.StartNew();
+                    await conn.OpenAsync(ct); // 真正向 SQL Server 建立連線
+                    sw.Stop();
+
+                    // 建立 SQL 指令並執行最簡單的查詢
+                    // GETDATE() 由資料庫回傳時間，可用來確認成功執行 SQL
+                    await using var cmd = conn.CreateCommand();
+                    cmd.CommandText = "SELECT GETDATE()";
+                    var result = await cmd.ExecuteScalarAsync(ct);
+
+                    // 連線與查詢皆成功，回傳測試結果
+                    return Ok(new
+                    {
+                        success = true,
+                        message = "DB 連線正常",
+
+                        // SQL Server 位址（例如：localhost、IP、ServerName）
+                        dataSource = csb.DataSource,
+
+                        // 實際連到的資料庫名稱（用來確認是否為正確環境）
+                        initialCatalog = csb.InitialCatalog,
+
+                        // 使用的登入帳號
+                        userId = csb.UserID,
+
+                        // 開啟連線所花費的毫秒數
+                        openConnectionMs = sw.ElapsedMilliseconds,
+
+                        // SQL Server 回傳的時間
+                        serverTime = result
+                    });
+                }
+            }
+            catch (SqlException ex)
+            {
+                // SQL Server 相關錯誤（連線失敗、帳密錯誤、權限不足等）
+                return StatusCode(500, new
+                {
+                    success = false,
+                    type = "SqlException",
+                    error = ex.Message,
+                    number = ex.Number,
+                    state = ex.State,
+                    classLevel = ex.Class
+                });
+            }
+            catch (Exception ex)
+            {
+                // 其他非 SQL 的系統錯誤
+                return StatusCode(500, new
+                {
+                    success = false,
+                    type = ex.GetType().Name,
+                    error = ex.Message
+                });
+            }
+        }
+        
+        /// <summary>
         /// 回傳所有可公開的 API 清單與總數
-        /// 
-        /// Query:
+        /// </summary>
+        /// <remarks>
+        /// Query 參數說明:
         /// - keyword=xxx：模糊搜尋（Path/Controller/Action）
         /// - method=GET：只看某 HTTP Method
         /// - controller=Form：只看某 Controller
         /// - page=1，pageSize=200：分頁
-        /// </summary>
+        /// </remarks>
         [HttpGet]
         public IActionResult Get(
             [FromQuery] string? keyword,
