@@ -453,8 +453,7 @@ ORDER BY TABLE_SCHEMA, TABLE_NAME;";
             (schemaType == TableSchemaQueryType.OnlyTable ||
              schemaType == TableSchemaQueryType.OnlyDetail ||
              schemaType == TableSchemaQueryType.OnlyMapping))
-            throw new HttpStatusCodeException(
-                HttpStatusCode.BadRequest,
+            throw new Exception(
                 $"缺少必要欄位：{string.Join(", ", missingColumns)}");
 
         var master = new FormFieldMasterDto

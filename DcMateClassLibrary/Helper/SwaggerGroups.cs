@@ -1,9 +1,7 @@
-using System.Collections.Generic;
-
 namespace DcMateH5Api.Helper;
 
 /// <summary>
-/// Swagger 文件的分類常數，避免重複字串與易於維護。
+/// Swagger 文件的分類，避免重複字串與易於維護。
 /// </summary>
 public static class SwaggerGroups
 {
