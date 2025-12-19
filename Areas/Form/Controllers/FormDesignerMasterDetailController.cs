@@ -76,7 +76,7 @@ public class FormDesignerMasterDetailController : ControllerBase
     // ────────── 欄位相關 ──────────
 
     /// <summary>
-    /// 依名稱關鍵字查詢資料表或檢視表名稱清單。
+    /// 依名稱關鍵字查詢資料表或檢視表名稱清單(目前列出全部)
     /// 支援前綴與模糊比對（使用 LIKE）。
     /// </summary>
     /// /// <param name="tableName">名稱</param>
