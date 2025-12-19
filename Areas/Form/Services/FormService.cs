@@ -237,10 +237,11 @@ public class FormService : IFormService
         var configData = _formFieldConfigService.LoadFieldConfigData(masterId);
         var primaryKeys = _schemaService.GetPrimaryKeyColumns(tableName);
 
+        
         // 只保留可編輯欄位，將不可編輯欄位直接過濾掉以避免出現在前端
-        var editableConfigs = configData.FieldConfigs
-            .Where(cfg => cfg.IS_EDITABLE)
-            .ToList();
+        var editableConfigs = configData.FieldConfigs;
+            // .Where(cfg => cfg.IS_EDITABLE)
+            // .ToList();
 
         var dynamicOptionCache = new Dictionary<Guid, List<FormFieldDropdownOptionsDto>>();
 
