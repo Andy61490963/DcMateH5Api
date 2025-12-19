@@ -214,23 +214,14 @@ app.UseForwardedHeaders(new ForwardedHeadersOptions
     ForwardedHeaders = ForwardedHeaders.XForwardedProto | ForwardedHeaders.XForwardedHost
 });
 
-// Pipeline
-app.UseCors(CorsPolicy);
+app.UseRouting();            // 沒有它 CORS 很容易沒套用到 endpoint
 
-// 不在這裡強制 https（有 Nginx 統一處理 TLS）
-// app.UseHttpsRedirection();
+app.UseCors(CorsPolicy);     // 放在 Routing 後、Auth 前
 
 app.UseAuthentication();
 app.UseAuthorization();
 
-app.UseSwagger(c =>
-{
-    c.PreSerializeFilters.Add((swaggerDoc, httpReq) =>
-    {
-        var serverUrl = $"{httpReq.Scheme}://{httpReq.Host.Value}";
-        swaggerDoc.Servers = new List<OpenApiServer> { new() { Url = serverUrl } };
-    });
-});
+app.UseSwagger();
 
 app.UseSwaggerUI(options =>
 {
