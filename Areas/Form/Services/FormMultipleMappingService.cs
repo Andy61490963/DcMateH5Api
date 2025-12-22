@@ -8,6 +8,7 @@ using DcMateH5Api.Areas.Form.Interfaces.Transaction;
 using DcMateH5Api.Areas.Form.Models;
 using DcMateH5Api.Areas.Form.ViewModels;
 using DcMateH5Api.Helper;
+using DcMateH5Api.SqlHelper;
 using Microsoft.Data.SqlClient;
 
 namespace DcMateH5Api.Areas.Form.Services;
@@ -22,19 +23,22 @@ public class FormMultipleMappingService : IFormMultipleMappingService
     private readonly ISchemaService _schemaService;
     private readonly ITransactionService _txService;
     private readonly IFormService _formService;
-
+    private readonly SQLGenerateHelper _sqlHelper;
+    
     public FormMultipleMappingService(
         SqlConnection connection,
         IFormFieldMasterService formFieldMasterService,
         ISchemaService schemaService,
         ITransactionService txService,
-        IFormService formService)
+        IFormService formService,
+        SQLGenerateHelper sqlHelper)
     {
         _con = connection;
         _formFieldMasterService = formFieldMasterService;
         _schemaService = schemaService;
         _txService = txService;
         _formService = formService;
+        _sqlHelper = sqlHelper;
     }
 
     /// <inheritdoc />
@@ -221,7 +225,7 @@ UPDATE m
     /// <param name="formMasterId">FORM_FIELD_MASTER 的 MAPPING_TABLE_ID。</param>
     /// <param name="ct">取消權杖。</param>
     /// <returns>包含關聯表名稱與完整資料列集合的模型。</returns>
-    public MappingTableDataViewModel GetMappingTableData(Guid formMasterId, CancellationToken ct = default)
+    public async Task<MappingTableDataViewModel> GetMappingTableData(Guid formMasterId, CancellationToken ct = default)
     {
         ct.ThrowIfCancellationRequested();
 
@@ -230,24 +234,21 @@ UPDATE m
             throw new InvalidOperationException("FormMasterId 不可為空。");
         }
 
-        const string findMappingTableSql = @"/**/
-SELECT TOP 1 MAPPING_TABLE_NAME
-  FROM FORM_FIELD_MASTER
- WHERE MAPPING_TABLE_ID = @MappingTableId
-   AND IS_DELETE = 0";
+        var where = new WhereBuilder<FormFieldMasterDto>()
+            .AndEq(x => x.ID, formMasterId)
+            .AndNotDeleted();
+        
+        var res = await _sqlHelper.SelectFirstOrDefaultAsync(where, ct);
 
-        var mappingTableName = _con.QueryFirstOrDefault<string>(
-            findMappingTableSql,
-            new { MappingTableId = formMasterId });
-
-        if (string.IsNullOrWhiteSpace(mappingTableName))
+        if (res != null && string.IsNullOrWhiteSpace(res.MAPPING_TABLE_NAME))
         {
             throw new InvalidOperationException("查無對應的關聯表設定，請確認 FormMasterId 是否正確。");
         }
 
-        ValidateTableName(mappingTableName);
+        var mappingTableName = res!.MAPPING_TABLE_NAME;
+        ValidateTableName(mappingTableName!);
 
-        var columns = _schemaService.GetFormFieldMaster(mappingTableName);
+        var columns = _schemaService.GetFormFieldMaster(mappingTableName!);
         if (columns.Count == 0)
         {
             throw new InvalidOperationException($"無法取得關聯表欄位資訊：{mappingTableName}");
@@ -264,7 +265,7 @@ SELECT TOP 1 MAPPING_TABLE_NAME
         return new MappingTableDataViewModel
         {
             FormMasterId = formMasterId,
-            MappingTableName = mappingTableName,
+            MappingTableName = mappingTableName!,
             Rows = rows
         };
     }

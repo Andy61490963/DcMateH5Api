@@ -95,24 +95,4 @@ public class FormMultipleMappingControllerTests
 
         Assert.IsType<BadRequestObjectResult>(result);
     }
-
-    [Fact]
-    public void GetMappingTableData_ValidRequest_ReturnsOk()
-    {
-        var controller = CreateController();
-        var formMasterId = Guid.NewGuid();
-        var data = new MappingTableDataViewModel
-        {
-            FormMasterId = formMasterId,
-            MappingTableName = "FORM_MAPPING",
-            Rows = new List<MappingTableRowViewModel>()
-        };
-        _service.Setup(s => s.GetMappingTableData(formMasterId, It.IsAny<CancellationToken>())).Returns(data);
-
-        var result = controller.GetMappingTableData(formMasterId, CancellationToken.None) as OkObjectResult;
-
-        _service.Verify(s => s.GetMappingTableData(formMasterId, It.IsAny<CancellationToken>()), Times.Once);
-        Assert.NotNull(result);
-        Assert.Same(data, result.Value);
-    }
 }

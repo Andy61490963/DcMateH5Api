@@ -50,5 +50,5 @@ public interface IFormMultipleMappingService
     /// <param name="formMasterId">FORM_FIELD_MASTER.MAPPING_TABLE_ID，指定欲查詢的關聯表來源。</param>
     /// <param name="ct">取消權杖。</param>
     /// <returns>包含關聯表名稱與完整資料列集合的模型。</returns>
-    MappingTableDataViewModel GetMappingTableData(Guid formMasterId, CancellationToken ct = default);
+    Task<MappingTableDataViewModel> GetMappingTableData(Guid formMasterId, CancellationToken ct = default);
 }

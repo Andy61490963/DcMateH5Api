@@ -198,7 +198,7 @@ public class FormMultipleMappingController : ControllerBase
     /// <param name="formMasterId">FORM_FIELD_MASTER.MAPPING_TABLE_ID，指定欲查詢的關聯表設定。</param>
     /// <param name="ct">取消權杖。</param>
     [HttpGet("{formMasterId:guid}/mapping-table")]
-    public IActionResult GetMappingTableData(Guid formMasterId, CancellationToken ct)
+    public async Task<IActionResult> GetMappingTableData(Guid formMasterId, CancellationToken ct)
     {
         if (formMasterId == Guid.Empty)
         {
@@ -207,7 +207,7 @@ public class FormMultipleMappingController : ControllerBase
 
         try
         {
-            var result = _service.GetMappingTableData(formMasterId, ct);
+            var result = await _service.GetMappingTableData(formMasterId, ct);
             return Ok(result);
         }
         catch (InvalidOperationException ex)
