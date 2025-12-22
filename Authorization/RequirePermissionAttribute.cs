@@ -1,4 +1,3 @@
-using System;
 using ClassLibrary;
 using Microsoft.AspNetCore.Authorization;
 

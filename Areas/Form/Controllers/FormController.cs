@@ -25,8 +25,11 @@ public class FormController : ControllerBase
     }
     
     /// <summary>
-    /// 範例輸入：
-    /// <code>
+    /// 取得主檔維護的資料列表
+    /// </summary>
+    /// <remarks>
+    /// ### 範例輸入
+    /// ```json
     /// [
     ///   {
     ///     "column": "STATUS_CALCD_TIME",
@@ -36,8 +39,8 @@ public class FormController : ControllerBase
     ///     "dataType": "datetime"
     ///   }
     /// ]
-    /// </code>
-    /// </summary>
+    /// ```
+    /// </remarks>
     /// <param name="request">查詢條件與分頁設定</param>
     /// <returns>查詢結果</returns>
     [HttpPost("search")]

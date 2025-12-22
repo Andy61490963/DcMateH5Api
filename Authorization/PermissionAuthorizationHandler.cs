@@ -1,11 +1,7 @@
-using System;
 using System.IdentityModel.Tokens.Jwt;
 using System.Security.Claims;
-using System.Threading.Tasks;
 using DcMateH5Api.Areas.Permission.Interfaces;
 using Microsoft.AspNetCore.Authorization;
-using Microsoft.AspNetCore.Routing;
-using Microsoft.AspNetCore.Http;
 
 namespace DcMateH5Api.Authorization
 {
