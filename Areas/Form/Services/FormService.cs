@@ -59,7 +59,7 @@ public class FormService : IFormService
         }
 
         // 2. 預備回傳結果容器
-        var results = new List<FormListDataViewModel>();
+            var results = new List<FormListDataViewModel>();
 
         // 3. 對每一個表單主設定進行處理
         foreach (var (master, fieldConfigs) in metas)

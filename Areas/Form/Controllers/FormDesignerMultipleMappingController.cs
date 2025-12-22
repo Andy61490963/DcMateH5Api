@@ -404,6 +404,7 @@ public class FormDesignerMultipleMappingController : ControllerBase
     
     /// <summary>
     /// 儲存多對多表單主檔資訊並建立對應的主 / 目標 / 關聯表設定。
+    /// MAPPING_TABLE必須要有 SID(DECIMAL(15,0)) 欄位
     /// </summary>
     [HttpPost("headers")]
     public async Task<IActionResult> SaveMultipleMappingFormHeader([FromBody] MultipleMappingFormHeaderViewModel model)

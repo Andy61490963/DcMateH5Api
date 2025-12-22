@@ -439,63 +439,138 @@ ORDER BY TABLE_SCHEMA, TABLE_NAME;";
     }
     
     /// <summary>
-    /// 依欄位設定 ID 取得單一欄位設定。
+    /// 依欄位設定 ID 取得單一欄位的完整設定資訊。
+    ///
+    /// 核心用途：
+    /// - 提供表單設計器「欄位編輯」畫面使用
+    /// - 一次回傳欄位本身設定 + 所屬主檔資訊 + UI 輔助資料
+    ///
+    /// 此方法不只是查一筆資料，而是：
+    /// - 將資料庫中的欄位設定（FORM_FIELD_CONFIG）
+    /// - 結合主檔設定（FORM_FIELD_Master）
+    /// - 再補上 Schema 推導資訊（PK / 可用控制元件 / 查詢元件）
+    /// → 組合成前端可直接使用的 ViewModel
     /// </summary>
-    /// <param name="fieldId">欄位設定唯一識別碼</param>
-    /// <returns>若找到欄位則回傳 <see cref="FormFieldViewModel"/>；否則回傳 null。</returns>
-    public async Task<FormFieldViewModel?> GetFieldById( Guid fieldId )
+    /// <param name="fieldId">欄位設定唯一識別碼（FORM_FIELD_CONFIG.ID）</param>
+    /// <returns>
+    /// 若找到欄位設定，回傳 <see cref="FormFieldViewModel"/>；
+    /// 若查無資料或已被軟刪除，回傳 null
+    /// </returns>
+    public async Task<FormFieldViewModel?> GetFieldById(Guid fieldId)
     {
+        // 1) 查詢欄位設定本身（FORM_FIELD_CONFIG）
         var configWhere = new WhereBuilder<FormFieldConfigDto>()
             .AndEq(x => x.ID, fieldId)
             .AndNotDeleted();
-        
-        var cfg = await _sqlHelper.SelectFirstOrDefaultAsync( configWhere );
+
+        var cfg = await _sqlHelper.SelectFirstOrDefaultAsync(configWhere);
+
+        // 若查無欄位設定，直接回傳 null
         if (cfg == null) return null;
 
+        // 2) 查詢該欄位所屬的表單主檔（FORM_FIELD_Master）
+        // - 用於判斷 SchemaType（Base / Detail / View / Mapping）
         var masterWhere = new WhereBuilder<FormFieldMasterDto>()
-            .AndEq(x => x.ID, cfg.FORM_FIELD_Master_ID )
+            .AndEq(x => x.ID, cfg.FORM_FIELD_Master_ID)
             .AndNotDeleted();
-        
-        var master = await _sqlHelper.SelectFirstOrDefaultAsync( masterWhere );
-        var pk = _schemaService.GetPrimaryKeyColumns( cfg.TABLE_NAME );
 
+        var master = await _sqlHelper.SelectFirstOrDefaultAsync(masterWhere);
+
+        // 3) 從實體資料表 Schema 中取得主鍵欄位清單
+        // - 用於判斷此欄位是否為 PK
+        // - 前端可據此限制編輯行為（例如 PK 不可修改）
+        var pkColumns = _schemaService.GetPrimaryKeyColumns(cfg.TABLE_NAME);
+
+        // 4) 組裝回傳用的 ViewModel
+        // - 除了 DB 中的設定值
+        // - 同時補齊前端需要的「可選項目」與「推導狀態」
         return new FormFieldViewModel
         {
+            // 基本識別資訊
             ID = cfg.ID,
             FORM_FIELD_Master_ID = cfg.FORM_FIELD_Master_ID,
             TableName = cfg.TABLE_NAME,
             COLUMN_NAME = cfg.COLUMN_NAME,
             DATA_TYPE = cfg.DATA_TYPE,
+
+            // 控制元件設定
             CONTROL_TYPE = cfg.CONTROL_TYPE,
-            CONTROL_TYPE_WHITELIST = FormFieldHelper.GetControlTypeWhitelist(cfg.DATA_TYPE),
-            QUERY_COMPONENT_TYPE_WHITELIST = FormFieldHelper.GetQueryConditionTypeWhitelist(cfg.DATA_TYPE),
+
+            // 根據資料型別推導允許的控制元件清單（避免前端亂選）
+            CONTROL_TYPE_WHITELIST =
+                FormFieldHelper.GetControlTypeWhitelist(cfg.DATA_TYPE),
+
+            // 根據資料型別推導允許的查詢元件清單
+            QUERY_COMPONENT_TYPE_WHITELIST =
+                FormFieldHelper.GetQueryConditionTypeWhitelist(cfg.DATA_TYPE),
+
+            // 欄位行為設定
             IS_REQUIRED = cfg.IS_REQUIRED,
             IS_EDITABLE = cfg.IS_EDITABLE,
+
+            // 判斷此欄位是否有任何驗證規則設定（例如 min / max / regex）
             IS_VALIDATION_RULE = HasValidationRules(cfg.ID),
-            IS_PK = pk.Contains(cfg.COLUMN_NAME),
+
+            // 判斷此欄位是否為資料表主鍵
+            IS_PK = pkColumns.Contains(cfg.COLUMN_NAME),
+
+            // 查詢相關設定
             QUERY_DEFAULT_VALUE = cfg.QUERY_DEFAULT_VALUE,
             FIELD_ORDER = cfg.FIELD_ORDER,
             QUERY_COMPONENT = cfg.QUERY_COMPONENT,
             QUERY_CONDITION = cfg.QUERY_CONDITION,
             CAN_QUERY = cfg.CAN_QUERY,
+
             SchemaType = master.SCHEMA_TYPE
         };
     }
 
     /// <summary>
-    /// 搜尋表格時，如設定檔不存在則先寫入預設欄位設定。
+    /// 確保指定資料表（或檢視表）的欄位設定已存在。
+    ///
+    /// 核心用途：
+    /// - 當使用者在表單設計器中「首次選擇某資料表 / 檢視表」時
+    /// - 若該表尚未建立對應的欄位設定（FORM_FIELD_CONFIG）
+    /// - 系統會自動依資料表 schema 建立「預設欄位設定」
+    ///
+    /// 此方法具備「自我修復（Self-healing）」特性：
+    /// - 表結構有新增欄位 → 自動補齊設定
+    /// - 舊設定仍存在 → 不覆蓋，只補缺
+    ///
+    /// 適用情境：
+    /// - 表單設計器首次載入某資料表
+    /// - 表結構異動後重新進入設計器
+    /// - 主檔 / 明細 / 關聯表欄位同步
     /// </summary>
-    /// <param name="tableName">資料表名稱</param>
-    /// <returns>包含欄位設定的 ViewModel</returns>
+    /// <param name="tableName">資料表或檢視表名稱</param>
+    /// <param name="formMasterId">
+    /// 所屬的 FORM_FIELD_Master Id；
+    /// 若為 null，表示此次操作尚未綁定主檔，系統會自動推斷或建立
+    /// </param>
+    /// <param name="schemaType">
+    /// 表結構類型（OnlyTable / OnlyView / OnlyDetail / OnlyMapping）
+    /// </param>
+    /// <returns>
+    /// 包含最新欄位設定的 FormFieldListViewModel；
+    /// 若資料表不存在或無欄位，回傳 null
+    /// </returns>
     public async Task <FormFieldListViewModel?> EnsureFieldsSaved(string tableName, Guid? formMasterId, TableSchemaQueryType schemaType)
     {
+        // 1) 取得資料表 Schema 欄位資訊
+        // - 從資料庫實際結構取得欄位名稱與型別
+        // - 作為「欄位設定是否齊全」的依據
         var columns = GetTableSchema(tableName);
 
+        // 若查無欄位（例如表不存在），直接回 null
         if (columns.Count == 0) return null;
 
+        // 2) 檢查必要欄位是否存在
+        // - 僅針對實體表（Base / Detail / Mapping）進行檢查
+        // - View 因為可能是 join 結果，不強制必要欄位
         var missingColumns = _requiredColumns
             .Where(req => !columns.Any(c => c.COLUMN_NAME.Equals(req, StringComparison.OrdinalIgnoreCase)))
             .ToList();
+        
         if (missingColumns.Count > 0 &&
             (schemaType == TableSchemaQueryType.OnlyTable ||
              schemaType == TableSchemaQueryType.OnlyDetail ||
@@ -503,11 +578,15 @@ ORDER BY TABLE_SCHEMA, TABLE_NAME;";
             throw new Exception(
                 $"缺少必要欄位：{string.Join(", ", missingColumns)}");
 
+        // 3) 建立暫時用的 FormFieldMaster 設定
+        // - 若後續無法從現有設定推斷 MasterId，會用此物件建立新主檔
         var master = new FormFieldMasterDto
         {
             FORM_NAME = string.Empty,
             STATUS = (int)TableStatusType.Draft,
             SCHEMA_TYPE = schemaType,
+            
+            // 僅依 schemaType 指定對應的表名，其餘維持 null
             BASE_TABLE_NAME   = null,
             DETAIL_TABLE_NAME = null,
             VIEW_TABLE_NAME   = null,
@@ -530,32 +609,57 @@ ORDER BY TABLE_SCHEMA, TABLE_NAME;";
                 break;
         }
         
-        // 根據傳進來的formMasterId判斷為哪次操作的資料
+        // 4) 取得目前已存在的欄位設定（若有）
+        // - formMasterId 代表「這次操作所屬的主檔」
+        // - 若為 null，代表可能是第一次進入，需要從現有設定或建立新主檔
         var configs = await GetFieldConfigs(tableName, formMasterId);
+        
+        // 決定最終使用的 FORM_FIELD_Master_ID：
+        // 1. 優先使用呼叫端傳入的 formMasterId
+        // 2. 否則從既有欄位設定中推斷
+        // 3. 若仍不存在，則建立新的 FormMaster
+        // TODO: 之後需要釐清是否需要configs.Values.FirstOrDefault()?.FORM_FIELD_Master_ID
         var masterId = formMasterId
                        ?? configs.Values.FirstOrDefault()?.FORM_FIELD_Master_ID
                        ?? GetOrCreateFormMasterId(master);
         
-        var maxOrder = configs.Values.Any() ? configs.Values.Max(x => x.FIELD_ORDER) : 0;
+        // 5) 計算欄位排序起始值
+        // - 既有欄位保留原排序
+        // - 新欄位接在最後
+        var maxOrder = configs.Values.Any()
+            ? configs.Values.Max(x => x.FIELD_ORDER)
+            : 0;
+
         var order = maxOrder;
-        // 新增還沒存過的欄位
+
+        // 6) 補齊尚未建立設定的欄位
+        // - 僅針對「資料表實際存在，但設定檔中沒有」的欄位
+        // - 不覆蓋既有設定，避免破壞使用者自訂內容
         foreach (var col in columns)
         {
             if (!configs.ContainsKey(col.COLUMN_NAME))
             {
                 order++;
-                var vm = CreateDefaultFieldConfig(col.COLUMN_NAME, col.DATA_TYPE, masterId, tableName, order, schemaType);
+
+                var vm = CreateDefaultFieldConfig(
+                    col.COLUMN_NAME,
+                    col.DATA_TYPE,
+                    masterId,
+                    tableName,
+                    order,
+                    schemaType);
+
                 UpsertField(vm, masterId);
             }
         }
 
-        // 重新查一次所有欄位，確保資料同步
+        // 7) 重新查詢所有欄位設定，確保回傳資料與 DB 同步
         var result = await GetFieldsByTableName(tableName, masterId, schemaType);
 
-        // var master = _con.QueryFirst<FORM_FIELD_Master>(Sql.FormMasterById, new { id = masterId });
-        // result.formName = master.FORM_NAME;
-        
-        // 對於主檔，先預設有下拉選單的設定，創建的ISUSESQL欄位會為NULL
+        // 8) 主檔（Base Table）額外處理：
+        // - 因為主檔維護功能，更新主檔可能會需要自訂下拉選單
+        // - 預設為所有欄位建立 Dropdown 設定
+        // - IS_USE_SQL 等設定可為 null，後續由使用者調整
         if (schemaType == TableSchemaQueryType.OnlyTable)
         {
             foreach (var field in result.Fields)
@@ -563,6 +667,7 @@ ORDER BY TABLE_SCHEMA, TABLE_NAME;";
                 EnsureDropdownCreated(field.ID, null, null);
             }
         }
+
         return result;
     }
 
