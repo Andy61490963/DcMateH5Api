@@ -6,6 +6,7 @@ using DcMateH5Api.Helper;
 using System.Net;
 using System.Text.RegularExpressions;
 using DcMateH5Api.Areas.Form.Interfaces.FormLogic;
+using DcMateH5Api.Areas.Form.Interfaces.Transaction;
 using DcMateH5Api.Areas.Form.Options;
 using DcMateH5Api.Areas.Form.ViewModels;
 using DcMateH5Api.SqlHelper;
@@ -19,6 +20,7 @@ public class FormDesignerService : IFormDesignerService
     private readonly SqlConnection _con;
     private readonly IConfiguration _configuration;
     private readonly ISchemaService _schemaService;
+    private readonly ITransactionService _transactionService;
     private readonly SQLGenerateHelper _sqlHelper;
     private readonly IDropdownSqlSyncService _dropdownSqlSyncService;
     private readonly IReadOnlyList<string> _relationColumnSuffixes;
@@ -29,13 +31,16 @@ public class FormDesignerService : IFormDesignerService
         IConfiguration configuration,
         ISchemaService schemaService,
         IDropdownSqlSyncService dropdownSqlSyncService,
-        IOptions<FormSettings> formSettings)
+        IOptions<FormSettings> formSettings,
+        ITransactionService transactionService)
     {
         _con = connection;
         _configuration = configuration;
         _schemaService = schemaService;
         _sqlHelper = sqlHelper;
         _dropdownSqlSyncService = dropdownSqlSyncService;
+        _transactionService = transactionService;
+        
         _excludeColumns = _configuration.GetSection("DropdownSqlSettings:ExcludeColumns").Get<List<string>>() ?? new();
         _requiredColumns = _configuration.GetSection("FormDesignerSettings:RequiredColumns").Get<List<string>>() ?? new();
         var resolvedSettings = formSettings?.Value ?? new FormSettings();
@@ -96,12 +101,19 @@ public class FormDesignerService : IFormDesignerService
     }
 
     /// <summary>
-    /// 刪除 單一
+    /// 刪除單一表單主檔（硬刪除），並一併刪除其欄位設定、驗證規則、下拉設定與選項。
+    /// 使用 TransactionService 確保全有全無，避免刪一半留下殘骸。
     /// </summary>
-    /// <param name="id"></param>
     public void DeleteFormMaster(Guid id)
     {
-        _con.Execute(Sql.DeleteFormMaster, new { id });
+        _transactionService.WithTransaction(tx =>
+        {
+            _con.Execute(
+                Sql.DeleteFormMaster,
+                new { id },
+                transaction: tx,
+                commandTimeout: 30);
+        });
     }
     
     /// <summary>
@@ -1114,10 +1126,10 @@ ORDER BY TABLE_SCHEMA, TABLE_NAME;";
         var viewTableName = viewMaster.VIEW_TABLE_NAME;
         
         // 確保主表與顯示用 View 皆能成功查詢，避免儲存無效設定
-        if ( GetTableSchema(baseTableName).Count == 0 )
+        if ( GetTableSchema(baseTableName!).Count == 0 )
             throw new InvalidOperationException("主表名稱查無資料");
 
-        if ( GetTableSchema(viewTableName).Count == 0)
+        if ( GetTableSchema(viewTableName!).Count == 0)
             throw new InvalidOperationException("顯示用 View 名稱查無資料");
 
         // 若未指定 ID 則產生新 ID
@@ -1163,23 +1175,22 @@ ORDER BY TABLE_SCHEMA, TABLE_NAME;";
                          ?? throw new InvalidOperationException("明細表無資料");
         var viewMaster = await _sqlHelper.SelectFirstOrDefaultAsync(whereView)
                          ?? throw new InvalidOperationException("檢視表查無資料");
-
-
+        
         var masterTableName = baseMaster.BASE_TABLE_NAME;
         var detailTableName = detailMaster.DETAIL_TABLE_NAME;
         var viewTableName = viewMaster.VIEW_TABLE_NAME;
 
-        if (GetTableSchema(masterTableName).Count == 0)
+        if (GetTableSchema(masterTableName!).Count == 0)
             throw new InvalidOperationException("主表名稱查無資料");
 
-        if (GetTableSchema(detailTableName).Count == 0)
+        if (GetTableSchema(detailTableName!).Count == 0)
             throw new InvalidOperationException("明細表名稱查無資料");
 
-        if (GetTableSchema(viewTableName).Count == 0)
+        if (GetTableSchema(viewTableName!).Count == 0)
             throw new InvalidOperationException("顯示用 View 名稱查無資料");
 
         // 確保主表與明細表具有共用的關聯欄位，避免 SubmitForm 發生錯誤
-        EnsureRelationColumn(masterTableName, detailTableName, "主表與明細表");
+        EnsureRelationColumn(masterTableName!, detailTableName!, "主表與明細表");
 
         if (model.ID == Guid.Empty)
         {
@@ -1203,21 +1214,6 @@ ORDER BY TABLE_SCHEMA, TABLE_NAME;";
             FUNCTION_TYPE = FormFunctionType.MasterDetailMaintenance
         });
         return id;
-    }
-
-    public async Task<bool> CheckMasterDetailFormMasterExistsAsync(
-        Guid masterTableId, 
-        Guid detailTableId, 
-        Guid viewTableId, 
-        Guid? excludeId = null)
-    {
-        // ExecuteScalarAsync 本身就是 async，不會阻塞 ThreadPool
-        var count = await _con.ExecuteScalarAsync<int>(
-            Sql.CheckMasterDetailFormMasterExists,
-            new { masterTableId, detailTableId, viewTableId, excludeId }
-        );
-
-        return count > 0;
     }
 
     /// <summary>
@@ -1246,7 +1242,7 @@ ORDER BY TABLE_SCHEMA, TABLE_NAME;";
             .AndEq(x => x.ID, model.MAPPING_TABLE_ID)
             .AndNotDeleted();
 
-        var viewTableId = model.VIEW_TABLE_ID == Guid.Empty ? (Guid?)null : model.VIEW_TABLE_ID;
+        var viewTableId = model.VIEW_TABLE_ID == Guid.Empty ? null : model.VIEW_TABLE_ID;
         var whereView = viewTableId.HasValue
             ? new WhereBuilder<FormFieldMasterDto>().AndEq(x => x.ID, viewTableId).AndNotDeleted()
             : null;
@@ -1263,8 +1259,8 @@ ORDER BY TABLE_SCHEMA, TABLE_NAME;";
               ?? throw new InvalidOperationException("檢視表查無資料");
 
         var baseTableName = baseMaster.BASE_TABLE_NAME;
-        var detailTableName = detailMaster.DETAIL_TABLE_NAME ?? detailMaster.BASE_TABLE_NAME;
-        var mappingTableName = mappingMaster.MAPPING_TABLE_NAME ?? mappingMaster.BASE_TABLE_NAME ?? mappingMaster.DETAIL_TABLE_NAME;
+        var detailTableName = detailMaster.DETAIL_TABLE_NAME;
+        var mappingTableName = mappingMaster.MAPPING_TABLE_NAME;
         var viewTableName = viewMaster?.VIEW_TABLE_NAME;
 
         if (string.IsNullOrWhiteSpace(baseTableName))
@@ -1314,6 +1310,21 @@ ORDER BY TABLE_SCHEMA, TABLE_NAME;";
 
         return id;
     }
+    
+    public async Task<bool> CheckMasterDetailFormMasterExistsAsync(
+        Guid masterTableId, 
+        Guid detailTableId, 
+        Guid viewTableId, 
+        Guid? excludeId = null)
+    {
+        // ExecuteScalarAsync 本身就是 async，不會阻塞 ThreadPool
+        var count = await _con.ExecuteScalarAsync<int>(
+            Sql.CheckMasterDetailFormMasterExists,
+            new { masterTableId, detailTableId, viewTableId, excludeId }
+        );
+
+        return count > 0;
+    }
 
     public bool CheckFormMasterExists(Guid baseTableId, Guid viewTableId, Guid? excludeId = null)
     {
@@ -1346,12 +1357,17 @@ ORDER BY TABLE_SCHEMA, TABLE_NAME;";
     /// <returns>回傳以 COLUMN_NAME 為鍵的設定資料</returns>
     private async Task<Dictionary<string, FormFieldConfigDto>> GetFieldConfigs(string tableName, Guid? formMasterId)
     {
-        var configWhere = new WhereBuilder<FormFieldConfigDto>()
+        var where = new WhereBuilder<FormFieldConfigDto>()
             .AndEq(x => x.TABLE_NAME, tableName)
-            .AndEq(x => x.FORM_FIELD_Master_ID, formMasterId)
             .AndNotDeleted();
+
+        // 避免 formMasterId == null 產生 "FORM_FIELD_Master_ID = NULL" 導致查不到資料
+        if (formMasterId.HasValue)
+        {
+            where.AndEq(x => x.FORM_FIELD_Master_ID, formMasterId.Value);
+        }
         
-        var res = await _sqlHelper.SelectWhereAsync( configWhere );
+        var res = await _sqlHelper.SelectWhereAsync( where );
         return res.ToDictionary(x => x.COLUMN_NAME, StringComparer.OrdinalIgnoreCase);
     }
 
@@ -1610,7 +1626,7 @@ SELECT ISNULL(MAX(VALIDATION_ORDER), 0) + 1 FROM FORM_FIELD_VALIDATION_RULE WHER
 SELECT CONTROL_TYPE FROM FORM_FIELD_CONFIG WHERE ID = @fieldId";
 
         public const string GetRequiredFieldIds      = @"/**/
-SELECT FIELD_CONFIG_ID FROM FORM_FIELD_VALIDATION_RULE";
+SELECT FIELD_CONFIG_ID FROM FORM_FIELD_VALIDATION_RULE WHERE IS_DELETE = 0";
 
         public const string EnsureDropdownExists = @"
 /* 僅在尚未存在時插入 dropdown 主檔 */
