@@ -1,4 +1,5 @@
-﻿using DcMateH5Api.Areas.Form.Interfaces;
+﻿using System.Collections.Generic;
+using DcMateH5Api.Areas.Form.Interfaces;
 using DcMateH5Api.Areas.Form.Models;
 using DcMateH5Api.Areas.Form.ViewModels;
 using DcMateH5Api.Helper;
@@ -109,6 +110,31 @@ public class FormMultipleMappingController : ControllerBase
         {
             _service.RemoveMappings(formMasterId, request, ct);
             return NoContent();
+        }
+        catch (InvalidOperationException ex)
+        {
+            return BadRequest(ex.Message);
+        }
+    }
+
+    /// <summary>
+    /// 依 orderedSids 順序重排指定 Base 範圍的 Mapping.SEQ 欄位，更新完成後回傳受影響筆數。
+    /// </summary>
+    /// <param name="request">包含 FormMasterId、orderedSids 及 Base 範圍的請求模型。</param>
+    /// <param name="ct">取消權杖。</param>
+    /// <returns>成功時回傳受影響筆數；驗證失敗時回傳 400。</returns>
+    [HttpPost("sequence/reorder")]
+    public IActionResult ReorderSequence([FromBody] MappingSequenceReorderRequest? request, CancellationToken ct)
+    {
+        if (request == null)
+        {
+            return BadRequest("請提供排序請求內容。");
+        }
+
+        try
+        {
+            var affected = _service.ReorderMappingSequence(request, ct);
+            return Ok(new { AffectedRows = affected });
         }
         catch (InvalidOperationException ex)
         {

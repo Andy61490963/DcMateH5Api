@@ -167,6 +167,57 @@ WHERE [{header.MAPPING_BASE_FK_COLUMN}] = @BaseId
         });
     }
 
+    /// <summary>
+    /// 依指定的 SID 順序重新整理 Mapping 表的 SEQ 欄位，僅針對同一 Base 主鍵的資料列。
+    /// </summary>
+    /// <param name="request">包含設定檔、排序後 SID 清單與 Base 主鍵值的請求模型。</param>
+    /// <param name="ct">取消權杖。</param>
+    /// <returns>實際更新的筆數。</returns>
+    public int ReorderMappingSequence(MappingSequenceReorderRequest request, CancellationToken ct = default)
+    {
+        ct.ThrowIfCancellationRequested();
+        ValidateReorderRequest(request);
+
+        return _txService.WithTransaction(tx =>
+        {
+            var header = GetMappingHeader(request.FormMasterId, tx);
+            EnsureReorderColumns(header, tx);
+
+            var (basePkName, _, basePkValue) = _schemaService.ResolvePk(header.BASE_TABLE_NAME!, request.Scope.BasePkValue, tx);
+            EnsureRowExists(header.BASE_TABLE_NAME!, basePkName, basePkValue!, tx);
+
+            EnsureSidsBelongToBase(header, basePkValue!, request.OrderedSids, tx);
+
+            var parameters = new DynamicParameters();
+            parameters.Add("BaseId", basePkValue);
+
+            var valueFragments = new List<string>();
+            for (var i = 0; i < request.OrderedSids.Count; i++)
+            {
+                var sidParam = $"sid{i}";
+                var seqParam = $"seq{i}";
+                parameters.Add(sidParam, request.OrderedSids[i]);
+                parameters.Add(seqParam, i + 1);
+                valueFragments.Add($"(@{sidParam}, @{seqParam})");
+            }
+
+            var valuesSql = string.Join(", ", valueFragments);
+
+            var sql = $@"/**/
+;WITH OrderedSids AS (
+    SELECT v.SID, v.Seq
+    FROM (VALUES {valuesSql}) AS v (SID, Seq)
+)
+UPDATE m
+   SET m.[SEQ] = o.Seq
+  FROM [{header.MAPPING_TABLE_NAME}] AS m
+  JOIN OrderedSids AS o ON m.SID = o.SID
+ WHERE m.[{header.MAPPING_BASE_FK_COLUMN}] = @BaseId;";
+
+            return _con.Execute(sql, parameters, transaction: tx);
+        });
+    }
+
     private FormFieldMasterDto GetMappingHeader(Guid formMasterId, SqlTransaction? tx = null)
     {
         var header = _formFieldMasterService.GetFormFieldMasterFromId(formMasterId, tx)
@@ -255,6 +306,30 @@ WHERE NOT EXISTS (
         }
     }
 
+    private static void ValidateReorderRequest(MappingSequenceReorderRequest request)
+    {
+        if (request == null) throw new ArgumentNullException(nameof(request));
+        if (request.FormMasterId == Guid.Empty)
+        {
+            throw new InvalidOperationException("FormMasterId 不可為空");
+        }
+
+        if (request.Scope == null || string.IsNullOrWhiteSpace(request.Scope.BasePkValue))
+        {
+            throw new InvalidOperationException("BasePkValue 不可為空");
+        }
+
+        if (request.OrderedSids == null || request.OrderedSids.Count == 0)
+        {
+            throw new InvalidOperationException("orderedSids 不可為空");
+        }
+
+        if (request.OrderedSids.Count != request.OrderedSids.Distinct().Count())
+        {
+            throw new InvalidOperationException("orderedSids 不可重複");
+        }
+    }
+
     private static IEnumerable<object> ConvertDetailIds(IEnumerable<string> detailIds, string detailPkType)
     {
         foreach (var id in detailIds)
@@ -291,6 +366,48 @@ WHERE NOT EXISTS (
         if (!columns.Contains(columnName))
         {
             throw new InvalidOperationException(errorMessage);
+        }
+    }
+
+    private void EnsureReorderColumns(FormFieldMasterDto header, SqlTransaction? tx)
+    {
+        var columns = _schemaService.GetFormFieldMaster(header.MAPPING_TABLE_NAME!, tx)
+            .ToHashSet(StringComparer.OrdinalIgnoreCase);
+
+        if (!columns.Contains("SID"))
+        {
+            throw new InvalidOperationException("Mapping 表缺少 SID 欄位，無法執行排序。");
+        }
+
+        if (!columns.Contains("SEQ"))
+        {
+            throw new InvalidOperationException("Mapping 表缺少 SEQ 欄位，無法執行排序。");
+        }
+
+        if (!columns.Contains(header.MAPPING_BASE_FK_COLUMN!))
+        {
+            throw new InvalidOperationException($"Mapping 表缺少 {header.MAPPING_BASE_FK_COLUMN} 欄位，無法依 Base 範圍排序。");
+        }
+    }
+
+    private void EnsureSidsBelongToBase(FormFieldMasterDto header, object basePkValue, IReadOnlyCollection<decimal> sids, SqlTransaction tx)
+    {
+        var totalForBase = _con.ExecuteScalar<int>(
+            $"/**/SELECT COUNT(1) FROM [{header.MAPPING_TABLE_NAME}] WHERE [{header.MAPPING_BASE_FK_COLUMN}] = @BaseId",
+            new { BaseId = basePkValue }, transaction: tx);
+
+        if (totalForBase != sids.Count)
+        {
+            throw new InvalidOperationException("傳入的 orderedSids 與 Base 篩選的資料筆數不符，無法保證 SEQ 唯一性。");
+        }
+
+        var matchedCount = _con.ExecuteScalar<int>(
+            $"/**/SELECT COUNT(1) FROM [{header.MAPPING_TABLE_NAME}] WHERE SID IN @Sids AND [{header.MAPPING_BASE_FK_COLUMN}] = @BaseId",
+            new { Sids = sids, BaseId = basePkValue }, transaction: tx);
+
+        if (matchedCount != sids.Count)
+        {
+            throw new InvalidOperationException("orderedSids 中至少有一筆不存在或不屬於指定的 BasePkValue。");
         }
     }
 }

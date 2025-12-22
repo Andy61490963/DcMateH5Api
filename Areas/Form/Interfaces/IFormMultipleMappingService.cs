@@ -35,4 +35,12 @@ public interface IFormMultipleMappingService
     /// 批次移除對應關係（左 → 右）。
     /// </summary>
     void RemoveMappings(Guid formMasterId, MultipleMappingUpsertViewModel request, CancellationToken ct = default);
+
+    /// <summary>
+    /// 依指定順序重新整理 Mapping 資料列的 SEQ 欄位，限定於同一個 Base 主鍵範圍內。
+    /// </summary>
+    /// <param name="request">包含設定檔、排序後 SID 清單與 Base 主鍵值的請求模型。</param>
+    /// <param name="ct">取消權杖。</param>
+    /// <returns>更新的筆數。</returns>
+    int ReorderMappingSequence(MappingSequenceReorderRequest request, CancellationToken ct = default);
 }
