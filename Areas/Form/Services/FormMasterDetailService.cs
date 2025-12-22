@@ -157,13 +157,13 @@ public class FormMasterDetailService : IFormMasterDetailService
             // 2) 查出「關聯欄位」在 config 中對應的 ConfigId（Master / Detail 各一）
             var masterCfgId = _con.ExecuteScalar<Guid?>(@"/**/
         SELECT ID FROM FORM_FIELD_CONFIG
-        WHERE FORM_FIELD_Master_ID = @Id AND COLUMN_NAME = @Col",
+        WHERE FORM_FIELD_MASTER_ID = @Id AND COLUMN_NAME = @Col",
                                   new { Id = header.BASE_TABLE_ID, Col = relationColumn }, transaction: tx)
                               ?? throw new InvalidOperationException("Master relation column not found.");
 
             var detailCfgId = _con.ExecuteScalar<Guid?>(@"/**/
         SELECT ID FROM FORM_FIELD_CONFIG
-        WHERE FORM_FIELD_Master_ID = @Id AND COLUMN_NAME = @Col",
+        WHERE FORM_FIELD_MASTER_ID = @Id AND COLUMN_NAME = @Col",
                                   new { Id = header.DETAIL_TABLE_ID, Col = relationColumn }, transaction: tx)
                               ?? throw new InvalidOperationException("Detail relation column not found.");
 

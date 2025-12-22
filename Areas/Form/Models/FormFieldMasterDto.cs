@@ -6,7 +6,7 @@ using ClassLibrary;
 namespace DcMateH5Api.Areas.Form.Models;
 
 
-[Table("FORM_FIELD_Master")]
+[Table("FORM_FIELD_MASTER")]
 public class FormFieldMasterDto
 {
     [Key]

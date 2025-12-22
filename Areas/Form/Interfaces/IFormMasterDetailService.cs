@@ -20,7 +20,7 @@ public interface IFormMasterDetailService
     /// <summary>
     /// 取得主表與明細表的填寫畫面與資料。
     /// </summary>
-    /// <param name="formMasterDetailId">主明細表單的 FORM_FIELD_Master.ID</param>
+    /// <param name="formMasterDetailId">主明細表單的 FORM_FIELD_MASTER.ID</param>
     /// <param name="pk">主表資料主鍵，不傳為新增。</param>
     /// <returns>主表與明細表的填寫資料。</returns>
     FormMasterDetailSubmissionViewModel GetFormSubmission(Guid formMasterDetailId, string? pk = null);

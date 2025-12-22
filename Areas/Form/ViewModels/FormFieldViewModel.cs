@@ -12,7 +12,7 @@ public class FormFieldViewModel
     /// <summary>
     /// parent
     /// </summary>
-    public Guid FORM_FIELD_Master_ID { get; set; }
+    public Guid FORM_FIELD_MASTER_ID { get; set; }
 
     /// <summary>
     /// 這個欄位是否為Pk

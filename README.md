@@ -3,7 +3,7 @@
 
 * * *
 
-## `FORM_FIELD_Master` — 表單主檔
+## `FORM_FIELD_MASTER` — 表單主檔
 
 | 欄位名稱 | 資料型別 | 說明 |
 | --- | --- | --- |
@@ -30,7 +30,7 @@
 | --- | --- | --- |
 | `SEQNO` | INT | 排序用 |
 | `ID` | UUID | 主鍵 |
-| `FORM_FIELD_Master_ID` | UUID | 對應主檔 |
+| `FORM_FIELD_MASTER_ID` | UUID | 對應主檔 |
 | `TABLE_NAME` | NVARCHAR(100) | 資料表名稱 |
 | `COLUMN_NAME` | NVARCHAR(100) | 欄位名稱 |
 | `DATA_TYPE` | NVARCHAR(100) | 資料型別 |
@@ -235,7 +235,7 @@
 
 # 關聯性 (Foreign Keys)
 
-* `FORM_FIELD_CONFIG.FORM_FIELD_Master_ID` → `FORM_FIELD_Master.ID`
+* `FORM_FIELD_CONFIG.FORM_FIELD_MASTER_ID` → `FORM_FIELD_MASTER.ID`
     
 * `FORM_FIELD_VALIDATION_RULE.FIELD_CONFIG_ID` → `FORM_FIELD_CONFIG.ID`
     

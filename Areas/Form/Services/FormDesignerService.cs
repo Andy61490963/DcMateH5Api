@@ -53,7 +53,7 @@ public class FormDesignerService : IFormDesignerService
     #region Public API
     
     /// <summary>
-    /// 取得 FORM_FIELD_Master 列表（可依 SchemaType 與關鍵字模糊查詢）
+    /// 取得 FORM_FIELD_MASTER 列表（可依 SchemaType 與關鍵字模糊查詢）
     /// </summary>
     public Task<List<FormFieldMasterDto>> GetFormMasters(
         FormFunctionType functionType,
@@ -307,7 +307,7 @@ ORDER BY TABLE_SCHEMA, TABLE_NAME;";
     
     public Guid GetOrCreateFormMasterId(FormFieldMasterDto model)
     {
-        var sql = @"SELECT ID FROM FORM_FIELD_Master WHERE ID = @id";
+        var sql = @"SELECT ID FROM FORM_FIELD_MASTER WHERE ID = @id";
         var res = _con.QueryFirstOrDefault<Guid?>(sql, new { id = model.ID });
 
         if (res.HasValue)
@@ -317,7 +317,7 @@ ORDER BY TABLE_SCHEMA, TABLE_NAME;";
         static bool HasValue(string? s) => !string.IsNullOrWhiteSpace(s);
         
         _con.Execute(@"
-        INSERT INTO FORM_FIELD_Master
+        INSERT INTO FORM_FIELD_MASTER
     (ID, FORM_NAME, STATUS, SCHEMA_TYPE,
      BASE_TABLE_NAME, VIEW_TABLE_NAME, DETAIL_TABLE_NAME, MAPPING_TABLE_NAME,
      BASE_TABLE_ID,  VIEW_TABLE_ID,  DETAIL_TABLE_ID, MAPPING_TABLE_ID,
@@ -380,7 +380,7 @@ ORDER BY TABLE_SCHEMA, TABLE_NAME;";
             var vm = new FormFieldViewModel
             {
                 ID                          = fieldId,
-                FORM_FIELD_Master_ID        = formMasterId ?? Guid.Empty,
+                FORM_FIELD_MASTER_ID        = formMasterId ?? Guid.Empty,
                 TableName                   = tableName,
                 COLUMN_NAME                 = columnName,
                 DATA_TYPE                   = dataType,
@@ -408,7 +408,7 @@ ORDER BY TABLE_SCHEMA, TABLE_NAME;";
         //     f.COLUMN_NAME.Contains(ex, StringComparison.OrdinalIgnoreCase)))
         // .ToList();
         
-        var masterId = formMasterId ?? configs.Values.FirstOrDefault()?.FORM_FIELD_Master_ID ?? Guid.Empty;
+        var masterId = formMasterId ?? configs.Values.FirstOrDefault()?.FORM_FIELD_MASTER_ID ?? Guid.Empty;
 
         var result = new FormFieldListViewModel
         {
@@ -459,7 +459,7 @@ ORDER BY TABLE_SCHEMA, TABLE_NAME;";
     ///
     /// 此方法不只是查一筆資料，而是：
     /// - 將資料庫中的欄位設定（FORM_FIELD_CONFIG）
-    /// - 結合主檔設定（FORM_FIELD_Master）
+    /// - 結合主檔設定（FORM_FIELD_MASTER）
     /// - 再補上 Schema 推導資訊（PK / 可用控制元件 / 查詢元件）
     /// → 組合成前端可直接使用的 ViewModel
     /// </summary>
@@ -480,10 +480,10 @@ ORDER BY TABLE_SCHEMA, TABLE_NAME;";
         // 若查無欄位設定，直接回傳 null
         if (cfg == null) return null;
 
-        // 2) 查詢該欄位所屬的表單主檔（FORM_FIELD_Master）
+        // 2) 查詢該欄位所屬的表單主檔（FORM_FIELD_MASTER）
         // - 用於判斷 SchemaType（Base / Detail / View / Mapping）
         var masterWhere = new WhereBuilder<FormFieldMasterDto>()
-            .AndEq(x => x.ID, cfg.FORM_FIELD_Master_ID)
+            .AndEq(x => x.ID, cfg.FORM_FIELD_MASTER_ID)
             .AndNotDeleted();
 
         var master = await _sqlHelper.SelectFirstOrDefaultAsync(masterWhere);
@@ -500,7 +500,7 @@ ORDER BY TABLE_SCHEMA, TABLE_NAME;";
         {
             // 基本識別資訊
             ID = cfg.ID,
-            FORM_FIELD_Master_ID = cfg.FORM_FIELD_Master_ID,
+            FORM_FIELD_MASTER_ID = cfg.FORM_FIELD_MASTER_ID,
             TableName = cfg.TABLE_NAME,
             COLUMN_NAME = cfg.COLUMN_NAME,
             DATA_TYPE = cfg.DATA_TYPE,
@@ -556,7 +556,7 @@ ORDER BY TABLE_SCHEMA, TABLE_NAME;";
     /// </summary>
     /// <param name="tableName">資料表或檢視表名稱</param>
     /// <param name="formMasterId">
-    /// 所屬的 FORM_FIELD_Master Id；
+    /// 所屬的 FORM_FIELD_MASTER Id；
     /// 若為 null，表示此次操作尚未綁定主檔，系統會自動推斷或建立
     /// </param>
     /// <param name="schemaType">
@@ -626,13 +626,13 @@ ORDER BY TABLE_SCHEMA, TABLE_NAME;";
         // - 若為 null，代表可能是第一次進入，需要從現有設定或建立新主檔
         var configs = await GetFieldConfigs(tableName, formMasterId);
         
-        // 決定最終使用的 FORM_FIELD_Master_ID：
+        // 決定最終使用的 FORM_FIELD_MASTER_ID：
         // 1. 優先使用呼叫端傳入的 formMasterId
         // 2. 否則從既有欄位設定中推斷
         // 3. 若仍不存在，則建立新的 FormMaster
-        // TODO: 之後需要釐清是否需要configs.Values.FirstOrDefault()?.FORM_FIELD_Master_ID
+        // TODO: 之後需要釐清是否需要configs.Values.FirstOrDefault()?.FORM_FIELD_MASTER_ID
         var masterId = formMasterId
-                       ?? configs.Values.FirstOrDefault()?.FORM_FIELD_Master_ID
+                       ?? configs.Values.FirstOrDefault()?.FORM_FIELD_MASTER_ID
                        ?? GetOrCreateFormMasterId(master);
         
         // 5) 計算欄位排序起始值
@@ -697,7 +697,7 @@ ORDER BY TABLE_SCHEMA, TABLE_NAME;";
         var param = new
         {
             ID = model.ID == Guid.Empty ? Guid.NewGuid() : model.ID,
-            FORM_FIELD_Master_ID = formMasterId,
+            FORM_FIELD_MASTER_ID = formMasterId,
             TABLE_NAME = model.TableName,
             model.COLUMN_NAME,
             model.DATA_TYPE,
@@ -737,7 +737,7 @@ ORDER BY TABLE_SCHEMA, TABLE_NAME;";
         _con.Execute(Sql.SetAllEditable, new { formMasterId, isEditable });
         
         var where = new WhereBuilder<FormFieldConfigDto>()
-            .AndEq(x => x.FORM_FIELD_Master_ID, formMasterId)
+            .AndEq(x => x.FORM_FIELD_MASTER_ID, formMasterId)
             .AndNotDeleted();
         
         var model = await _sqlHelper.SelectFirstOrDefaultAsync( where, ct );
@@ -753,7 +753,7 @@ ORDER BY TABLE_SCHEMA, TABLE_NAME;";
         _con.Execute(Sql.SetAllRequired, new { formMasterId, isRequired });
         
         var where = new WhereBuilder<FormFieldConfigDto>()
-            .AndEq(x => x.FORM_FIELD_Master_ID, formMasterId)
+            .AndEq(x => x.FORM_FIELD_MASTER_ID, formMasterId)
             .AndNotDeleted();
         
         var model = await _sqlHelper.SelectFirstOrDefaultAsync( where, ct );
@@ -1217,7 +1217,7 @@ ORDER BY TABLE_SCHEMA, TABLE_NAME;";
     }
 
     /// <summary>
-    /// 儲存多對多表單主檔設定並回寫 FORM_FIELD_Master。
+    /// 儲存多對多表單主檔設定並回寫 FORM_FIELD_MASTER。
     /// </summary>
     /// <param name="model">多對多主檔設定</param>
     /// <remarks>會同步檢查主表、目標表與關聯表的實體存在性與關聯欄位，以避免後續填寫階段出錯。</remarks>
@@ -1361,10 +1361,10 @@ ORDER BY TABLE_SCHEMA, TABLE_NAME;";
             .AndEq(x => x.TABLE_NAME, tableName)
             .AndNotDeleted();
 
-        // 避免 formMasterId == null 產生 "FORM_FIELD_Master_ID = NULL" 導致查不到資料
+        // 避免 formMasterId == null 產生 "FORM_FIELD_MASTER_ID = NULL" 導致查不到資料
         if (formMasterId.HasValue)
         {
-            where.AndEq(x => x.FORM_FIELD_Master_ID, formMasterId.Value);
+            where.AndEq(x => x.FORM_FIELD_MASTER_ID, formMasterId.Value);
         }
         
         var res = await _sqlHelper.SelectWhereAsync( where );
@@ -1438,7 +1438,7 @@ ORDER BY TABLE_SCHEMA, TABLE_NAME;";
         return new FormFieldViewModel
         {
             ID = Guid.NewGuid(),
-            FORM_FIELD_Master_ID = masterId,
+            FORM_FIELD_MASTER_ID = masterId,
             TableName = tableName,
             COLUMN_NAME = columnName,
             DATA_TYPE = dataType,
@@ -1462,7 +1462,7 @@ ORDER BY TABLE_SCHEMA, TABLE_NAME;";
     {
         public const string GetFormFieldMasterChildren = @"/**/
 SELECT BASE_TABLE_ID 
-FROM FORM_FIELD_Master 
+FROM FORM_FIELD_MASTER 
 WHERE id = @formMasterId
 AND SCHEMA_TYPE = @SchemaType";
 
@@ -1474,7 +1474,7 @@ WHERE TABLE_NAME = @TableName
 ORDER BY ORDINAL_POSITION";
 
         public const string UpsertFormMaster = @"/**/
-MERGE FORM_FIELD_Master AS target
+MERGE FORM_FIELD_MASTER AS target
 USING (SELECT @ID AS ID) AS src
 ON target.ID = src.ID
 WHEN MATCHED THEN
@@ -1499,13 +1499,13 @@ WHEN NOT MATCHED THEN
 OUTPUT INSERTED.ID;";
 
         public const string CheckFormMasterExists = @"/**/
-SELECT COUNT(1) FROM FORM_FIELD_Master
+SELECT COUNT(1) FROM FORM_FIELD_MASTER
 WHERE BASE_TABLE_ID = @baseTableId
   AND VIEW_TABLE_ID = @viewTableId
   AND (@excludeId IS NULL OR ID <> @excludeId)";
 
         public const string UpsertMasterDetailFormMaster = @"/**/
-MERGE FORM_FIELD_Master AS target
+MERGE FORM_FIELD_MASTER AS target
 USING (SELECT @ID AS ID) AS src
 ON target.ID = src.ID
 WHEN MATCHED THEN
@@ -1532,14 +1532,14 @@ WHEN NOT MATCHED THEN
 OUTPUT INSERTED.ID;";
 
         public const string CheckMasterDetailFormMasterExists = @"/**/
-SELECT COUNT(1) FROM FORM_FIELD_Master
+SELECT COUNT(1) FROM FORM_FIELD_MASTER
 WHERE BASE_TABLE_ID = @masterTableId
   AND DETAIL_TABLE_ID = @detailTableId
   AND VIEW_TABLE_ID = @viewTableId
   AND (@excludeId IS NULL OR ID <> @excludeId)";
 
         public const string UpsertMultipleMappingFormMaster = @"/**/
-MERGE FORM_FIELD_Master AS target
+MERGE FORM_FIELD_MASTER AS target
 USING (SELECT @ID AS ID) AS src
 ON target.ID = src.ID
 WHEN MATCHED THEN
@@ -1586,11 +1586,11 @@ WHEN MATCHED THEN
         EDIT_TIME      = GETDATE()
 WHEN NOT MATCHED THEN
     INSERT (
-        ID, FORM_FIELD_Master_ID, TABLE_NAME, COLUMN_NAME, DATA_TYPE,
+        ID, FORM_FIELD_MASTER_ID, TABLE_NAME, COLUMN_NAME, DATA_TYPE,
         CONTROL_TYPE, IS_REQUIRED, IS_EDITABLE, QUERY_DEFAULT_VALUE, FIELD_ORDER, QUERY_COMPONENT, QUERY_CONDITION, CAN_QUERY, CREATE_TIME, IS_DELETE
     )
     VALUES (
-        @ID, @FORM_FIELD_Master_ID, @TABLE_NAME, @COLUMN_NAME, @DATA_TYPE,
+        @ID, @FORM_FIELD_MASTER_ID, @TABLE_NAME, @COLUMN_NAME, @DATA_TYPE,
         @CONTROL_TYPE, @IS_REQUIRED, @IS_EDITABLE, @QUERY_DEFAULT_VALUE, @FIELD_ORDER, @QUERY_COMPONENT, @QUERY_CONDITION, @CAN_QUERY, GETDATE(), 0
     );";
 
@@ -1600,21 +1600,21 @@ SELECT COUNT(1) FROM FORM_FIELD_CONFIG WHERE ID = @fieldId";
         public const string SetAllEditable = @"/**/
 UPDATE FORM_FIELD_CONFIG
 SET IS_EDITABLE = @isEditable
-WHERE FORM_FIELD_Master_ID = @formMasterId;
+WHERE FORM_FIELD_MASTER_ID = @formMasterId;
 
 -- 若不可編輯，強制取消必填
 IF (@isEditable = 0)
 BEGIN
     UPDATE FORM_FIELD_CONFIG
     SET IS_REQUIRED = 0
-    WHERE FORM_FIELD_Master_ID = @formMasterId;
+    WHERE FORM_FIELD_MASTER_ID = @formMasterId;
 END
 ";
 
         public const string SetAllRequired = @"/**/
 UPDATE FORM_FIELD_CONFIG
 SET IS_REQUIRED = CASE WHEN @isRequired = 1 AND IS_EDITABLE = 1 THEN 1 ELSE 0 END
-WHERE FORM_FIELD_Master_ID = @formMasterId";
+WHERE FORM_FIELD_MASTER_ID = @formMasterId";
         
         public const string CountValidationRules     = @"/**/
 SELECT COUNT(1) FROM FORM_FIELD_VALIDATION_RULE WHERE FIELD_CONFIG_ID = @fieldId AND IS_DELETE = 0";
@@ -1693,17 +1693,17 @@ WHEN NOT MATCHED THEN
         public const string DeleteFormMaster = @"
 DELETE FROM FORM_FIELD_DROPDOWN_OPTIONS WHERE FORM_FIELD_DROPDOWN_ID IN (
     SELECT ID FROM FORM_FIELD_DROPDOWN WHERE FORM_FIELD_CONFIG_ID IN (
-        SELECT ID FROM FORM_FIELD_CONFIG WHERE FORM_FIELD_Master_ID = @id
+        SELECT ID FROM FORM_FIELD_CONFIG WHERE FORM_FIELD_MASTER_ID = @id
     )
 );
 DELETE FROM FORM_FIELD_DROPDOWN WHERE FORM_FIELD_CONFIG_ID IN (
-    SELECT ID FROM FORM_FIELD_CONFIG WHERE FORM_FIELD_Master_ID = @id
+    SELECT ID FROM FORM_FIELD_CONFIG WHERE FORM_FIELD_MASTER_ID = @id
 );
 DELETE FROM FORM_FIELD_VALIDATION_RULE WHERE FIELD_CONFIG_ID IN (
-    SELECT ID FROM FORM_FIELD_CONFIG WHERE FORM_FIELD_Master_ID = @id
+    SELECT ID FROM FORM_FIELD_CONFIG WHERE FORM_FIELD_MASTER_ID = @id
 );
-DELETE FROM FORM_FIELD_CONFIG WHERE FORM_FIELD_Master_ID = @id;
-DELETE FROM FORM_FIELD_Master WHERE ID = @id;
+DELETE FROM FORM_FIELD_CONFIG WHERE FORM_FIELD_MASTER_ID = @id;
+DELETE FROM FORM_FIELD_MASTER WHERE ID = @id;
 ";
 
     }

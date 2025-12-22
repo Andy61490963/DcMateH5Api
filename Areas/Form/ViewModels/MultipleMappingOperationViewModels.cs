@@ -9,7 +9,7 @@ namespace DcMateH5Api.Areas.Form.ViewModels;
 public class MultipleMappingConfigViewModel
 {
     /// <summary>
-    /// FORM_FIELD_Master 的唯一識別碼。
+    /// FORM_FIELD_MASTER 的唯一識別碼。
     /// </summary>
     public Guid Id { get; set; }
 

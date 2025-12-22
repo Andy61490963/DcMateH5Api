@@ -53,7 +53,7 @@ SELECT ID AS Id,
        MAPPING_TABLE_NAME AS MappingTableName,
        MAPPING_BASE_FK_COLUMN AS MappingBaseFkColumn,
        MAPPING_DETAIL_FK_COLUMN AS MappingDetailFkColumn
-  FROM FORM_FIELD_Master
+  FROM FORM_FIELD_MASTER
  WHERE FUNCTION_TYPE = @funcType
    AND IS_DELETE = 0";
 

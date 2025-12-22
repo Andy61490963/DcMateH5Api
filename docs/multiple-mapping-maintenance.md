@@ -4,7 +4,7 @@
 
 ## 設定欄位與來源
 
-- **FORM_FIELD_Master 新增欄位**
+- **FORM_FIELD_MASTER 新增欄位**
   - `MAPPING_BASE_FK_COLUMN`：關聯表指向主表（Base）的 FK 欄位名稱。
   - `MAPPING_DETAIL_FK_COLUMN`：關聯表指向明細表（Detail）的 FK 欄位名稱。
   - 欄位由 `FormDesignerMultipleMappingController.SaveMultipleMappingFormHeader` 寫入，並由 `FormMultipleMappingService` 操作關聯表時使用。 【F:Areas/Form/Controllers/FormDesignerMultipleMappingController.cs†L396-L420】【F:Areas/Form/Services/FormDesignerService.cs†L1075-L1153】

@@ -3,7 +3,7 @@ namespace DcMateH5Api.Areas.Form.ViewModels;
 public class FormHeaderViewModel
 {
     /// <summary>
-    /// FORM_FIELD_Master 主檔 ID
+    /// FORM_FIELD_MASTER 主檔 ID
     /// </summary>
     public Guid ID { get; set; }
 

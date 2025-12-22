@@ -138,7 +138,7 @@ public class FormMasterDetailController : ControllerBase
     /// <summary>
     /// 取得主表與明細表的編輯/檢視/新增資料表單。
     /// </summary>
-    /// <param name="formId">主明細表頭的 FORM_FIELD_Master.ID。</param>
+    /// <param name="formId">主明細表頭的 FORM_FIELD_MASTER.ID。</param>
     /// <param name="pk">主表資料主鍵，不傳為新增。</param>
     [HttpPost("{formId}")]
     public IActionResult GetForm(Guid formId, string? pk)

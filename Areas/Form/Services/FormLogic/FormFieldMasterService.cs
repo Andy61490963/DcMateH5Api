@@ -19,21 +19,21 @@ public class FormFieldMasterService : IFormFieldMasterService
     public FormFieldMasterDto? GetFormFieldMaster(TableSchemaQueryType type)
     {
         return _con.QueryFirstOrDefault<FormFieldMasterDto>(
-            "/**/SELECT * FROM FORM_FIELD_Master WHERE SCHEMA_TYPE = @TYPE",
+            "/**/SELECT * FROM FORM_FIELD_MASTER WHERE SCHEMA_TYPE = @TYPE",
             new { TYPE = type.ToInt() });
     }
 
     public FormFieldMasterDto GetFormFieldMasterFromId(Guid? id, SqlTransaction? tx = null)
     {
         return _con.QueryFirst<FormFieldMasterDto>(
-            "/**/SELECT * FROM FORM_FIELD_Master WHERE ID = @id",
+            "/**/SELECT * FROM FORM_FIELD_MASTER WHERE ID = @id",
             new { id }, transaction: tx);
     }
 
     public List<(FormFieldMasterDto Master, List<FormFieldConfigDto> FieldConfigs)> GetFormMetaAggregates( FormFunctionType funcType, TableSchemaQueryType type )
     {
         var masters = _con.Query<FormFieldMasterDto>(
-            "/**/SELECT * FROM FORM_FIELD_Master WHERE SCHEMA_TYPE = @TYPE AND FUNCTION_TYPE = @funcType",
+            "/**/SELECT * FROM FORM_FIELD_MASTER WHERE SCHEMA_TYPE = @TYPE AND FUNCTION_TYPE = @funcType",
             new { TYPE = type.ToInt(), funcType = funcType.ToInt() })
             .ToList();
 
@@ -42,7 +42,7 @@ public class FormFieldMasterService : IFormFieldMasterService
         foreach (var master in masters)
         {
             var configs = _con.Query<FormFieldConfigDto>(
-                "/**/SELECT ID, COLUMN_NAME, CONTROL_TYPE, CAN_QUERY FROM FORM_FIELD_CONFIG WHERE FORM_FIELD_Master_ID = @id",
+                "/**/SELECT ID, COLUMN_NAME, CONTROL_TYPE, CAN_QUERY FROM FORM_FIELD_CONFIG WHERE FORM_FIELD_MASTER_ID = @id",
                 new { id = master.BASE_TABLE_ID })
                 .ToList();
 

@@ -24,7 +24,7 @@ public class FormDesignerMasterDetailController : ControllerBase
 
     // ────────── Form Designer 列表 ──────────
     /// <summary>
-    /// 取得表單主檔 (FORM_FIELD_Master) 清單
+    /// 取得表單主檔 (FORM_FIELD_MASTER) 清單
     /// </summary>
     /// <param name="q">關鍵字 (模糊搜尋 FORM_NAME)</param>
     /// <param name="ct">CancellationToken</param>
@@ -52,7 +52,7 @@ public class FormDesignerMasterDetailController : ControllerBase
     /// <summary>
     /// 刪除指定的主檔 or 明細 or 檢視表資料
     /// </summary>
-    /// <param name="id">FORM_FIELD_Master 的唯一識別編號</param>
+    /// <param name="id">FORM_FIELD_MASTER 的唯一識別編號</param>
     /// <returns>NoContent 回應</returns>
     [HttpDelete("{id}")]
     public IActionResult Delete(Guid id)
@@ -101,7 +101,7 @@ public class FormDesignerMasterDetailController : ControllerBase
     /// 取得資料表所有欄位設定(tableName必須傳，如果傳入空formMasterId，會創建一筆新的，如果有傳入formMasterId，會取得舊的)
     /// </summary>
     /// <param name="tableName">名稱</param>
-    /// <param name="formMasterId">FORM_FIELD_Master 的ID</param>
+    /// <param name="formMasterId">FORM_FIELD_MASTER 的ID</param>
     /// <param name="schemaType">列舉類型</param>
     /// <returns></returns>
     [HttpGet("tables/{tableName}/fields")]
@@ -162,7 +162,7 @@ public class FormDesignerMasterDetailController : ControllerBase
                  _formDesignerService.GetControlTypeByFieldId( model.ID ) != model.CONTROL_TYPE )
                 return Conflict( "已有驗證規則，無法變更控制元件類型" );
 
-            var master = new FormFieldMasterDto { ID = model.FORM_FIELD_Master_ID };
+            var master = new FormFieldMasterDto { ID = model.FORM_FIELD_MASTER_ID };
             var formMasterId = _formDesignerService.GetOrCreateFormMasterId( master );
 
             _formDesignerService.UpsertField( model, formMasterId );
@@ -180,7 +180,7 @@ public class FormDesignerMasterDetailController : ControllerBase
     /// <summary>
     /// 批次設定所有欄位為可編輯/不可編輯
     /// </summary>
-    /// <param name="formMasterId">FORM_FIELD_Master 的ID</param>
+    /// <param name="formMasterId">FORM_FIELD_MASTER 的ID</param>
     /// <param name="isEditable">是否可編輯</param>
     /// <param name="ct"></param>
     /// <returns></returns>
@@ -195,7 +195,7 @@ public class FormDesignerMasterDetailController : ControllerBase
     /// <summary>
     /// 批次設定所有欄位為必填/非必填
     /// </summary>
-    /// <param name="formMasterId">FORM_FIELD_Master 的ID</param>
+    /// <param name="formMasterId">FORM_FIELD_MASTER 的ID</param>
     /// <param name="isRequired">是否必填</param>
     /// <param name="ct"></param>
     /// <returns></returns>

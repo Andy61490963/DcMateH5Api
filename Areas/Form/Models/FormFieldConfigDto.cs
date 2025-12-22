@@ -11,8 +11,8 @@ public class FormFieldConfigDto
     [Column("ID")]
     public Guid ID { get; set; }
 
-    [Column("FORM_FIELD_Master_ID")]
-    public Guid FORM_FIELD_Master_ID { get; set; }
+    [Column("FORM_FIELD_MASTER_ID")]
+    public Guid FORM_FIELD_MASTER_ID { get; set; }
 
     [Column("TABLE_NAME")]
     public string TABLE_NAME { get; set; } = string.Empty;

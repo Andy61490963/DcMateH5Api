@@ -6,7 +6,7 @@ namespace DcMateH5Api.Areas.Form.ViewModels;
 public class MultipleMappingFormHeaderViewModel
 {
     /// <summary>
-    /// FORM_FIELD_Master 主檔唯一識別碼。
+    /// FORM_FIELD_MASTER 主檔唯一識別碼。
     /// </summary>
     public Guid ID { get; set; }
 
@@ -16,22 +16,22 @@ public class MultipleMappingFormHeaderViewModel
     public string FORM_NAME { get; set; } = string.Empty;
 
     /// <summary>
-    /// 主表 FORM_FIELD_Master ID。
+    /// 主表 FORM_FIELD_MASTER ID。
     /// </summary>
     public Guid BASE_TABLE_ID { get; set; }
 
     /// <summary>
-    /// 目標多選表（右側）的 FORM_FIELD_Master ID。
+    /// 目標多選表（右側）的 FORM_FIELD_MASTER ID。
     /// </summary>
     public Guid DETAIL_TABLE_ID { get; set; }
 
     /// <summary>
-    /// 關聯表（Mapping） FORM_FIELD_Master ID。
+    /// 關聯表（Mapping） FORM_FIELD_MASTER ID。
     /// </summary>
     public Guid MAPPING_TABLE_ID { get; set; }
 
     /// <summary>
-    /// 多對多檢視表 FORM_FIELD_Master ID，若無則留空。
+    /// 多對多檢視表 FORM_FIELD_MASTER ID，若無則留空。
     /// </summary>
     public Guid? VIEW_TABLE_ID { get; set; }
 

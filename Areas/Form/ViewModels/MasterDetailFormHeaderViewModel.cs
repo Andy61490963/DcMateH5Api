@@ -6,7 +6,7 @@ namespace DcMateH5Api.Areas.Form.ViewModels;
 public class MasterDetailFormHeaderViewModel
 {
     /// <summary>
-    /// FORM_FIELD_Master 主檔 ID
+    /// FORM_FIELD_MASTER 主檔 ID
     /// </summary>
     public Guid ID { get; set; }
 
@@ -16,17 +16,17 @@ public class MasterDetailFormHeaderViewModel
     public string FORM_NAME { get; set; }
 
     /// <summary>
-    /// Master 表單的 FORM_FIELD_Master ID
+    /// Master 表單的 FORM_FIELD_MASTER ID
     /// </summary>
     public Guid BASE_TABLE_ID { get; set; }
 
     /// <summary>
-    /// Detail 表單的 FORM_FIELD_Master ID
+    /// Detail 表單的 FORM_FIELD_MASTER ID
     /// </summary>
     public Guid DETAIL_TABLE_ID { get; set; }
 
     /// <summary>
-    /// Master+Detail View 的 FORM_FIELD_Master ID
+    /// Master+Detail View 的 FORM_FIELD_MASTER ID
     /// </summary>
     public Guid VIEW_TABLE_ID { get; set; }
 }

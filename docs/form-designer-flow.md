@@ -5,7 +5,7 @@
 - **MasterDetailMaintenance (一對多維護)**：維護 BASE/DETAIL/VIEW，對應 `FormDesignerMasterDetailController` 與 `FormMasterDetailController`。
 - **MultipleMappingMaintenance (多對多維護)**：維護 BASE/DETAIL/MAPPING/(VIEW)，對應 `FormDesignerMultipleMappingController`。
 
-FORM_FIELD_Master 新增 `MAPPING_TABLE_NAME`、`MAPPING_TABLE_ID`，並以 `FUNCTION_TYPE` (int) 標示功能模組。 【F:Areas/Form/Models/FormFieldMasterDto.cs†L15-L53】【F:Areas/Form/Services/FormDesignerService.cs†L48-L205】
+FORM_FIELD_MASTER 新增 `MAPPING_TABLE_NAME`、`MAPPING_TABLE_ID`，並以 `FUNCTION_TYPE` (int) 標示功能模組。 【F:Areas/Form/Models/FormFieldMasterDto.cs†L15-L53】【F:Areas/Form/Services/FormDesignerService.cs†L48-L205】
 多對多設定檔再新增 `MAPPING_BASE_FK_COLUMN`、`MAPPING_DETAIL_FK_COLUMN`，由 `SaveMultipleMappingFormHeader` 寫入，用於後續 AB 關聯表操作。 【F:Areas/Form/Services/FormDesignerService.cs†L1072-L1153】
 
 ## 主要 API 與流程
@@ -23,7 +23,7 @@ FORM_FIELD_Master 新增 `MAPPING_TABLE_NAME`、`MAPPING_TABLE_ID`，並以 `FUN
    - 未配對的功能模組會直接回報錯誤。 【F:Areas/Form/Services/FormDesignerService.cs†L103-L205】
 
 4. **表頭儲存**
-   - 多對多：`SaveMultipleMappingFormHeader` 會確認三張表存在、檢查關聯欄位（依設定尾碼比對），並以 `UpsertMultipleMappingFormMaster` 寫回 `FORM_FIELD_Master`。View 可選，提供顯示用途。 【F:Areas/Form/Services/FormDesignerService.cs†L1072-L1149】【F:Areas/Form/Services/FormDesignerService.cs†L1270-L1360】
+   - 多對多：`SaveMultipleMappingFormHeader` 會確認三張表存在、檢查關聯欄位（依設定尾碼比對），並以 `UpsertMultipleMappingFormMaster` 寫回 `FORM_FIELD_MASTER`。View 可選，提供顯示用途。 【F:Areas/Form/Services/FormDesignerService.cs†L1072-L1149】【F:Areas/Form/Services/FormDesignerService.cs†L1270-L1360】
    - 單表/一對多沿用原有 `SaveFormHeader`、`SaveMasterDetailFormHeader`，並帶入 `FUNCTION_TYPE`。 【F:Areas/Form/Services/FormDesignerService.cs†L946-L1053】
 
 ## 資料表/列舉調整

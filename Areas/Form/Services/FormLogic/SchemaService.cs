@@ -81,7 +81,7 @@ WHERE TC.CONSTRAINT_TYPE = 'PRIMARY KEY'
           AND pk.TABLE_SCHEMA = ISNULL(@Schema, 'dbo')
         ORDER BY kcu.ORDINAL_POSITION";
 
-        // 自動取得 schema 名稱（若 FORM_FIELD_Master 有的話）
+        // 自動取得 schema 名稱（若 FORM_FIELD_MASTER 有的話）
         var schema = "dbo";
 
         var pkList = _con.Query<(string Name, string Type)>(sql, new { TableName = tableName, Schema = schema }, transaction: tx).ToList();

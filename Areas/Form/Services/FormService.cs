@@ -158,7 +158,7 @@ public class FormService : IFormService
     {
         // 1. 查主設定
         var master = _formFieldMasterService.GetFormFieldMasterFromId(formMasterId)
-            ?? throw new InvalidOperationException($"FORM_FIELD_Master {formMasterId} not found");
+            ?? throw new InvalidOperationException($"FORM_FIELD_MASTER {formMasterId} not found");
 
         // 2. 依據 SchemaType 解析目標表資訊
         var (targetId, targetTable, schemaType) = ResolveTargetTable(master);
@@ -351,7 +351,7 @@ public class FormService : IFormService
 
         // 查欄位設定並帶出 IS_EDITABLE 欄位，後續用於權限檢查
         var configs = _con.Query<FormFieldConfigDto>(
-            "SELECT ID, COLUMN_NAME, CONTROL_TYPE, DATA_TYPE, IS_EDITABLE, QUERY_COMPONENT, QUERY_CONDITION FROM FORM_FIELD_CONFIG WHERE FORM_FIELD_Master_ID = @Id",
+            "SELECT ID, COLUMN_NAME, CONTROL_TYPE, DATA_TYPE, IS_EDITABLE, QUERY_COMPONENT, QUERY_CONDITION FROM FORM_FIELD_CONFIG WHERE FORM_FIELD_MASTER_ID = @Id",
             new { Id = targetId },
             transaction: tx).ToDictionary(x => x.ID);
 
