@@ -44,6 +44,8 @@ public class FormController : ControllerBase
     /// <param name="request">查詢條件與分頁設定</param>
     /// <returns>查詢結果</returns>
     [HttpPost("search")]
+    [ProducesResponseType(typeof(FormListDataViewModel), StatusCodes.Status200OK)]
+    [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status400BadRequest)]
     public IActionResult GetForms([FromBody] FormSearchRequest? request)
     {
         if (request == null)
@@ -66,6 +68,7 @@ public class FormController : ControllerBase
     /// <param name="pk">上隻 Api 取得的 Pk，不傳為新增</param>
     /// <returns>回傳填寫表單的畫面</returns>
     [HttpPost("{formId}")]
+    [ProducesResponseType(typeof(FormSubmissionViewModel), StatusCodes.Status200OK)]
     public IActionResult GetForm(Guid formId, string? pk)
     {
         var vm = pk != null
@@ -80,6 +83,8 @@ public class FormController : ControllerBase
     /// <param name="input"></param>
     /// <returns></returns>
     [HttpPost]
+    [ProducesResponseType(StatusCodes.Status204NoContent)]
+    [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status400BadRequest)]
     public IActionResult SubmitForm([FromBody] FormSubmissionInputModel input)
     {
         _formService.SubmitForm(input);
