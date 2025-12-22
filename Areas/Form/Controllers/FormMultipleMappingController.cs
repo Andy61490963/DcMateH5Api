@@ -191,11 +191,10 @@ public class FormMultipleMappingController : ControllerBase
     /// </summary>
     /// <remarks>
     /// 業務邏輯：
-    /// 1. 透過 FormMasterId（對應 FORM_FIELD_MASTER.MAPPING_TABLE_ID）取得 MAPPING_TABLE_NAME。
-    /// 2. 驗證表名合法性並確認關聯表欄位存在。
-    /// 3. 使用 Dapper 查詢該表全部資料列，逐筆轉為欄位名稱 / 值的結構化模型。
+    /// 1. 透過 FormMasterId（對應 FORM_FIELD_MASTER.ID）取得 MAPPING_TABLE_NAME。
+    /// 2. 回傳查詢該表全部資料列
     /// </remarks>
-    /// <param name="formMasterId">FORM_FIELD_MASTER.MAPPING_TABLE_ID，指定欲查詢的關聯表設定。</param>
+    /// <param name="formMasterId">FORM_FIELD_MASTER.ID</param>
     /// <param name="ct">取消權杖。</param>
     [HttpGet("{formMasterId:guid}/mapping-table")]
     public async Task<IActionResult> GetMappingTableData(Guid formMasterId, CancellationToken ct)
