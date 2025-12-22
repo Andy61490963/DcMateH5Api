@@ -43,4 +43,12 @@ public interface IFormMultipleMappingService
     /// <param name="ct">取消權杖。</param>
     /// <returns>更新的筆數。</returns>
     int ReorderMappingSequence(MappingSequenceReorderRequest request, CancellationToken ct = default);
+
+    /// <summary>
+    /// 依據 MAPPING_TABLE_ID 取得對應的關聯表所有資料列，並以結構化模型返回。
+    /// </summary>
+    /// <param name="formMasterId">FORM_FIELD_MASTER.MAPPING_TABLE_ID，指定欲查詢的關聯表來源。</param>
+    /// <param name="ct">取消權杖。</param>
+    /// <returns>包含關聯表名稱與完整資料列集合的模型。</returns>
+    MappingTableDataViewModel GetMappingTableData(Guid formMasterId, CancellationToken ct = default);
 }
