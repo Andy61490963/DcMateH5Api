@@ -173,7 +173,7 @@ builder.Services.AddSwaggerGen(options =>
         {
             Title = $"{SwaggerGroups.DisplayNames[g]} API",
             Version = "v1",
-            Description = $"DcMateH5Api - {g} endpoints"
+            Description = $"DcMateH5Api - {g} Controllers"
         });
     }
 
