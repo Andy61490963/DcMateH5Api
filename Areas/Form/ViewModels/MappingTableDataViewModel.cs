@@ -21,6 +21,11 @@ public class MappingTableDataViewModel
     public string MappingTableName { get; set; } = string.Empty;
 
     /// <summary>
+    /// <para>對應表的key值。</para>
+    /// </summary>
+    public string MappingTableKey { get; set; } = string.Empty;
+    
+    /// <summary>
     /// <para>該關聯表的所有資料列。</para>
     /// <para>每筆資料列均包含「欄位名稱 / 欄位值」的結構化對應。</para>
     /// </summary>

@@ -254,6 +254,8 @@ UPDATE m
             throw new InvalidOperationException($"無法取得關聯表欄位資訊：{mappingTableName}");
         }
 
+        var key = _schemaService.GetPrimaryKeyColumn(mappingTableName!);
+        
         var rows = _con.Query($"SELECT * FROM [{mappingTableName}]")
             .Cast<IDictionary<string, object?>>()
             .Select(row => new MappingTableRowViewModel
@@ -266,6 +268,7 @@ UPDATE m
         {
             FormMasterId = formMasterId,
             MappingTableName = mappingTableName!,
+            MappingTableKey = key!,
             Rows = rows
         };
     }
