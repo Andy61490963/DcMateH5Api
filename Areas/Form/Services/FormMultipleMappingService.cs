@@ -1,3 +1,4 @@
+using System;
 using System.Text.RegularExpressions;
 using ClassLibrary;
 using Dapper;
@@ -7,6 +8,7 @@ using DcMateH5Api.Areas.Form.Interfaces.Transaction;
 using DcMateH5Api.Areas.Form.Models;
 using DcMateH5Api.Areas.Form.ViewModels;
 using DcMateH5Api.Helper;
+using DcMateH5Api.SqlHelper;
 using Microsoft.Data.SqlClient;
 
 namespace DcMateH5Api.Areas.Form.Services;
@@ -21,19 +23,22 @@ public class FormMultipleMappingService : IFormMultipleMappingService
     private readonly ISchemaService _schemaService;
     private readonly ITransactionService _txService;
     private readonly IFormService _formService;
-
+    private readonly SQLGenerateHelper _sqlHelper;
+    
     public FormMultipleMappingService(
         SqlConnection connection,
         IFormFieldMasterService formFieldMasterService,
         ISchemaService schemaService,
         ITransactionService txService,
-        IFormService formService)
+        IFormService formService,
+        SQLGenerateHelper sqlHelper)
     {
         _con = connection;
         _formFieldMasterService = formFieldMasterService;
         _schemaService = schemaService;
         _txService = txService;
         _formService = formService;
+        _sqlHelper = sqlHelper;
     }
 
     /// <inheritdoc />
@@ -214,6 +219,60 @@ UPDATE m
         });
     }
 
+    /// <summary>
+    /// 依據 MAPPING_TABLE_ID 查詢關聯表所有資料列，並將欄位名稱與值以模型封裝返回。
+    /// </summary>
+    /// <param name="formMasterId">FORM_FIELD_MASTER 的 MAPPING_TABLE_ID。</param>
+    /// <param name="ct">取消權杖。</param>
+    /// <returns>包含關聯表名稱與完整資料列集合的模型。</returns>
+    public async Task<MappingTableDataViewModel> GetMappingTableData(Guid formMasterId, CancellationToken ct = default)
+    {
+        ct.ThrowIfCancellationRequested();
+
+        if (formMasterId == Guid.Empty)
+        {
+            throw new InvalidOperationException("FormMasterId 不可為空。");
+        }
+
+        var where = new WhereBuilder<FormFieldMasterDto>()
+            .AndEq(x => x.ID, formMasterId)
+            .AndNotDeleted();
+        
+        var res = await _sqlHelper.SelectFirstOrDefaultAsync(where, ct);
+
+        if (res != null && string.IsNullOrWhiteSpace(res.MAPPING_TABLE_NAME))
+        {
+            throw new InvalidOperationException("查無對應的關聯表設定，請確認 FormMasterId 是否正確。");
+        }
+
+        var mappingTableName = res!.MAPPING_TABLE_NAME;
+        ValidateTableName(mappingTableName!);
+
+        var columns = _schemaService.GetFormFieldMaster(mappingTableName!);
+        if (columns.Count == 0)
+        {
+            throw new InvalidOperationException($"無法取得關聯表欄位資訊：{mappingTableName}");
+        }
+
+        var key = _schemaService.GetPrimaryKeyColumn(mappingTableName!);
+        
+        var rows = _con.Query($"SELECT * FROM [{mappingTableName}]")
+            .Cast<IDictionary<string, object?>>()
+            .Select(row => new MappingTableRowViewModel
+            {
+                Columns = new Dictionary<string, object?>(row, StringComparer.OrdinalIgnoreCase)
+            })
+            .ToList();
+
+        return new MappingTableDataViewModel
+        {
+            FormMasterId = formMasterId,
+            MappingTableName = mappingTableName!,
+            MappingTableKey = key!,
+            Rows = rows
+        };
+    }
+
     private FormFieldMasterDto GetMappingHeader(Guid formMasterId, SqlTransaction? tx = null)
     {
         var header = _formFieldMasterService.GetFormFieldMasterFromId(formMasterId, tx)
@@ -351,6 +410,14 @@ WHERE NOT EXISTS (
         if (!Regex.IsMatch(columnName, "^[A-Za-z0-9_]+$", RegexOptions.CultureInvariant))
         {
             throw new InvalidOperationException($"欄位名稱僅允許英數與底線：{columnName}");
+        }
+    }
+
+    private static void ValidateTableName(string tableName)
+    {
+        if (!Regex.IsMatch(tableName, "^[A-Za-z0-9_]+$", RegexOptions.CultureInvariant))
+        {
+            throw new InvalidOperationException($"資料表名稱僅允許英數與底線：{tableName}");
         }
     }
 

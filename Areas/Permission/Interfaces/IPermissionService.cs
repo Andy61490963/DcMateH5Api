@@ -2,6 +2,7 @@ using ClassLibrary;
 using DcMateH5Api.Areas.Permission.Models;
 using DcMateH5Api.Areas.Permission.ViewModels.Menu;
 using DcMateH5Api.Areas.Permission.ViewModels.PermissionManagement;
+using DcMateH5Api.Models;
 
 namespace DcMateH5Api.Areas.Permission.Interfaces
 {
@@ -37,8 +38,8 @@ namespace DcMateH5Api.Areas.Permission.Interfaces
         Task UpdateMenuAsync(Guid id, UpdateMenuRequest request, CancellationToken ct);
         Task DeleteMenuAsync(Guid id, CancellationToken ct);
         Task<bool> MenuNameExistsAsync(string name, Guid? parentId, CancellationToken ct, Guid? excludeId = null);
-        Task<IEnumerable<MenuTreeItem>> GetUserMenuTreeAsync(Guid userId, CancellationToken ct);
-
+        Task<Result<IEnumerable<MenuTreeItem>>> GetUserMenuTreeAsync(Guid userId, CancellationToken ct);
+        
         // 使用者與群組關聯
         Task AssignUserToGroupAsync(Guid userId, Guid groupId, CancellationToken ct);
         Task RemoveUserFromGroupAsync(Guid userId, Guid groupId, CancellationToken ct);

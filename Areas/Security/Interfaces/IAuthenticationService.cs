@@ -1,5 +1,5 @@
-using System.Threading.Tasks;
 using DcMateH5Api.Areas.Security.ViewModels;
+using DcMateH5Api.Models;
 
 namespace DcMateH5Api.Areas.Security.Interfaces
 {
@@ -14,8 +14,11 @@ namespace DcMateH5Api.Areas.Security.Interfaces
         /// <param name="account">使用者帳號。</param>
         /// <param name="password">使用者密碼。</param>
         /// <returns>登入結果，失敗則回傳 null。</returns>
-        Task<LoginResponseViewModel?> AuthenticateAsync(string account, string password, CancellationToken ct = default);
+        Task<Result<LoginResponseViewModel>> AuthenticateAsync(string account, string password, CancellationToken ct = default);
 
-        Task<int> RegisterAsync(RegisterRequestViewModel request, CancellationToken ct = default);
+        /// <summary>
+        /// 註冊成功回傳新建筆數（通常是 1）
+        /// </summary>
+        Task<Result<int>> RegisterAsync(RegisterRequestViewModel request, CancellationToken ct = default);
     }
 }

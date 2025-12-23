@@ -5,7 +5,7 @@ namespace DcMateH5Api.Helper;
 /// </summary>
 public static class SwaggerGroups
 {
-    public const string ApiStats = nameof(ApiStats);
+    public const string ApiStatus = nameof(ApiStatus);
     public const string Security = nameof(Security);
     public const string Permission = nameof(Permission);
     public const string Enum = nameof(Enum);
@@ -18,7 +18,7 @@ public static class SwaggerGroups
     
     public static readonly Dictionary<string, string> DisplayNames = new()
     {
-        { ApiStats, "所有列表" },
+        { ApiStatus, "Api 狀態" },
         { Security, "登入、測試 API 權限" },
         { Permission, "群組、功能、權限設定" },
         { Enum, "列舉" },

@@ -9,6 +9,7 @@ using DcMateH5Api.Services.Cache;
 using DcMateH5Api.SqlHelper;
 using DcMateH5Api.Areas.Permission.Mappers;
 using System.Linq;
+using DcMateH5Api.Models;
 
 namespace DcMateH5Api.Areas.Permission.Services
 {
@@ -272,11 +273,12 @@ namespace DcMateH5Api.Areas.Permission.Services
         /// <summary>
         /// 取得指定使用者可見的選單樹。
         /// </summary>
-        public async Task<IEnumerable<MenuTreeItem>> GetUserMenuTreeAsync(Guid userId, CancellationToken ct) // 依使用者取得選單樹狀結構
+        public async Task<Result<IEnumerable<MenuTreeItem>>> GetUserMenuTreeAsync(Guid userId, CancellationToken ct) // 依使用者取得選單樹狀結構
         {
             // 統一使用 CacheHelper 與 CacheKeys 管理快取，避免魔法字串散落。
             var cached = await _cache.GetUserMenuAsync<IEnumerable<MenuTreeItem>>(userId, ct); // 依照規則取得使用者選單快取
-            if (cached != null) return cached; // 若快取存在直接回傳
+            if (cached != null) 
+                return Result<IEnumerable<MenuTreeItem>>.Ok(cached); // 若快取存在直接回傳
 
             const string sql = @"WITH BaseVisible AS ( -- 篩選使用者可見的選單
 SELECT m.ID -- 選單ID
@@ -348,7 +350,8 @@ OPTION (MAXRECURSION 32);"; // 限制遞迴層級避免無限迴圈
                 .ToList(); 
 
             await _cache.SetUserMenuAsync(userId, result, ct: ct); // 將結果寫入快取，使用統一鍵值命名
-            return result; 
+            
+            return Result<IEnumerable<MenuTreeItem>>.Ok(result);
         }
         
 

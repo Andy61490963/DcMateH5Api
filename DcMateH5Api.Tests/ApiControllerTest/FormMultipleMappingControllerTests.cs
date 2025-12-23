@@ -85,4 +85,14 @@ public class FormMultipleMappingControllerTests
         _service.Verify(s => s.RemoveMappings(formMasterId, request, It.IsAny<CancellationToken>()), Times.Once);
         Assert.IsType<NoContentResult>(result);
     }
+
+    [Fact]
+    public void GetMappingTableData_FormMasterIdEmpty_ReturnsBadRequest()
+    {
+        var controller = CreateController();
+
+        var result = controller.GetMappingTableData(Guid.Empty, CancellationToken.None);
+
+        Assert.IsType<BadRequestObjectResult>(result);
+    }
 }

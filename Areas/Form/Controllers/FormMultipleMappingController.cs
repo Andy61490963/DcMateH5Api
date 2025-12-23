@@ -27,6 +27,7 @@ public class FormMultipleMappingController : ControllerBase
     /// 取得多對多設定檔清單，供前端呈現可選的維護方案。
     /// </summary>
     [HttpGet("masters")]
+    [ProducesResponseType(typeof(IEnumerable<MultipleMappingConfigViewModel>), StatusCodes.Status200OK)]
     public ActionResult<IEnumerable<MultipleMappingConfigViewModel>> GetFormMasters(CancellationToken ct)
     {
         var masters = _service.GetFormMasters(ct);
@@ -39,6 +40,8 @@ public class FormMultipleMappingController : ControllerBase
     /// <param name="request">查詢條件與分頁設定，需帶入多對多設定檔 FormMasterId。</param>
     /// <param name="ct">取消工作，避免長時間查詢阻塞。</param>
     [HttpPost("search")]
+    [ProducesResponseType(typeof(FormListDataViewModel), StatusCodes.Status200OK)]
+    [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status400BadRequest)]
     public IActionResult GetForms([FromBody] FormSearchRequest? request, CancellationToken ct)
     {
         if (request == null)
@@ -60,6 +63,8 @@ public class FormMultipleMappingController : ControllerBase
     /// <param name="formMasterId">多對多設定檔識別碼。</param>
     /// <param name="baseId">主表主鍵值。</param>
     [HttpGet("{formMasterId:guid}/items")]
+    [ProducesResponseType(typeof(MultipleMappingListViewModel), StatusCodes.Status200OK)]
+    [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status400BadRequest)]
     public IActionResult GetMappingList(Guid formMasterId, [FromQuery] string baseId, CancellationToken ct)
     {
         if (string.IsNullOrWhiteSpace(baseId))
@@ -109,6 +114,8 @@ public class FormMultipleMappingController : ControllerBase
     /// 包含 Base 主鍵與明細主鍵清單的請求模型。
     /// </param>
     [HttpPost("{formMasterId:guid}/items")]
+    [ProducesResponseType(StatusCodes.Status204NoContent)]
+    [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status400BadRequest)]
     public IActionResult AddMappings(Guid formMasterId, [FromBody] MultipleMappingUpsertViewModel request, CancellationToken ct)
     {
         try
@@ -128,6 +135,8 @@ public class FormMultipleMappingController : ControllerBase
     /// <param name="formMasterId">多對多設定檔識別碼。</param>
     /// <param name="request">包含 Base 主鍵與明細主鍵清單的請求模型。</param>
     [HttpPost("{formMasterId:guid}/items/remove")]
+    [ProducesResponseType(StatusCodes.Status204NoContent)]
+    [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status400BadRequest)]
     public IActionResult RemoveMappings(Guid formMasterId, [FromBody] MultipleMappingUpsertViewModel request, CancellationToken ct)
     {
         try
@@ -168,6 +177,8 @@ public class FormMultipleMappingController : ControllerBase
     /// 成功時回傳 204 ；驗證失敗時回傳 400。
     /// </returns>
     [HttpPost("sequence/reorder")]
+    [ProducesResponseType(StatusCodes.Status204NoContent)]
+    [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status400BadRequest)]
     public IActionResult ReorderSequence([FromBody] MappingSequenceReorderRequest? request, CancellationToken ct)
     {
         if (request == null)
@@ -179,6 +190,37 @@ public class FormMultipleMappingController : ControllerBase
         {
             var affected = _service.ReorderMappingSequence(request, ct);
             return NoContent();
+        }
+        catch (InvalidOperationException ex)
+        {
+            return BadRequest(ex.Message);
+        }
+    }
+
+    /// <summary>
+    /// 依 MAPPING_TABLE_ID 取得關聯表所有資料列，並回傳欄位名稱與對應值。
+    /// </summary>
+    /// <remarks>
+    /// 業務邏輯：
+    /// 1. 透過 FormMasterId（對應 FORM_FIELD_MASTER.ID）取得 MAPPING_TABLE_NAME。
+    /// 2. 回傳查詢該表全部資料列
+    /// </remarks>
+    /// <param name="formMasterId">FORM_FIELD_MASTER.ID</param>
+    /// <param name="ct">取消權杖。</param>
+    [HttpGet("{formMasterId:guid}/mapping-table")]
+    [ProducesResponseType(typeof(MappingTableDataViewModel), StatusCodes.Status200OK)]
+    [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status400BadRequest)]
+    public async Task<IActionResult> GetMappingTableData(Guid formMasterId, CancellationToken ct)
+    {
+        if (formMasterId == Guid.Empty)
+        {
+            return BadRequest("FormMasterId 不可為空");
+        }
+
+        try
+        {
+            var result = await _service.GetMappingTableData(formMasterId, ct);
+            return Ok(result);
         }
         catch (InvalidOperationException ex)
         {

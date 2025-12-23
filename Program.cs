@@ -152,7 +152,7 @@ var swaggerGroups = new[]
     SwaggerGroups.Permission,
     SwaggerGroups.Security,
     SwaggerGroups.Enum,
-    SwaggerGroups.ApiStats,
+    SwaggerGroups.ApiStatus,
     SwaggerGroups.Log,
     SwaggerGroups.RouteOperation
 };
@@ -218,6 +218,10 @@ app.UseRouting();            // 沒有它 CORS 很容易沒套用到 endpoint
 
 app.UseCors(CorsPolicy);     // 放在 Routing 後、Auth 前
 
+// 懶得在 controller裡面包一堆 try catch
+app.UseMiddleware<GlobalExceptionMiddleware>();
+
+// 測試 PR 審核有沒有啟用的註解
 app.UseAuthentication();
 app.UseAuthorization();
 

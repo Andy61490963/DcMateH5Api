@@ -1,7 +1,9 @@
+using ClassLibrary;
 using DcMateH5Api.Areas.Security.Interfaces;
 using DcMateH5Api.Areas.Security.ViewModels;
 using Microsoft.AspNetCore.Mvc;
 using DcMateH5Api.Helper;
+using DcMateH5Api.Models;
 
 namespace DcMateH5Api.Areas.Security.Controllers
 {
@@ -31,15 +33,18 @@ namespace DcMateH5Api.Areas.Security.Controllers
         /// <param name="request">帳號與密碼。</param>
         /// <returns>JWT Token。</returns>
         [HttpPost("login")]
+        [ProducesResponseType(typeof(Result<LoginResponseViewModel>), StatusCodes.Status200OK)]
+        [ProducesResponseType(typeof(Result<LoginResponseViewModel>), StatusCodes.Status401Unauthorized)]
         public async Task<IActionResult> Login([FromBody] LoginRequestViewModel request, CancellationToken ct)
         {
             var result = await _authService.AuthenticateAsync(request.Account, request.Password, ct);
-            if (result == null)
+            
+            if (result.IsSuccess)
             {
-                return StatusCode(StatusCodes.Status401Unauthorized, "查無帳號"); 
+                return Ok(result);
             }
-
-            return StatusCode(StatusCodes.Status200OK, result); 
+            
+            return Unauthorized(result);
         }
         
         /// <summary>
@@ -47,21 +52,24 @@ namespace DcMateH5Api.Areas.Security.Controllers
         /// </summary>
         /// <param name="request">帳號、密碼、角色。</param>
         [HttpPost("register")]
+        [ProducesResponseType(typeof(Result<int>), StatusCodes.Status201Created)]
+        [ProducesResponseType(typeof(Result<int>), StatusCodes.Status409Conflict)]
+        [ProducesResponseType(typeof(Result<int>), StatusCodes.Status500InternalServerError)]
         public async Task<IActionResult> Register([FromBody] RegisterRequestViewModel request, CancellationToken ct)
         {
-            var rows = await _authService.RegisterAsync(request, ct);
+            var result  = await _authService.RegisterAsync(request, ct);
 
-            if (rows == -1)
+            if (result.IsSuccess)
             {
-                return Conflict("帳號已存在"); 
+                return StatusCode(StatusCodes.Status201Created, result);
+            }
+            
+            if (result.Code == nameof(AuthenticationErrorCode.AccountAlreadyExists))
+            {
+                return Conflict(result);
             }
 
-            if (rows > 0)
-            {
-                return StatusCode(StatusCodes.Status201Created, "註冊成功"); 
-            }
-
-            return StatusCode(StatusCodes.Status500InternalServerError, "註冊失敗，請稍後再試"); 
+            return StatusCode(StatusCodes.Status500InternalServerError, result);
         }
 
     }

@@ -121,6 +121,8 @@ public class FormMasterDetailController : ControllerBase
     /// ```
     /// </remarks>
     [HttpPost("search")]
+    [ProducesResponseType(typeof(FormListDataViewModel), StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status400BadRequest)]
     public IActionResult GetForms([FromBody] FormSearchRequest? request)
     {
         if (request == null)
@@ -141,6 +143,7 @@ public class FormMasterDetailController : ControllerBase
     /// <param name="formId">主明細表頭的 FORM_FIELD_MASTER.ID。</param>
     /// <param name="pk">主表資料主鍵，不傳為新增。</param>
     [HttpPost("{formId}")]
+    [ProducesResponseType(typeof(FormMasterDetailSubmissionViewModel), StatusCodes.Status200OK)]
     public IActionResult GetForm(Guid formId, string? pk)
     {
         var vm = _service.GetFormSubmission(formId, pk);
@@ -216,6 +219,8 @@ public class FormMasterDetailController : ControllerBase
     /// ```
     /// </remarks>
     [HttpPost]
+    [ProducesResponseType(StatusCodes.Status204NoContent)]
+    [ProducesResponseType(StatusCodes.Status400BadRequest)]
     public IActionResult SubmitForm([FromBody] FormMasterDetailSubmissionInputModel input)
     {
         _service.SubmitForm(input);

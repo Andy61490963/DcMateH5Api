@@ -33,6 +33,7 @@ public class FormDesignerMultipleMappingController : ControllerBase
     /// <param name="ct">CancellationToken</param>
     /// <returns>表單主檔清單</returns>
     [HttpGet]
+    [ProducesResponseType(typeof(List<FormFieldMasterDto>), StatusCodes.Status200OK)]
     public async Task<ActionResult<List<FormFieldMasterDto>>> GetFormMasters(
         [FromQuery] string? q,
         CancellationToken ct)
@@ -46,6 +47,8 @@ public class FormDesignerMultipleMappingController : ControllerBase
     /// 更新主檔 or 明細 or 檢視表 名稱
     /// </summary>
     [HttpPut("form-name")]
+    [ProducesResponseType(StatusCodes.Status200OK)]
+    [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status400BadRequest)]
     public async Task<IActionResult> UpdateFormName([FromBody] UpdateFormNameViewModel model, CancellationToken ct)
     {
         await _formDesignerService.UpdateFormName(model, ct);   
@@ -58,6 +61,8 @@ public class FormDesignerMultipleMappingController : ControllerBase
     /// <param name="id">FORM_FIELD_MASTER 的唯一識別編號</param>
     /// <returns>NoContent 回應</returns>
     [HttpDelete("{id}")]
+    [ProducesResponseType(StatusCodes.Status204NoContent)]
+    [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status400BadRequest)]
     public IActionResult Delete(Guid id)
     {
         _formDesignerService.DeleteFormMaster(id);
@@ -70,6 +75,8 @@ public class FormDesignerMultipleMappingController : ControllerBase
     /// </summary>
     // [RequirePermission(ActionAuthorizeHelper.View)]
     [HttpGet("{id:guid}")]
+    [ProducesResponseType(typeof(FormDesignerIndexViewModel), StatusCodes.Status200OK)]
+    [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status404NotFound)]
     public async Task<IActionResult> GetDesigner(Guid id, CancellationToken ct)
     {
         var model = await _formDesignerService.GetFormDesignerIndexViewModel(_funcType, id, ct);
@@ -86,6 +93,10 @@ public class FormDesignerMultipleMappingController : ControllerBase
     /// <param name="schemaType">欲搜尋的資料來源類型（主表或檢視表）</param>
     /// <returns>符合條件的表名稱集合</returns>
     [HttpGet("tables/tableName")]
+    [ProducesResponseType(typeof(List<string>), StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
+    [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status400BadRequest)]
+    [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status500InternalServerError)]
     public IActionResult SearchTables( string? tableName, [FromQuery] TableSchemaQueryType schemaType )
     {
         try
@@ -108,6 +119,10 @@ public class FormDesignerMultipleMappingController : ControllerBase
     /// <param name="schemaType">列舉類型</param>
     /// <returns></returns>
     [HttpGet("tables/{tableName}/fields")]
+    [ProducesResponseType(typeof(List<FormFieldViewModel>), StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
+    [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status400BadRequest)]
+    [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status500InternalServerError)]
     public async Task<IActionResult> GetFields( string tableName, Guid? formMasterId, [FromQuery] TableSchemaQueryType schemaType )
     {
         try
@@ -407,6 +422,8 @@ public class FormDesignerMultipleMappingController : ControllerBase
     /// MAPPING_TABLE必須要有 SID(DECIMAL(15,0)) 欄位
     /// </summary>
     [HttpPost("headers")]
+    [ProducesResponseType(StatusCodes.Status200OK)]
+    [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status400BadRequest)]
     public async Task<IActionResult> SaveMultipleMappingFormHeader([FromBody] MultipleMappingFormHeaderViewModel model)
     {
         if (model.BASE_TABLE_ID == Guid.Empty ||

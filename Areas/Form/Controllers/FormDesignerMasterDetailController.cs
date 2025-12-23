@@ -30,6 +30,7 @@ public class FormDesignerMasterDetailController : ControllerBase
     /// <param name="ct">CancellationToken</param>
     /// <returns>表單主檔清單</returns>
     [HttpGet]
+    [ProducesResponseType(typeof(List<FormFieldMasterDto>), StatusCodes.Status200OK)]
     public async Task<ActionResult<List<FormFieldMasterDto>>> GetFormMasters(
         [FromQuery] string? q,
         CancellationToken ct)
@@ -43,6 +44,8 @@ public class FormDesignerMasterDetailController : ControllerBase
     /// 更新主檔 or 明細 or 檢視表 名稱
     /// </summary>
     [HttpPut("form-name")]
+    [ProducesResponseType(StatusCodes.Status200OK)]
+    [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status400BadRequest)]
     public async Task<IActionResult> UpdateFormName([FromBody] UpdateFormNameViewModel model, CancellationToken ct)
     {
         await _formDesignerService.UpdateFormName(model, ct);   
@@ -55,6 +58,8 @@ public class FormDesignerMasterDetailController : ControllerBase
     /// <param name="id">FORM_FIELD_MASTER 的唯一識別編號</param>
     /// <returns>NoContent 回應</returns>
     [HttpDelete("{id}")]
+    [ProducesResponseType(StatusCodes.Status204NoContent)]
+    [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status400BadRequest)]
     public IActionResult Delete(Guid id)
     {
         _formDesignerService.DeleteFormMaster(id);
@@ -67,6 +72,8 @@ public class FormDesignerMasterDetailController : ControllerBase
     /// </summary>
     // [RequirePermission(ActionAuthorizeHelper.View)]
     [HttpGet("{id:guid}")]
+    [ProducesResponseType(typeof(object), StatusCodes.Status200OK)]
+    [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status404NotFound)]
     public async Task<IActionResult> GetDesigner(Guid id, CancellationToken ct)
     {
         var model = await _formDesignerService.GetFormDesignerIndexViewModel(_funcType, id, ct);
@@ -83,6 +90,10 @@ public class FormDesignerMasterDetailController : ControllerBase
     /// <param name="schemaType">欲搜尋的資料來源類型（主表或檢視表）</param>
     /// <returns>符合條件的表名稱集合</returns>
     [HttpGet("tables/tableName")]
+    [ProducesResponseType(StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
+    [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status400BadRequest)]
+    [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status500InternalServerError)]
     public IActionResult SearchTables( string? tableName, [FromQuery] TableSchemaQueryType schemaType )
     {
         try
@@ -105,6 +116,10 @@ public class FormDesignerMasterDetailController : ControllerBase
     /// <param name="schemaType">列舉類型</param>
     /// <returns></returns>
     [HttpGet("tables/{tableName}/fields")]
+    [ProducesResponseType(StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
+    [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status400BadRequest)]
+    [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status500InternalServerError)]
     public async Task<IActionResult> GetFields( string tableName, Guid? formMasterId, [FromQuery] TableSchemaQueryType schemaType )
     {
         try
@@ -126,6 +141,8 @@ public class FormDesignerMasterDetailController : ControllerBase
     /// <param name="fieldId">FORM_FIELD_CONFIG 的ID</param>
     /// <returns></returns>
     [HttpGet("fields/{fieldId}")]
+    [ProducesResponseType(typeof(FormFieldViewModel), StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
     public async Task<IActionResult> GetField( Guid fieldId )
     {
         var field = await _formDesignerService.GetFieldById( fieldId );
@@ -139,6 +156,10 @@ public class FormDesignerMasterDetailController : ControllerBase
     /// <param name="model">GetField( Guid fieldId ) 取得的欄位 Json </param>
     /// <returns></returns>
     [HttpPost("fields")]
+    [ProducesResponseType(StatusCodes.Status200OK)]
+    [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status409Conflict)]
+    [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status400BadRequest)]
+    [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status500InternalServerError)]
     public async Task<IActionResult> UpsertField( [FromBody] FormFieldViewModel model )
     {
         try
@@ -185,6 +206,8 @@ public class FormDesignerMasterDetailController : ControllerBase
     /// <param name="ct"></param>
     /// <returns></returns>
     [HttpPost("tables/fields/batch-editable")]
+    [ProducesResponseType(StatusCodes.Status200OK)]
+    [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status400BadRequest)]
     public async Task<IActionResult> BatchSetEditable( [FromQuery] Guid formMasterId, [FromQuery] bool isEditable, CancellationToken ct )
     {
         var model = await _formDesignerService.SetAllEditable( formMasterId, isEditable, ct );
@@ -200,6 +223,8 @@ public class FormDesignerMasterDetailController : ControllerBase
     /// <param name="ct"></param>
     /// <returns></returns>
     [HttpPost("tables/fields/batch-required")]
+    [ProducesResponseType(StatusCodes.Status200OK)]
+    [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status400BadRequest)]
     public async Task<IActionResult> BatchSetRequired( [FromQuery] Guid formMasterId, [FromQuery] bool isRequired, CancellationToken ct )
     {
         var tableName = await _formDesignerService.SetAllRequired( formMasterId, isRequired, ct );
@@ -216,6 +241,8 @@ public class FormDesignerMasterDetailController : ControllerBase
     /// <param name="ct"></param>
     /// <returns></returns>
     [HttpPost("fields/{fieldId:guid}/rules")]
+    [ProducesResponseType(StatusCodes.Status200OK)]
+    [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status400BadRequest)]
     public async Task<IActionResult> AddEmptyValidationRule( Guid fieldId, CancellationToken ct = default )
     {
         var rule = _formDesignerService.CreateEmptyValidationRule( fieldId );
@@ -231,6 +258,8 @@ public class FormDesignerMasterDetailController : ControllerBase
     /// <param name="ct"></param>
     /// <returns></returns>
     [HttpGet("fields/{fieldId:guid}/rules")]
+    [ProducesResponseType(StatusCodes.Status200OK)]
+    [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status400BadRequest)]
     public async Task<IActionResult> GetValidationRules( Guid fieldId, CancellationToken ct = default )
     {
         if ( fieldId == Guid.Empty )
@@ -246,6 +275,8 @@ public class FormDesignerMasterDetailController : ControllerBase
     /// <param name="model"></param>
     /// <returns></returns>
     [HttpPut("rules")]
+    [ProducesResponseType(StatusCodes.Status200OK)]
+    [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status400BadRequest)]
     public async Task<IActionResult> UpdateValidationRule( [FromBody] FormFieldValidationRuleDto model )
     {
         await _formDesignerService.SaveValidationRule( model );
@@ -258,6 +289,8 @@ public class FormDesignerMasterDetailController : ControllerBase
     /// <param name="id">FORM_FIELD_VALIDATION_RULE 的ID</param>
     /// <returns></returns>
     [HttpDelete("rules/{id:guid}")]
+    [ProducesResponseType(StatusCodes.Status204NoContent)]
+    [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status400BadRequest)]
     public async Task<IActionResult> DeleteValidationRule( Guid id )
     {
         await _formDesignerService.DeleteValidationRule( id );
@@ -273,6 +306,8 @@ public class FormDesignerMasterDetailController : ControllerBase
     /// <param name="fieldId">FORM_FIELD_CONFIG 的ID</param>
     /// <returns></returns>
     [HttpGet("fields/{fieldId:guid}/dropdown")]
+    [ProducesResponseType(StatusCodes.Status200OK)]
+    [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status400BadRequest)]
     public async Task<IActionResult> GetDropdownSetting( Guid fieldId )
     {
         var field = await _formDesignerService.GetFieldById( fieldId );
@@ -297,6 +332,8 @@ public class FormDesignerMasterDetailController : ControllerBase
     /// <param name="ct"></param>
     /// <returns></returns>
     [HttpPut("dropdowns/{dropdownId:guid}/mode")]
+    [ProducesResponseType(StatusCodes.Status200OK)]
+    [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status400BadRequest)]
     public async Task<IActionResult> SetDropdownMode( Guid dropdownId, [FromQuery] bool isUseSql, CancellationToken ct )
     {
         await _formDesignerService.SetDropdownMode( dropdownId, isUseSql, ct );
@@ -310,6 +347,8 @@ public class FormDesignerMasterDetailController : ControllerBase
     /// <param name="ct"></param>
     /// <returns></returns>
     [HttpPost("dropdowns/{dropdownId:guid}")]
+    [ProducesResponseType(StatusCodes.Status200OK)]
+    [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status400BadRequest)]
     public async Task<IActionResult> GetDropdownOption( Guid dropdownId, CancellationToken ct )
     {
         var options = await _formDesignerService.GetDropdownOptions( dropdownId, ct );
@@ -334,6 +373,8 @@ public class FormDesignerMasterDetailController : ControllerBase
     /// 驗證下拉 SQL 語法
     /// </summary>
     [HttpPost("dropdowns/validate-sql")]
+    [ProducesResponseType(StatusCodes.Status200OK)]
+    [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status400BadRequest)]
     public IActionResult ValidateDropdownSql( [FromBody] string sql )
     {
         var res = _formDesignerService.ValidateDropdownSql( sql );
@@ -347,6 +388,8 @@ public class FormDesignerMasterDetailController : ControllerBase
     /// <param name="dto"></param>
     /// <returns></returns>
     [HttpPost("dropdowns/{dropdownId:guid}/import-options")]
+    [ProducesResponseType(StatusCodes.Status200OK)]
+    [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status400BadRequest)]
     public async Task<IActionResult> ImportDropdownOptions( Guid dropdownId, [FromBody] ImportOptionViewModel dto )
     {
         var res = _formDesignerService.ImportDropdownOptionsFromSql( dto.Sql, dropdownId );
@@ -363,6 +406,8 @@ public class FormDesignerMasterDetailController : ControllerBase
     /// <param name="ct"></param>
     /// <returns></returns>
     [HttpPost("dropdowns/{dropdownId:guid}/options")]
+    [ProducesResponseType(StatusCodes.Status200OK)]
+    [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status400BadRequest)]
     public async Task<IActionResult> CreateDropdownOption( Guid dropdownId, CancellationToken ct )
     {
         _formDesignerService.SaveDropdownOption( null, dropdownId, "", "" );
@@ -377,6 +422,8 @@ public class FormDesignerMasterDetailController : ControllerBase
     /// <param name="dto"></param>
     /// <returns></returns>
     [HttpPut("dropdowns/{dropdownId:guid}/options")]
+    [ProducesResponseType(StatusCodes.Status200OK)]
+    [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status400BadRequest)]
     public IActionResult SaveDropdownOption( Guid dropdownId, [FromBody] SaveOptionViewModel dto )
     {
         _formDesignerService.SaveDropdownOption( dto.Id, dropdownId, dto.OptionText, dto.OptionValue );
@@ -390,6 +437,8 @@ public class FormDesignerMasterDetailController : ControllerBase
     /// <param name="dropdownId"></param>
     /// <returns></returns>
     [HttpDelete("dropdowns/options/{optionId:guid}")]
+    [ProducesResponseType(StatusCodes.Status200OK)]
+    [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status400BadRequest)]
     public async Task<IActionResult> DeleteDropdownOption( Guid optionId, [FromQuery] Guid dropdownId )
     {
         await _formDesignerService.DeleteDropdownOption( optionId );
@@ -403,6 +452,9 @@ public class FormDesignerMasterDetailController : ControllerBase
     /// 儲存 Master/Detail 表單主檔資訊
     /// </summary>
     [HttpPost("headers")]
+    [ProducesResponseType(StatusCodes.Status200OK)]
+    [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status400BadRequest)]
+    [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status409Conflict)]
     public async Task<IActionResult> SaveMasterDetailFormHeader([FromBody] MasterDetailFormHeaderViewModel model)
     {
         if (model.BASE_TABLE_ID == Guid.Empty ||
