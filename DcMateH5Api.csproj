@@ -36,7 +36,6 @@
 
     <ItemGroup>
       <Folder Include="Areas\Log\ViewModels\" />
-      <Folder Include="Models\" />
     </ItemGroup>
 
     <ItemGroup>
