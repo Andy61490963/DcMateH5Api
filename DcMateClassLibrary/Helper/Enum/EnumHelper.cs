@@ -20,6 +20,40 @@ public static class EnumExtensions
     }
 
     /// <summary>
+    /// 取得 enum 的顯示描述文字
+    /// 取得順序：
+    /// 1. DisplayAttribute.Description
+    /// 2. DisplayAttribute.Name
+    /// 3. enum 名稱
+    /// </summary>
+    /// <param name="value">enum 值</param>
+    /// <returns>描述文字</returns>
+    public static string GetDescription(this Enum value)
+    {
+        var type = value.GetType();
+        var name = value.ToString();
+
+        // 取得 enum 成員資訊
+        var member = type.GetMember(name).FirstOrDefault();
+        if (member == null)
+            return name;
+
+        // 讀取 DisplayAttribute
+        var display = member.GetCustomAttribute<DisplayAttribute>();
+        if (display == null)
+            return name;
+
+        // Description 優先，其次 Name
+        if (!string.IsNullOrWhiteSpace(display.GetDescription()))
+            return display.GetDescription()!;
+
+        if (!string.IsNullOrWhiteSpace(display.GetName()))
+            return display.GetName()!;
+
+        return name;
+    }
+    
+    /// <summary>
     /// 將指定的 enum 型別轉成「列舉選項清單」
     /// 給 Controller / Service 使用，
     /// 可以依 enum 型別動態產生下拉選單資料。

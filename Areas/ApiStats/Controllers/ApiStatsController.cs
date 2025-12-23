@@ -3,7 +3,7 @@ using DcMateH5Api.DbExtensions;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Mvc.ApiExplorer;
 using DcMateH5Api.Helper;
-using Microsoft.Data.SqlClient;
+using DcMateH5Api.Models;
 
 namespace DcMateH5Api.Areas.ApiStats.Controllers
 {
@@ -12,16 +12,16 @@ namespace DcMateH5Api.Areas.ApiStats.Controllers
     /// </summary>
     [Area("ApiStats")]
     [ApiController]
-    [ApiExplorerSettings(GroupName = SwaggerGroups.ApiStats)]
+    [ApiExplorerSettings(GroupName = SwaggerGroups.ApiStatus)]
     [Route("[area]/[controller]")]
-    public class ApiStatsController : ControllerBase
+    public class ApiStatusController : ControllerBase
     {
         private const int DefaultPageSize = 200;
         private const int MaxPageSize = 1000;
 
         private readonly IApiDescriptionGroupCollectionProvider _provider;
 
-        public ApiStatsController(IApiDescriptionGroupCollectionProvider provider)
+        public ApiStatusController(IApiDescriptionGroupCollectionProvider provider)
         {
             _provider = provider;
         }
@@ -30,11 +30,16 @@ namespace DcMateH5Api.Areas.ApiStats.Controllers
         /// API 存活與基本資訊
         /// </summary>
         [HttpGet("health")]
-        public IActionResult Health() => Ok(new
+        public IActionResult Health()
         {
-            Instance = Environment.MachineName,
-            Time = DateTime.Now
-        });
+            var data = new HealthResponse
+            {
+                Instance = Environment.MachineName,
+                Time = DateTime.Now
+            };
+
+            return Ok(Result<HealthResponse>.Ok(data));
+        }
         
         /// <summary>
         /// 測試 LogService 使用的資料庫連線是否正常
@@ -52,75 +57,16 @@ namespace DcMateH5Api.Areas.ApiStats.Controllers
             [FromServices] ISqlConnectionFactory factory,
             CancellationToken ct)
         {
-            try
+            var conn = factory.Create();
+            await using (conn)
             {
-                // 透過工廠建立 SqlConnection
-                // 此時尚未真正連線，只是建立一個包含連線字串的物件
-                var conn = factory.Create();
-
-                // 解析連線字串，方便後續檢視實際連到哪台 Server / Database
-                var csb = new SqlConnectionStringBuilder(conn.ConnectionString);
-
-                // 使用 await using 確保非同步流程結束後，連線一定會被正確釋放
-                await using (conn)
-                {
-                    // 計算開啟資料庫連線所花費的時間
-                    var sw = System.Diagnostics.Stopwatch.StartNew();
-                    await conn.OpenAsync(ct); // 真正向 SQL Server 建立連線
-                    sw.Stop();
-
-                    // 建立 SQL 指令並執行最簡單的查詢
-                    // GETDATE() 由資料庫回傳時間，可用來確認成功執行 SQL
-                    await using var cmd = conn.CreateCommand();
-                    cmd.CommandText = "SELECT GETDATE()";
-                    var result = await cmd.ExecuteScalarAsync(ct);
-
-                    // 連線與查詢皆成功，回傳測試結果
-                    return Ok(new
-                    {
-                        success = true,
-                        message = "DB 連線正常",
-
-                        // SQL Server 位址（例如：localhost、IP、ServerName）
-                        dataSource = csb.DataSource,
-
-                        // 實際連到的資料庫名稱（用來確認是否為正確環境）
-                        initialCatalog = csb.InitialCatalog,
-
-                        // 使用的登入帳號
-                        userId = csb.UserID,
-
-                        // 開啟連線所花費的毫秒數
-                        openConnectionMs = sw.ElapsedMilliseconds,
-
-                        // SQL Server 回傳的時間
-                        serverTime = result
-                    });
-                }
+                await conn.OpenAsync(ct);
+                await using var cmd = conn.CreateCommand();
+                cmd.CommandText = "SELECT GETDATE()1"; // 故意錯
+                await cmd.ExecuteScalarAsync(ct);
             }
-            catch (SqlException ex)
-            {
-                // SQL Server 相關錯誤（連線失敗、帳密錯誤、權限不足等）
-                return StatusCode(500, new
-                {
-                    success = false,
-                    type = "SqlException",
-                    error = ex.Message,
-                    number = ex.Number,
-                    state = ex.State,
-                    classLevel = ex.Class
-                });
-            }
-            catch (Exception ex)
-            {
-                // 其他非 SQL 的系統錯誤
-                return StatusCode(500, new
-                {
-                    success = false,
-                    type = ex.GetType().Name,
-                    error = ex.Message
-                });
-            }
+
+            return Ok(Result<string>.Ok("OK"));
         }
         
         /// <summary>
@@ -170,7 +116,7 @@ namespace DcMateH5Api.Areas.ApiStats.Controllers
                 GroupByController = BuildGroupByController(pageItems)
             };
 
-            return Ok(result);
+            return Ok(Result<ApiStatsResponse>.Ok(result));
         }
 
         #region Private helpers
@@ -367,7 +313,12 @@ namespace DcMateH5Api.Areas.ApiStats.Controllers
             /// </summary>
             [JsonPropertyName("groupByController")] public Dictionary<string, List<ApiItem>> GroupByController { get; set; } = new();
         }
-
+        
+        public sealed class HealthResponse
+        {
+            public string Instance { get; set; } = string.Empty;
+            public DateTime Time { get; set; }
+        }
         #endregion
     }
 }

@@ -152,7 +152,7 @@ var swaggerGroups = new[]
     SwaggerGroups.Permission,
     SwaggerGroups.Security,
     SwaggerGroups.Enum,
-    SwaggerGroups.ApiStats,
+    SwaggerGroups.ApiStatus,
     SwaggerGroups.Log,
     SwaggerGroups.RouteOperation
 };
@@ -217,6 +217,9 @@ app.UseForwardedHeaders(new ForwardedHeadersOptions
 app.UseRouting();            // 沒有它 CORS 很容易沒套用到 endpoint
 
 app.UseCors(CorsPolicy);     // 放在 Routing 後、Auth 前
+
+// 懶得在 controller裡面包一堆 try catch
+app.UseMiddleware<GlobalExceptionMiddleware>();
 
 app.UseAuthentication();
 app.UseAuthorization();
