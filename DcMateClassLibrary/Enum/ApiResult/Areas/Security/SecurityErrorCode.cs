@@ -14,5 +14,8 @@ public enum AuthenticationErrorCode
     AccountAlreadyExists,
     
     [Display(Name = "註冊失敗，請稍後再試", Description = "註冊失敗，請稍後再試")]
-    RegisterFailed
+    RegisterFailed,
+    
+    [Display(Name = "未登入或 Token 無效", Description = "未登入或 Token 無效")]
+    Unauthorized
 }
