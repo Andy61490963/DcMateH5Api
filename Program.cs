@@ -221,6 +221,7 @@ app.UseCors(CorsPolicy);     // 放在 Routing 後、Auth 前
 // 懶得在 controller裡面包一堆 try catch
 app.UseMiddleware<GlobalExceptionMiddleware>();
 
+// 測試 PR 審核有沒有啟用的註解
 app.UseAuthentication();
 app.UseAuthorization();
 
