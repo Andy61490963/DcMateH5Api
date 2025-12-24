@@ -9,8 +9,8 @@ public interface IFormDesignerService
     Task<List<FormFieldMasterDto>> GetFormMasters( FormFunctionType functionType, string? q, CancellationToken ct );
     
     Task UpdateFormName( UpdateFormNameViewModel model, CancellationToken ct );
-    
-    void DeleteFormMaster( Guid id );
+
+    Task DeleteFormMaster(Guid id, CancellationToken ct = default);
     
     Task<FormDesignerIndexViewModel> GetFormDesignerIndexViewModel( FormFunctionType functionType, Guid? id, CancellationToken ct );
     
