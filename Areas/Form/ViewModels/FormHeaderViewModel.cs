@@ -13,6 +13,16 @@ public class FormHeaderViewModel
     public string FORM_NAME { get; set; }
 
     /// <summary>
+    /// 主檔代碼
+    /// </summary>
+    public string FORM_CODE { get; set; }
+    
+    /// <summary>
+    /// 主檔設定描述
+    /// </summary>
+    public string FORM_DESCRIPTION { get; set; }
+    
+    /// <summary>
     /// 主要表單 Master ID
     /// </summary>
     public Guid BASE_TABLE_ID { get; set; }
