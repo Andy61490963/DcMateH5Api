@@ -151,31 +151,13 @@ public class FormMultipleMappingController : ControllerBase
     }
 
     /// <summary>
-    /// 依 orderedSids 順序重排指定 Base 範圍的 Mapping.SEQ 欄位，
+    /// 依 MAPPING_TABLE_ID 取得關聯表所有資料列，並回傳欄位名稱與對應值。
     /// </summary>
     /// <remarks>
-    /// ### 使用說明
-    /// 
-    /// 此 API 會依照前端傳入的 `OrderedSids` 順序，
-    /// 重新調整指定 Base 範圍內 Mapping 資料的 `SEQ` 欄位值。
-    /// 
-    /// ### 範例請求
-    /// ```json
-    /// {
-    ///   "FormMasterId": "5453F7A1-3776-4942-874D-328BCA183CC6",
-    ///   "OrderedSids": [
-    ///     9944320979279,
-    ///     292691828033415
-    ///   ],
-    ///   "Scope": {
-    ///     "BasePkValue": "98557947437937"
-    ///   }
-    /// }
-    /// ```
+    /// 業務邏輯：
+    /// 1. 透過 FormMasterId（對應 FORM_FIELD_MASTER.ID）取得 MAPPING_TABLE_NAME。
+    /// 2. 回傳查詢該表全部資料列
     /// </remarks>
-    /// <returns>
-    /// 成功時回傳 204 ；驗證失敗時回傳 400。
-    /// </returns>
     [HttpPost("sequence/reorder")]
     [ProducesResponseType(StatusCodes.Status204NoContent)]
     [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status400BadRequest)]
@@ -190,6 +172,37 @@ public class FormMultipleMappingController : ControllerBase
         {
             var affected = _service.ReorderMappingSequence(request, ct);
             return NoContent();
+        }
+        catch (InvalidOperationException ex)
+        {
+            return BadRequest(ex.Message);
+        }
+    }
+
+    /// <summary>
+    /// 依 MAPPING_TABLE_ID 取得關聯表所有資料列，並回傳欄位名稱與對應值。
+    /// </summary>
+    /// <remarks>
+    /// 業務邏輯：
+    /// 1. 透過 FormMasterId（對應 FORM_FIELD_MASTER.ID）取得 MAPPING_TABLE_NAME。
+    /// 2. 回傳查詢該表全部資料列
+    /// </remarks>
+    /// <param name="formMasterId">FORM_FIELD_MASTER.ID</param>
+    /// <param name="ct">取消權杖。</param>
+    [HttpGet("{formMasterId:guid}/mapping-table")]
+    [ProducesResponseType(typeof(MappingTableDataViewModel), StatusCodes.Status200OK)]
+    [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status400BadRequest)]
+    public async Task<IActionResult> GetMappingTableData(Guid formMasterId, CancellationToken ct)
+    {
+        if (formMasterId == Guid.Empty)
+        {
+            return BadRequest("FormMasterId 不可為空");
+        }
+
+        try
+        {
+            var result = await _service.GetMappingTableData(formMasterId, ct);
+            return Ok(result);
         }
         catch (InvalidOperationException ex)
         {
@@ -217,39 +230,6 @@ public class FormMultipleMappingController : ControllerBase
     /// }
     /// ```
     /// </remarks>
-    [HttpGet("{formMasterId:guid}/mapping-table")]
-    [ProducesResponseType(typeof(MappingTableDataViewModel), StatusCodes.Status200OK)]
-    [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status400BadRequest)]
-    public async Task<IActionResult> GetMappingTableData(Guid formMasterId, CancellationToken ct)
-    {
-        if (formMasterId == Guid.Empty)
-        {
-            return BadRequest("FormMasterId 不可為空");
-        }
-
-        try
-        {
-            var result = await _service.GetMappingTableData(formMasterId, ct);
-            return Ok(result);
-        }
-        catch (InvalidOperationException ex)
-        {
-            return BadRequest(ex.Message);
-        }
-    }
-
-    /// <summary>
-    /// 更新關聯表中指定 FormMasterId 的資料列。
-    /// </summary>
-    /// <remarks>
-    /// 業務邏輯：
-    /// 1. 以 FormMasterId 查詢 MAPPING_TABLE_NAME。
-    /// 2. 驗證欄位名稱與值，動態產生 UPDATE SQL。
-    /// 3. 以關聯表主鍵與 FormMasterId 作為 WHERE 條件更新資料。
-    /// </remarks>
-    /// <param name="formMasterId">FORM_FIELD_MASTER.ID。</param>
-    /// <param name="request">欲更新的欄位與值。</param>
-    /// <param name="ct">取消權杖。</param>
     [HttpPut("{formMasterId:guid}/mapping-table")]
     [ProducesResponseType(typeof(object), StatusCodes.Status200OK)]
     [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status400BadRequest)]
