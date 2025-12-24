@@ -2,23 +2,15 @@ using System.Collections.Generic;
 
 namespace DcMateH5Api.Areas.Form.ViewModels;
 
-/// <summary>
-/// 更新關聯表資料的請求模型。
-/// </summary>
-/// <remarks>
-/// 業務邏輯：
-/// 1. 由控制器接收欄位名稱與對應值。
-/// 2. 服務層會驗證欄位合法性，並以參數化 SQL 更新資料。
-/// </remarks>
-public class MappingTableUpdateRequest
+public sealed class MappingTableUpdateRequest
 {
     /// <summary>
-    /// 欲更新的欄位名稱清單。
+    /// 欲更新的資料列主鍵值（字串型別收，避免 PK 是 int/decimal/uniqueidentifier 時卡死）
     /// </summary>
-    public List<string> Columns { get; set; } = new();
+    public string MappingRowId { get; set; } = string.Empty;
 
     /// <summary>
-    /// 對應欄位值清單，順序需與 Columns 一致。
+    /// 欄位更新集合（Key = 欄位名稱, Value = 欲更新的值）
     /// </summary>
-    public List<object?> Values { get; set; } = new();
+    public Dictionary<string, object?> Fields { get; set; } = new(StringComparer.OrdinalIgnoreCase);
 }

@@ -257,7 +257,7 @@ public class FormMultipleMappingController : ControllerBase
 
         try
         {
-            var affected = await _service.UpdateMappingTableData(formMasterId, request.Columns, request.Values, ct);
+            var affected = await _service.UpdateMappingTableData(formMasterId, request, ct);
             return Ok(new { Affected = affected });
         }
         catch (InvalidOperationException ex)

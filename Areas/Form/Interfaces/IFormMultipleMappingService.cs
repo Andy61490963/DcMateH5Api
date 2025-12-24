@@ -53,12 +53,13 @@ public interface IFormMultipleMappingService
     Task<MappingTableDataViewModel> GetMappingTableData(Guid formMasterId, CancellationToken ct = default);
 
     /// <summary>
-    /// 依 FormMasterId 更新關聯表指定欄位資料。
+    /// 依 FormMasterId + MappingRowId 更新關聯表指定欄位資料。
     /// </summary>
-    /// <param name="formMasterId">FORM_FIELD_MASTER.ID，對應目標關聯表的設定來源。</param>
-    /// <param name="columns">欲更新的欄位名稱清單。</param>
-    /// <param name="values">對應欄位值清單，順序需與 columns 一致。</param>
-    /// <param name="ct">取消權杖。</param>
-    /// <returns>實際更新筆數。</returns>
-    Task<int> UpdateMappingTableData(Guid formMasterId, IReadOnlyList<string> columns, IReadOnlyList<object?> values, CancellationToken ct = default);
+    /// <remarks>
+    /// 核心目標：
+    /// 1) 用 MappingRowId 精準定位要更新的那一筆（避免用 formMasterId 硬推 PK）。  
+    /// 2) 用 Fields(key:value) 避免 Columns/Values index 對齊風險。  
+    /// 3) 白名單欄位 + 參數化 SQL，確保安全與一致性。  
+    /// </remarks>
+    Task<int> UpdateMappingTableData(Guid formMasterId, MappingTableUpdateRequest request, CancellationToken ct = default);
 }
