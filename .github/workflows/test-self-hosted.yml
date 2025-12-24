@@ -15,20 +15,11 @@ jobs:
     runs-on: [self-hosted, Windows, iis, dcmate]
 
     steps:
-      - name: Ensure pwsh path for Actions
-        shell: powershell
-        run: |
-          $ps7 = Join-Path "$env:ProgramFiles\PowerShell\7" "pwsh.exe"
-          if (!(Test-Path $ps7)) { throw "pwsh.exe not found at: $ps7" }
-          Split-Path $ps7 | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
-          & $ps7 -NoLogo -NoProfile -Command '$PSVersionTable.PSVersion'
-          where.exe pwsh
-
       - name: Checkout
         uses: actions/checkout@v4
 
       - name: Ensure folders
-        shell: pwsh
+        shell: powershell
         run: |
           $ErrorActionPreference = 'Stop'
           foreach ($p in @($env:DEPLOY_ROOT, $env:PUBLISH_DIR, $env:IIS_PHYSICAL_PATH)) {
@@ -38,48 +29,53 @@ jobs:
           Write-Host "IIS_PATH   : $env:IIS_PHYSICAL_PATH"
 
       - name: Publish (Release)
-        shell: pwsh
+        shell: powershell
         run: |
           $ErrorActionPreference = 'Stop'
 
           dotnet --info
-          dotnet restore $env:PROJECT_PATH
-          dotnet build   $env:PROJECT_PATH -c Release --no-restore
+          dotnet restore "$env:PROJECT_PATH"
+          dotnet build "$env:PROJECT_PATH" -c Release --no-restore
 
           Remove-Item "$env:PUBLISH_DIR\*" -Recurse -Force -ErrorAction SilentlyContinue
-          dotnet publish $env:PROJECT_PATH -c Release -o $env:PUBLISH_DIR --no-build
+          dotnet publish "$env:PROJECT_PATH" -c Release -o "$env:PUBLISH_DIR" --no-build
+
+          if (!(Test-Path "$env:PUBLISH_DIR")) {
+            throw "Publish folder not found: $env:PUBLISH_DIR"
+          }
 
       - name: Deploy to IIS
-        shell: pwsh
+        shell: powershell
         run: |
           $ErrorActionPreference = 'Stop'
-          Import-Module WebAdministration -SkipEditionCheck -ErrorAction Stop
+          Import-Module WebAdministration -ErrorAction Stop
 
           $publish = $env:PUBLISH_DIR
           $target  = $env:IIS_PHYSICAL_PATH
           $pool    = $env:IIS_APP_POOL
-
           $offline = Join-Path $target "app_offline.htm"
 
+          if (!(Test-Path $target)) { New-Item -ItemType Directory -Path $target | Out-Null }
+
           try {
-            # 1) offline（最關鍵：解鎖 dll）
+            # 1) offline 先擋站 + 逼 In-Process 放掉鎖
             "Deploying... Please wait." | Out-File -FilePath $offline -Encoding utf8
 
-            # 2) stop pool
+            # 2) stop app pool
             Stop-WebAppPool -Name $pool -ErrorAction SilentlyContinue
 
-            # 3) copy（注意：robocopy exit code 要自己判斷）
+            # 3) robocopy（/MIR：同步；成功 exit code 1~7 也算成功）
             robocopy "$publish" "$target" /MIR /R:2 /W:2 /NFL /NDL /NP /XF "*.pdb"
             $rc = $LASTEXITCODE
             if ($rc -ge 8) { throw "Robocopy failed. ExitCode=$rc" }
 
-            # ✅ 吃掉 robocopy 的非 0（不然 Actions 會當失敗）
+            # ✅ robocopy 可能回 1~7（代表有複製/有差異），但 Actions 會視為 step fail，所以要歸零
             $global:LASTEXITCODE = 0
 
             # 4) remove offline
             if (Test-Path $offline) { Remove-Item $offline -Force }
 
-            # 5) start pool
+            # 5) start app pool
             Start-WebAppPool -Name $pool
             Write-Host "Deploy done."
           }
