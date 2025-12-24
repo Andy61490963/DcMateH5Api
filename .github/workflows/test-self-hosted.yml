@@ -71,7 +71,7 @@ jobs:
             $rc = $LASTEXITCODE
             if ($rc -ge 8) { throw "Robocopy failed. ExitCode=$rc" }
 
-            # ✅ robocopy 可能回 1~7（代表有複製/有差異），但 Actions 會視為 step fail，所以要歸零
+            # robocopy 可能回 1~7（代表有複製/有差異），但 Actions 會視為 step fail，所以要歸零
             $global:LASTEXITCODE = 0
 
             # 4) remove offline
