@@ -84,7 +84,7 @@ public sealed class DbExecutor : IDbExecutor
         return new SqlLogEntry
         {
             RequestId =  GetCorrelationId(_http.HttpContext),
-            ExecutedAt = DateTime.UtcNow,
+            ExecutedAt = DateTime.Now,
             SqlText = sql,
             Parameters = SerializeParameters(param),
             UserId = GetUserId(),

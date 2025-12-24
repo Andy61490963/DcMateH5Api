@@ -15,6 +15,16 @@ namespace DcMateH5Api.Areas.Log.Interfaces
         /// <param name="entry">待寫入的紀錄。</param>
         /// <param name="ct">取消權杖。</param>
         Task LogAsync(SqlLogEntry entry, CancellationToken ct = default);
+        
+        /// <summary>
+        /// 取得 LOG 資訊
+        /// </summary>
+        /// <param name="query"></param>
+        /// <param name="ct"></param>
+        /// <returns></returns>
+        Task<IReadOnlyList<SqlLogEntry>> GetLogsAsync(
+            SqlLogQuery query,
+            CancellationToken ct = default);
     }
     
 }
