@@ -35,7 +35,7 @@ namespace DcMateH5Api.Areas.ApiStats.Controllers
             var data = new HealthResponse
             {
                 Instance = Environment.MachineName,
-                Time = DateTime.UtcNow
+                Time = DateTime.Now
             };
 
             return Ok(Result<HealthResponse>.Ok(data));
