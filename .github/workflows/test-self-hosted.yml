@@ -9,19 +9,24 @@ jobs:
 
     steps:
       - name: Show runner info
-        shell: pwsh
+        shell: powershell
         run: |
           Write-Host "Runner name: $env:RUNNER_NAME"
+          Write-Host "Runner OS: $env:RUNNER_OS"
+          Write-Host "Runner arch: $env:RUNNER_ARCH"
           Write-Host "Machine name:"
           hostname
           Write-Host "User:"
           whoami
 
       - name: Check .NET
-        run: dotnet --version
+        shell: powershell
+        run: |
+          dotnet --version
+          dotnet --info
 
       - name: Check IIS
-        shell: pwsh
+        shell: powershell
         run: |
           Import-Module WebAdministration
           Get-Website | Select-Object Name, State
