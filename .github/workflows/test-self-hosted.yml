@@ -1,7 +1,7 @@
 name: Test Self Hosted Runner
 
-"on":
-  workflow_dispatch:
+on:
+  workflow_dispatch: {}
 
 jobs:
   test:
@@ -9,11 +9,12 @@ jobs:
 
     steps:
       - name: Show runner info
+        shell: pwsh
         run: |
-          echo "Runner name: $env:RUNNER_NAME"
-          echo "Machine name:"
+          Write-Host "Runner name: $env:RUNNER_NAME"
+          Write-Host "Machine name:"
           hostname
-          echo "User:"
+          Write-Host "User:"
           whoami
 
       - name: Check .NET
