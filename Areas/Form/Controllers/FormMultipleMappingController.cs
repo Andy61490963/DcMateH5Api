@@ -227,4 +227,42 @@ public class FormMultipleMappingController : ControllerBase
             return BadRequest(ex.Message);
         }
     }
+
+    /// <summary>
+    /// 更新關聯表中指定 FormMasterId 的資料列。
+    /// </summary>
+    /// <remarks>
+    /// 業務邏輯：
+    /// 1. 以 FormMasterId 查詢 MAPPING_TABLE_NAME。
+    /// 2. 驗證欄位名稱與值，動態產生 UPDATE SQL。
+    /// 3. 以關聯表主鍵與 FormMasterId 作為 WHERE 條件更新資料。
+    /// </remarks>
+    /// <param name="formMasterId">FORM_FIELD_MASTER.ID。</param>
+    /// <param name="request">欲更新的欄位與值。</param>
+    /// <param name="ct">取消權杖。</param>
+    [HttpPut("{formMasterId:guid}/mapping-table")]
+    [ProducesResponseType(typeof(object), StatusCodes.Status200OK)]
+    [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status400BadRequest)]
+    public async Task<IActionResult> UpdateMappingTableData(Guid formMasterId, [FromBody] MappingTableUpdateRequest? request, CancellationToken ct)
+    {
+        if (formMasterId == Guid.Empty)
+        {
+            return BadRequest("FormMasterId 不可為空");
+        }
+
+        if (request == null)
+        {
+            return BadRequest("請提供更新內容");
+        }
+
+        try
+        {
+            var affected = await _service.UpdateMappingTableData(formMasterId, request, ct);
+            return Ok(new { Affected = affected });
+        }
+        catch (InvalidOperationException ex)
+        {
+            return BadRequest(ex.Message);
+        }
+    }
 }

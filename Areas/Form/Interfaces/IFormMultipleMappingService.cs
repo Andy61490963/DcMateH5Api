@@ -51,4 +51,15 @@ public interface IFormMultipleMappingService
     /// <param name="ct">取消權杖。</param>
     /// <returns>包含關聯表名稱與完整資料列集合的模型。</returns>
     Task<MappingTableDataViewModel> GetMappingTableData(Guid formMasterId, CancellationToken ct = default);
+
+    /// <summary>
+    /// 依 FormMasterId + MappingRowId 更新關聯表指定欄位資料。
+    /// </summary>
+    /// <remarks>
+    /// 核心目標：
+    /// 1) 用 MappingRowId 精準定位要更新的那一筆（避免用 formMasterId 硬推 PK）。  
+    /// 2) 用 Fields(key:value) 避免 Columns/Values index 對齊風險。  
+    /// 3) 白名單欄位 + 參數化 SQL，確保安全與一致性。  
+    /// </remarks>
+    Task<int> UpdateMappingTableData(Guid formMasterId, MappingTableUpdateRequest request, CancellationToken ct = default);
 }

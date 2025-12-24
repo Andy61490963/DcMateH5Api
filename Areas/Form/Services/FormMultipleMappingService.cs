@@ -233,20 +233,8 @@ UPDATE m
         {
             throw new InvalidOperationException("FormMasterId 不可為空。");
         }
-
-        var where = new WhereBuilder<FormFieldMasterDto>()
-            .AndEq(x => x.ID, formMasterId)
-            .AndNotDeleted();
         
-        var res = await _sqlHelper.SelectFirstOrDefaultAsync(where, ct);
-
-        if (res != null && string.IsNullOrWhiteSpace(res.MAPPING_TABLE_NAME))
-        {
-            throw new InvalidOperationException("查無對應的關聯表設定，請確認 FormMasterId 是否正確。");
-        }
-
-        var mappingTableName = res!.MAPPING_TABLE_NAME;
-        ValidateTableName(mappingTableName!);
+        var mappingTableName = await GetMappingTableNameAsync(formMasterId, ct);
 
         var columns = _schemaService.GetFormFieldMaster(mappingTableName!);
         if (columns.Count == 0)
@@ -271,6 +259,83 @@ UPDATE m
             MappingTableKey = key!,
             Rows = rows
         };
+    }
+
+    /// <summary>
+    /// 依 FormMasterId + MappingRowId 更新關聯表指定欄位資料。
+    /// </summary>
+    /// <remarks>
+    /// 說明：
+    /// 1) 用 MappingRowId 精準定位要更新的那一筆
+    /// 2) 用 Fields(key:value)  
+    /// </remarks>
+    public async Task<int> UpdateMappingTableData(Guid formMasterId, MappingTableUpdateRequest request, CancellationToken ct = default)
+    {
+        ct.ThrowIfCancellationRequested();
+        ValidateUpdateMappingRequestV2(formMasterId, request);
+
+        if (request.Fields.Count == 0)
+        {
+            return 0;
+        }
+
+        var mappingTableName = await GetMappingTableNameAsync(formMasterId, ct);
+
+        // 1) 取得欄位白名單（無 tx）
+        var tableColumns = _schemaService.GetFormFieldMaster(mappingTableName);
+        if (tableColumns.Count == 0)
+        {
+            throw new InvalidOperationException($"無法取得關聯表欄位資訊：{mappingTableName}");
+        }
+
+        var columnSet = tableColumns.ToHashSet(StringComparer.OrdinalIgnoreCase);
+
+        // 2) PK 欄位
+        var pkName = _schemaService.GetPrimaryKeyColumn(mappingTableName);
+        if (string.IsNullOrWhiteSpace(pkName))
+        {
+            throw new InvalidOperationException($"關聯表缺少主鍵欄位：{mappingTableName}");
+        }
+
+        // 3) 取 PK 型別（只取 meta）
+        var (_, pkType, _) = _schemaService.ResolvePk(mappingTableName, null);
+
+        // 4) 轉 PK 值（支援 int/decimal/guid）
+        var pkValue = ConvertToColumnTypeHelper.ConvertPkType(request.MappingRowId, pkType);
+
+        // 5) 確保 row 存在（無 tx）
+        EnsureRowExists(mappingTableName, pkName, pkValue!);
+
+        // 6) 欄位型別（無 tx）
+        var columnTypes = LoadColumnTypes(mappingTableName);
+
+        // 7) 組 updatePairs（Identity 判斷若有 tx overload 就用無 tx 版）
+        var updatePairs = BuildUpdatePairs(mappingTableName, pkName, request.Fields, columnSet, columnTypes);
+
+        if (updatePairs.Count == 0)
+        {
+            return 0;
+        }
+
+        // 8) 參數化 UPDATE
+        var parameters = new DynamicParameters();
+        var setFragments = new List<string>(capacity: updatePairs.Count);
+
+        for (var i = 0; i < updatePairs.Count; i++)
+        {
+            var paramName = $"p{i}";
+            parameters.Add(paramName, updatePairs[i].Value);
+            setFragments.Add($"[{updatePairs[i].Column}] = @{paramName}");
+        }
+
+        parameters.Add("Pk", pkValue);
+
+        var sql = $@"/**/
+    UPDATE [{mappingTableName}]
+       SET {string.Join(", ", setFragments)}
+     WHERE [{pkName}] = @Pk;";
+
+        return await _con.ExecuteAsync(sql, parameters);
     }
 
     private FormFieldMasterDto GetMappingHeader(Guid formMasterId, SqlTransaction? tx = null)
@@ -308,6 +373,25 @@ UPDATE m
         _schemaService.ResolvePk(header.DETAIL_TABLE_NAME!, null, tx);
 
         return header;
+    }
+
+    private async Task<string> GetMappingTableNameAsync(Guid formMasterId, CancellationToken ct)
+    {
+        var where = new WhereBuilder<FormFieldMasterDto>()
+            .AndEq(x => x.ID, formMasterId)
+            .AndNotDeleted();
+
+        var res = await _sqlHelper.SelectFirstOrDefaultAsync(where, ct);
+
+        if (res == null || string.IsNullOrWhiteSpace(res.MAPPING_TABLE_NAME))
+        {
+            throw new InvalidOperationException("查無對應的關聯表設定，請確認 FormMasterId 是否正確。");
+        }
+
+        var mappingTableName = res.MAPPING_TABLE_NAME;
+        ValidateTableName(mappingTableName);
+
+        return mappingTableName;
     }
 
     private List<MultipleMappingItemViewModel> LoadDetailRows(string detailTableName, string detailPkName, IEnumerable<object> detailIds)
@@ -405,6 +489,29 @@ WHERE NOT EXISTS (
         }
     }
 
+    private static void ValidateUpdateMappingRequestV2(Guid formMasterId, MappingTableUpdateRequest request)
+    {
+        if (formMasterId == Guid.Empty)
+        {
+            throw new InvalidOperationException("FormMasterId 不可為空。");
+        }
+
+        if (request == null)
+        {
+            throw new InvalidOperationException("Request 不可為空。");
+        }
+
+        if (string.IsNullOrWhiteSpace(request.MappingRowId))
+        {
+            throw new InvalidOperationException("MappingRowId 不可為空。");
+        }
+
+        if (request.Fields == null)
+        {
+            throw new InvalidOperationException("Fields 不可為空。");
+        }
+    }
+
     private static void ValidateColumnName(string columnName)
     {
         if (!Regex.IsMatch(columnName, "^[A-Za-z0-9_]+$", RegexOptions.CultureInvariant))
@@ -419,6 +526,14 @@ WHERE NOT EXISTS (
         {
             throw new InvalidOperationException($"資料表名稱僅允許英數與底線：{tableName}");
         }
+    }
+
+    private Dictionary<string, string> LoadColumnTypes(string tableName, SqlTransaction? tx = null)
+    {
+        return _con.Query<(string COLUMN_NAME, string DATA_TYPE)>(
+                "/**/SELECT COLUMN_NAME, DATA_TYPE FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_NAME = @TableName",
+                new { TableName = tableName }, transaction: tx)
+            .ToDictionary(x => x.COLUMN_NAME, x => x.DATA_TYPE, StringComparer.OrdinalIgnoreCase);
     }
 
     private void EnsureColumnExists(string tableName, string columnName, string errorMessage, SqlTransaction? tx)
@@ -473,4 +588,60 @@ WHERE NOT EXISTS (
             throw new InvalidOperationException("orderedSids 中至少有一筆不存在或不屬於指定的 BasePkValue。");
         }
     }
+    
+    private List<(string Column, object? Value)> BuildUpdatePairs(
+        string tableName,
+        string pkName,
+        IDictionary<string, object?> fields,
+        ISet<string> columnSet,
+        IReadOnlyDictionary<string, string> columnTypes)
+    {
+        // 用 List 保持順序穩定；用 HashSet 防止重複欄位
+        var result = new List<(string Column, object? Value)>(fields.Count);
+        var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+
+        foreach (var (column, rawValue) in fields)
+        {
+            if (string.IsNullOrWhiteSpace(column))
+            {
+                throw new InvalidOperationException("欄位名稱不可為空。");
+            }
+
+            // 防 injection：欄位名只允許英數底線（你原本就有）
+            ValidateColumnName(column);
+
+            // 防 injection：欄位必須存在於白名單 schema
+            if (!columnSet.Contains(column))
+            {
+                throw new InvalidOperationException($"關聯表不存在欄位：{column}");
+            }
+
+            // 防同欄位重複更新（避免後面誰覆蓋誰很難 debug）
+            if (!seen.Add(column))
+            {
+                throw new InvalidOperationException($"欄位名稱重複：{column}");
+            }
+
+            // 禁止更新 PK
+            if (string.Equals(column, pkName, StringComparison.OrdinalIgnoreCase))
+            {
+                throw new InvalidOperationException($"不可更新主鍵欄位：{column}");
+            }
+
+            // 禁止更新 Identity（你原本就有）
+            if (_schemaService.IsIdentityColumn(tableName, column))
+            {
+                throw new InvalidOperationException($"不可更新 Identity 欄位：{column}");
+            }
+
+            // 型別轉換：把前端送來的 object 轉成該 column 的 SQL type 對應型別
+            columnTypes.TryGetValue(column, out var sqlType);
+            var convertedValue = ConvertToColumnTypeHelper.Convert(sqlType, rawValue);
+
+            result.Add((column, convertedValue));
+        }
+
+        return result;
+    }
+
 }
