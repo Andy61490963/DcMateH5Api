@@ -1,32 +1,105 @@
-name: Test Self Hosted Runner
+name: Deploy DcMateH5Api to IIS (Self-hosted)
 
 on:
   workflow_dispatch: {}
 
+env:
+  # 專案 csproj（你截圖顯示在 repo 根目錄）
+  PROJECT_PATH: "DcMateH5Api.csproj"
+
+  # 發布產物資料夾（固定在 C:\CICDDeploy）
+  DEPLOY_ROOT: "C:\\CICDDeploy"
+  PUBLISH_DIR: "C:\\CICDDeploy\\publish"
+
+  # IIS 綁定資料夾（你的實體路徑）
+  IIS_PHYSICAL_PATH: "C:\\inetpub\\wwwroot\\測試"
+
+  # IIS AppPool（你前面設定：DcMateH5Api）
+  IIS_APP_POOL: "DcMateH5Api"
+
 jobs:
-  test:
+  deploy:
     runs-on: [self-hosted, Windows, iis, dcmate]
 
     steps:
-      - name: Show runner info
-        shell: powershell
-        run: |
-          Write-Host "Runner name: $env:RUNNER_NAME"
-          Write-Host "Runner OS: $env:RUNNER_OS"
-          Write-Host "Runner arch: $env:RUNNER_ARCH"
-          Write-Host "Machine name:"
-          hostname
-          Write-Host "User:"
-          whoami
+      - name: Checkout
+        uses: actions/checkout@v4
 
-      - name: Check .NET
+      - name: Ensure folders
         shell: powershell
         run: |
-          dotnet --version
-          dotnet --info
+          $ErrorActionPreference = 'Stop'
 
-      - name: Check IIS
+          $root   = $env:DEPLOY_ROOT
+          $publish= $env:PUBLISH_DIR
+          $target = $env:IIS_PHYSICAL_PATH
+
+          foreach ($p in @($root, $publish, $target)) {
+            if (!(Test-Path $p)) {
+              New-Item -ItemType Directory -Path $p | Out-Null
+            }
+          }
+
+          Write-Host "DEPLOY_ROOT: $root"
+          Write-Host "PUBLISH_DIR : $publish"
+          Write-Host "IIS_TARGET  : $target"
+
+      - name: Publish (Release)
         shell: powershell
         run: |
-          Import-Module WebAdministration
-          Get-Website | Select-Object Name, State
+          $ErrorActionPreference = 'Stop'
+
+          $project = $env:PROJECT_PATH
+          $publish = $env:PUBLISH_DIR
+
+          Write-Host "Project: $project"
+          Write-Host "Publish: $publish"
+
+          dotnet restore "$project"
+          dotnet build "$project" -c Release --no-restore
+
+          # 清空舊產物（避免殘留檔案造成詭異行為）
+          Remove-Item "$publish\*" -Recurse -Force -ErrorAction SilentlyContinue
+
+          dotnet publish "$project" -c Release -o "$publish" --no-build
+
+          if (!(Test-Path "$publish")) {
+            throw "Publish folder not found: $publish"
+          }
+
+      - name: Deploy to IIS folder
+        shell: powershell
+        run: |
+          $ErrorActionPreference = 'Stop'
+          Import-Module WebAdministration -ErrorAction Stop
+
+          $publish = $env:PUBLISH_DIR
+          $target  = $env:IIS_PHYSICAL_PATH
+          $appPool = $env:IIS_APP_POOL
+
+          Write-Host "From: $publish"
+          Write-Host "To  : $target"
+          Write-Host "Pool: $appPool"
+
+          # app_offline：避免鎖檔/更新中服務異常
+          $offlineFile = Join-Path $target "app_offline.htm"
+          "Deploying... Please wait." | Out-File -FilePath $offlineFile -Encoding utf8
+
+          # 停 AppPool（比停整個 Default Web Site 更安全）
+          Write-Host "Stopping AppPool: $appPool"
+          Stop-WebAppPool -Name $appPool
+
+          # 同步檔案（robocopy：0~7 都算成功）
+          Write-Host "Robocopy syncing..."
+          robocopy "$publish" "$target" /MIR /R:2 /W:2 /NFL /NDL /NP
+          $rc = $LASTEXITCODE
+          if ($rc -ge 8) { throw "Robocopy failed. ExitCode=$rc" }
+
+          # 移除 app_offline
+          if (Test-Path $offlineFile) { Remove-Item $offlineFile -Force }
+
+          # 啟 AppPool
+          Write-Host "Starting AppPool: $appPool"
+          Start-WebAppPool -Name $appPool
+
+          Write-Host "Deploy done."
