@@ -1139,13 +1139,19 @@ ORDER BY TABLE_SCHEMA, TABLE_NAME;";
         var id = _con.ExecuteScalar<Guid>(Sql.UpsertFormMaster, new
         {
             model.ID,
+            
             model.FORM_NAME,
+            model.FORM_CODE,
+            model.FORM_DESCRIPTION,
+            
             model.BASE_TABLE_ID,
             model.VIEW_TABLE_ID,
+            MAPPING_TABLE_ID = (Guid?)null,
+            
             BASE_TABLE_NAME = baseTableName,
             VIEW_TABLE_NAME = viewTableName,
             MAPPING_TABLE_NAME = (string?)null,
-            MAPPING_TABLE_ID = (Guid?)null,
+            
             STATUS = (int)TableStatusType.Active,
             SCHEMA_TYPE = TableSchemaQueryType.All,
             FUNCTION_TYPE = FormFunctionType.MasterMaintenance
@@ -1199,14 +1205,20 @@ ORDER BY TABLE_SCHEMA, TABLE_NAME;";
         {
             model.ID,
             model.FORM_NAME,
+            model.FORM_CODE,
+            model.FORM_DESCRIPTION,
+            
             model.BASE_TABLE_ID,
             model.DETAIL_TABLE_ID,
             model.VIEW_TABLE_ID,
+            
             MASTER_TABLE_NAME = masterTableName,
             DETAIL_TABLE_NAME = detailTableName,
             VIEW_TABLE_NAME = viewTableName,
+            
             MAPPING_TABLE_NAME = (string?)null,
             MAPPING_TABLE_ID = (Guid?)null,
+            
             STATUS = (int)TableStatusType.Active,
             SCHEMA_TYPE = TableSchemaQueryType.All,
             FUNCTION_TYPE = FormFunctionType.MasterDetailMaintenance
@@ -1291,16 +1303,22 @@ ORDER BY TABLE_SCHEMA, TABLE_NAME;";
         {
             model.ID,
             model.FORM_NAME,
+            model.FORM_CODE,
+            model.FORM_DESCRIPTION,
+            
             model.BASE_TABLE_ID,
             model.DETAIL_TABLE_ID,
             model.MAPPING_TABLE_ID,
             VIEW_TABLE_ID = viewTableId,
-            model.MAPPING_BASE_FK_COLUMN,
-            model.MAPPING_DETAIL_FK_COLUMN,
+            
             MASTER_TABLE_NAME = baseTableName,
             DETAIL_TABLE_NAME = detailTableName,
             MAPPING_TABLE_NAME = mappingTableName,
             VIEW_TABLE_NAME = viewTableName,
+            
+            model.MAPPING_BASE_FK_COLUMN,
+            model.MAPPING_DETAIL_FK_COLUMN,
+            
             STATUS = (int)TableStatusType.Active,
             SCHEMA_TYPE = TableSchemaQueryType.All,
             FUNCTION_TYPE = FormFunctionType.MultipleMappingMaintenance

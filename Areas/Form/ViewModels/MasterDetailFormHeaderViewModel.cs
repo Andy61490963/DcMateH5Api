@@ -16,6 +16,16 @@ public class MasterDetailFormHeaderViewModel
     public string FORM_NAME { get; set; }
 
     /// <summary>
+    /// 主檔代碼
+    /// </summary>
+    public string FORM_CODE { get; set; }
+    
+    /// <summary>
+    /// 主檔設定描述
+    /// </summary>
+    public string FORM_DESCRIPTION { get; set; }
+    
+    /// <summary>
     /// Master 表單的 FORM_FIELD_MASTER ID
     /// </summary>
     public Guid BASE_TABLE_ID { get; set; }

@@ -16,6 +16,16 @@ public class MultipleMappingFormHeaderViewModel
     public string FORM_NAME { get; set; } = string.Empty;
 
     /// <summary>
+    /// 主檔代碼
+    /// </summary>
+    public string FORM_CODE { get; set; }
+    
+    /// <summary>
+    /// 主檔設定描述
+    /// </summary>
+    public string FORM_DESCRIPTION { get; set; }
+    
+    /// <summary>
     /// 主表 FORM_FIELD_MASTER ID。
     /// </summary>
     public Guid BASE_TABLE_ID { get; set; }
