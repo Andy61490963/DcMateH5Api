@@ -22,15 +22,18 @@ public class FormDesignerService : IFormDesignerService
     private readonly ISchemaService _schemaService;
     private readonly ITransactionService _transactionService;
     private readonly SQLGenerateHelper _sqlHelper;
+    private readonly IDbExecutor _db;
     private readonly IDropdownSqlSyncService _dropdownSqlSyncService;
     private readonly IReadOnlyList<string> _relationColumnSuffixes;
-
+    const int TimeoutSeconds = 30;
+    
     public FormDesignerService(
         SQLGenerateHelper sqlHelper,
         SqlConnection connection,
         IConfiguration configuration,
         ISchemaService schemaService,
         IDropdownSqlSyncService dropdownSqlSyncService,
+        IDbExecutor db,
         IOptions<FormSettings> formSettings,
         ITransactionService transactionService)
     {
@@ -39,6 +42,7 @@ public class FormDesignerService : IFormDesignerService
         _schemaService = schemaService;
         _sqlHelper = sqlHelper;
         _dropdownSqlSyncService = dropdownSqlSyncService;
+        _db = db;
         _transactionService = transactionService;
         
         _excludeColumns = _configuration.GetSection("DropdownSqlSettings:ExcludeColumns").Get<List<string>>() ?? new();
@@ -106,16 +110,75 @@ public class FormDesignerService : IFormDesignerService
     /// 刪除單一表單主檔（硬刪除），並一併刪除其欄位設定、驗證規則、下拉設定與選項。
     /// 使用 TransactionService 確保全有全無，避免刪一半留下殘骸。
     /// </summary>
-    public void DeleteFormMaster(Guid id)
+    public async Task DeleteFormMaster(Guid id, CancellationToken ct = default)
     {
-        _transactionService.WithTransaction(tx =>
+        const int TimeoutSeconds = 30;
+
+        await _sqlHelper.TxAsync(async (conn, tx, txCt) =>
         {
-            _con.Execute(
-                Sql.DeleteFormMaster,
-                new { id },
-                transaction: tx,
-                commandTimeout: 30);
-        });
+            // 1) FieldConfig IDs
+            var cfgWhere = new WhereBuilder<FormFieldConfigDto>()
+                .AndEq(x => x.FORM_FIELD_MASTER_ID, id);
+
+            var configs = await _sqlHelper.SelectWhereInTxAsync<FormFieldConfigDto>(
+                conn, tx, cfgWhere, timeoutSeconds: TimeoutSeconds, ct: txCt);
+
+            var configIds = configs.Select(x => x.ID).Distinct().ToList();
+
+            // 沒有 config：直接刪 master
+            if (configIds.Count == 0)
+            {
+                var masterWhere = new WhereBuilder<FormFieldMasterDto>()
+                    .AndEq(x => x.ID, id);
+
+                await _sqlHelper.DeletePhysicalWhereInTxAsync<FormFieldMasterDto>(
+                    conn, tx, masterWhere, timeoutSeconds: TimeoutSeconds, ct: txCt);
+
+                return;
+            }
+
+            // 2) Dropdown IDs
+            var ddWhere = new WhereBuilder<FormDropDownDto>()
+                .AndIn(x => x.FORM_FIELD_CONFIG_ID, configIds);
+
+            var dropdowns = await _sqlHelper.SelectWhereInTxAsync<FormDropDownDto>(
+                conn, tx, ddWhere, timeoutSeconds: TimeoutSeconds, ct: txCt);
+
+            var dropdownIds = dropdowns.Select(x => x.ID).Distinct().ToList();
+
+            // 3) Delete dropdown options
+            if (dropdownIds.Count > 0)
+            {
+                var optWhere = new WhereBuilder<FormFieldDropdownOptionsDto>()
+                    .AndIn(x => x.FORM_FIELD_DROPDOWN_ID, dropdownIds);
+
+                await _sqlHelper.DeletePhysicalWhereInTxAsync<FormFieldDropdownOptionsDto>(
+                    conn, tx, optWhere, timeoutSeconds: TimeoutSeconds, ct: txCt);
+            }
+
+            // 4) Delete dropdown
+            await _sqlHelper.DeletePhysicalWhereInTxAsync<FormDropDownDto>(
+                conn, tx, ddWhere, timeoutSeconds: TimeoutSeconds, ct: txCt);
+
+            // 5) Delete validation rules
+            var ruleWhere = new WhereBuilder<FormFieldValidationRuleDto>()
+                .AndIn(x => x.FIELD_CONFIG_ID, configIds);
+
+            await _sqlHelper.DeletePhysicalWhereInTxAsync<FormFieldValidationRuleDto>(
+                conn, tx, ruleWhere, timeoutSeconds: TimeoutSeconds, ct: txCt);
+
+            // 6) Delete field configs
+            await _sqlHelper.DeletePhysicalWhereInTxAsync<FormFieldConfigDto>(
+                conn, tx, cfgWhere, timeoutSeconds: TimeoutSeconds, ct: txCt);
+
+            // 7) Delete master
+            var masterDelWhere = new WhereBuilder<FormFieldMasterDto>()
+                .AndEq(x => x.ID, id);
+
+            await _sqlHelper.DeletePhysicalWhereInTxAsync<FormFieldMasterDto>(
+                conn, tx, masterDelWhere, timeoutSeconds: TimeoutSeconds, ct: txCt);
+
+        }, ct: ct);
     }
     
     /// <summary>
@@ -1498,22 +1561,28 @@ ON target.ID = src.ID
 WHEN MATCHED THEN
     UPDATE SET
         FORM_NAME          = @FORM_NAME,
+        FORM_CODE          = @FORM_CODE,
+        FORM_DESCRIPTION   = @FORM_DESCRIPTION,
         BASE_TABLE_NAME    = @BASE_TABLE_NAME,
         VIEW_TABLE_NAME    = @VIEW_TABLE_NAME,
         MAPPING_TABLE_NAME = @MAPPING_TABLE_NAME,
         BASE_TABLE_ID      = @BASE_TABLE_ID,
         VIEW_TABLE_ID      = @VIEW_TABLE_ID,
         MAPPING_TABLE_ID   = @MAPPING_TABLE_ID,
-        STATUS             = @STATUS,          
-        SCHEMA_TYPE        = @SCHEMA_TYPE,    
+        STATUS             = @STATUS,
+        SCHEMA_TYPE        = @SCHEMA_TYPE,
         FUNCTION_TYPE      = @FUNCTION_TYPE
 WHEN NOT MATCHED THEN
     INSERT (
-        ID, FORM_NAME, BASE_TABLE_NAME, VIEW_TABLE_NAME, MAPPING_TABLE_NAME,
-        BASE_TABLE_ID, VIEW_TABLE_ID, MAPPING_TABLE_ID, STATUS, SCHEMA_TYPE, FUNCTION_TYPE, IS_DELETE)
+        ID, FORM_NAME, FORM_CODE, FORM_DESCRIPTION,
+        BASE_TABLE_NAME, VIEW_TABLE_NAME, MAPPING_TABLE_NAME,
+        BASE_TABLE_ID, VIEW_TABLE_ID, MAPPING_TABLE_ID,
+        STATUS, SCHEMA_TYPE, FUNCTION_TYPE, IS_DELETE)
     VALUES (
-        @ID, @FORM_NAME, @BASE_TABLE_NAME, @VIEW_TABLE_NAME, @MAPPING_TABLE_NAME,
-        @BASE_TABLE_ID, @VIEW_TABLE_ID, @MAPPING_TABLE_ID, @STATUS, @SCHEMA_TYPE, @FUNCTION_TYPE, 0)
+        @ID, @FORM_NAME, @FORM_CODE, @FORM_DESCRIPTION,
+        @BASE_TABLE_NAME, @VIEW_TABLE_NAME, @MAPPING_TABLE_NAME,
+        @BASE_TABLE_ID, @VIEW_TABLE_ID, @MAPPING_TABLE_ID,
+        @STATUS, @SCHEMA_TYPE, @FUNCTION_TYPE, 0)
 OUTPUT INSERTED.ID;";
 
         public const string CheckFormMasterExists = @"/**/
