@@ -333,7 +333,7 @@ ORDER BY roc.BAS_ROUTE_OPERATION_SID, roc.SEQ;";
             {
                 foreach (var item in updates)
                 {
-                    var affected = await _db.ExecuteAsync(
+                    var affected = await _db.ExecuteInTxAsync(
                         conn,
                         tx,
                         sqlUpdate,

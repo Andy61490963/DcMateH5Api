@@ -1,11 +1,13 @@
 ﻿using System.Collections.Concurrent;
 using System.ComponentModel.DataAnnotations;
 using System.ComponentModel.DataAnnotations.Schema;
+using System.Data;
 using System.IdentityModel.Tokens.Jwt;
 using System.Linq.Expressions;
 using System.Reflection;
 using Dapper;
 using Microsoft.AspNetCore.Http;
+using Microsoft.Data.SqlClient;
 
 namespace DcMateH5Api.SqlHelper
 {
@@ -52,8 +54,11 @@ namespace DcMateH5Api.SqlHelper
             return Guid.TryParse(raw, out var gid) ? gid : Guid.Empty;
         }
 
-        private Task<DateTime> GetDbUtcNowAsync(CancellationToken ct)
+        private Task<DateTime> GetDbNowAsync(CancellationToken ct)
             => _db.ExecuteScalarAsync<DateTime>("SELECT SYSDATETIME();", ct: ct);
+
+        private Task<DateTime> GetDbNowInTxAsync(SqlConnection conn, SqlTransaction tx, CancellationToken ct)
+            => _db.ExecuteScalarInTxAsync<DateTime>(conn, tx, "SELECT SYSDATETIME();", ct: ct);
 
         private static void AddAuditForInsert(List<string> cols, List<string> vals, DynamicParameters dp, Guid uid, DateTime now)
         {
@@ -69,8 +74,24 @@ namespace DcMateH5Api.SqlHelper
             sets.Add($"[{COL_EDIT_USER}] = @{P_EDIT_USER}"); dp.Add(P_EDIT_USER, uid);
             sets.Add($"[{COL_EDIT_TIME}] = @{P_EDIT_TIME}"); dp.Add(P_EDIT_TIME, now);
         }
+        
+        #region Transaction
 
-        // --------------------------- Insert ---------------------------
+        public Task TxAsync(
+            Func<SqlConnection, SqlTransaction, CancellationToken, Task> work,
+            IsolationLevel isolation = IsolationLevel.ReadCommitted,
+            CancellationToken ct = default)
+            => _db.TxAsync(work, isolation: isolation, ct: ct);
+
+        public Task<TResult> TxAsync<TResult>(
+            Func<SqlConnection, SqlTransaction, CancellationToken, Task<TResult>> work,
+            IsolationLevel isolation = IsolationLevel.ReadCommitted,
+            CancellationToken ct = default)
+            => _db.TxAsync(work, isolation: isolation, ct: ct);
+
+        #endregion
+        
+        #region Insert
 
         public async Task<int> InsertAsync<T>(T entity, CancellationToken ct = default)
         {
@@ -84,12 +105,37 @@ namespace DcMateH5Api.SqlHelper
             if (EnableAuditColumns)
             {
                 var id = CurrentUserIdOrEmpty();
-                var now = await GetDbUtcNowAsync(ct);
+                var now = await GetDbNowAsync(ct);
                 AddAuditForInsert(cols, vals, dp, id, now);
             }
 
             var sql = $"INSERT INTO {table} ({string.Join(", ", cols)}) VALUES ({string.Join(", ", vals)});";
             return await _db.ExecuteAsync(sql, dp, ct: ct);
+        }
+
+        public async Task<int> InsertInTxAsync<T>(
+            SqlConnection conn,
+            SqlTransaction tx,
+            T entity,
+            int? timeoutSeconds = null,
+            CancellationToken ct = default)
+        {
+            var (table, props, rowVersion, _, colByProp) = Reflect<T>();
+
+            var toInsert = props.Where(p => p != rowVersion).ToList();
+            var cols = new List<string>(toInsert.Select(p => $"[{colByProp[p.Name]}]"));
+            var vals = new List<string>(toInsert.Select(p => "@" + p.Name));
+            var dp = new DynamicParameters(entity);
+
+            if (EnableAuditColumns)
+            {
+                var uid = CurrentUserIdOrEmpty();
+                var now = await GetDbNowInTxAsync(conn, tx, ct);
+                AddAuditForInsert(cols, vals, dp, uid, now);
+            }
+
+            var sql = $"INSERT INTO {table} ({string.Join(", ", cols)}) VALUES ({string.Join(", ", vals)});";
+            return await _db.ExecuteInTxAsync(conn, tx, sql, dp, timeoutSeconds: timeoutSeconds, commandType: CommandType.Text, ct: ct);
         }
 
         public async Task<long?> InsertAndGetIdentityAsync<T>(T entity, bool enableAuditColumns = false, CancellationToken ct = default)
@@ -104,7 +150,7 @@ namespace DcMateH5Api.SqlHelper
             if (enableAuditColumns)
             {
                 var uid = CurrentUserIdOrEmpty();
-                var now = await GetDbUtcNowAsync(ct);
+                var now = await GetDbNowAsync(ct);
                 AddAuditForInsert(cols, vals, dp, uid, now);
             }
 
@@ -112,7 +158,35 @@ namespace DcMateH5Api.SqlHelper
             return await _db.ExecuteScalarAsync<long?>(sql, dp, ct: ct);
         }
 
-        // --------------------------- Update ---------------------------
+        public async Task<long?> InsertAndGetIdentityInTxAsync<T>(
+            SqlConnection conn,
+            SqlTransaction tx,
+            T entity,
+            bool enableAuditColumns = false,
+            int? timeoutSeconds = null,
+            CancellationToken ct = default)
+        {
+            var (table, props, rowVersion, _, colByProp) = Reflect<T>();
+
+            var toInsert = props.Where(p => p != rowVersion).ToList();
+            var cols = new List<string>(toInsert.Select(p => $"[{colByProp[p.Name]}]"));
+            var vals = new List<string>(toInsert.Select(p => "@" + p.Name));
+            var dp = new DynamicParameters(entity);
+
+            if (enableAuditColumns)
+            {
+                var uid = CurrentUserIdOrEmpty();
+                var now = await GetDbNowInTxAsync(conn, tx, ct);
+                AddAuditForInsert(cols, vals, dp, uid, now);
+            }
+
+            var sql = $"INSERT INTO {table} ({string.Join(", ", cols)}) VALUES ({string.Join(", ", vals)}); SELECT CAST(SCOPE_IDENTITY() AS bigint);";
+            return await _db.ExecuteScalarInTxAsync<long?>(conn, tx, sql, dp, timeoutSeconds: timeoutSeconds, commandType: CommandType.Text, ct: ct);
+        }
+
+        #endregion
+        
+        #region Update
 
         /// <summary>
         /// Fluent 入口：以主鍵 Id 啟動更新。
@@ -121,10 +195,14 @@ namespace DcMateH5Api.SqlHelper
         public UpdateByIdBuilder<T> UpdateById<T>(object id) => new(this, id);
 
         /// <summary>
-        /// 舊版整筆更新（保留相容；建議改用 UpdateById）。 
+        /// 舊版整筆更新（保留相容；建議改用 UpdateById）。
         /// </summary>
         [Obsolete("如果要針對特定欄位進行更新，使用UpdateById")]
-        public async Task<int> UpdateAllByIdAsync<T>(T entity, UpdateNullBehavior mode = UpdateNullBehavior.IncludeNulls, bool enableAuditColumns = false, CancellationToken ct = default)
+        public async Task<int> UpdateAllByIdAsync<T>(
+            T entity,
+            UpdateNullBehavior mode = UpdateNullBehavior.IncludeNulls,
+            bool enableAuditColumns = false,
+            CancellationToken ct = default)
         {
             var (table, props, rowVersion, key, colByProp) = Reflect<T>();
 
@@ -141,7 +219,7 @@ namespace DcMateH5Api.SqlHelper
             if (enableAuditColumns)
             {
                 var uid = CurrentUserIdOrEmpty();
-                var now = await GetDbUtcNowAsync(ct);
+                var now = await GetDbNowAsync(ct);
                 AddAuditForUpdate(sets, dp, uid, now);
             }
 
@@ -153,13 +231,63 @@ namespace DcMateH5Api.SqlHelper
             return await _db.ExecuteAsync(sql, dp, ct: ct);
         }
 
-        // ---------------------- Select / Delete -----------------------
+        public async Task<int> UpdateAllByIdInTxAsync<T>(
+            SqlConnection conn,
+            SqlTransaction tx,
+            T entity,
+            UpdateNullBehavior mode = UpdateNullBehavior.IncludeNulls,
+            bool enableAuditColumns = false,
+            int? timeoutSeconds = null,
+            CancellationToken ct = default)
+        {
+            var (table, props, rowVersion, key, colByProp) = Reflect<T>();
+
+            var updatable = props.Where(p => p != key && p != rowVersion).ToList();
+            if (mode == UpdateNullBehavior.IgnoreNulls)
+                updatable = updatable.Where(p => p.GetValue(entity) != null).ToList();
+
+            if (updatable.Count == 0)
+                throw new ArgumentException("沒有可更新的欄位（可能全部為 null 且 IgnoreNulls）");
+
+            var sets = new List<string>(updatable.Select(p => $"[{colByProp[p.Name]}] = @{p.Name}"));
+            var dp = new DynamicParameters(entity);
+
+            if (enableAuditColumns)
+            {
+                var uid = CurrentUserIdOrEmpty();
+                var now = await GetDbNowInTxAsync(conn, tx, ct);
+                AddAuditForUpdate(sets, dp, uid, now);
+            }
+
+            var where = $"[{colByProp[key.Name]}] = @{key.Name}";
+            if (rowVersion != null)
+                where += $" AND [{colByProp[rowVersion.Name]}] = @{rowVersion.Name}";
+
+            var sql = $"UPDATE {table} SET {string.Join(", ", sets)} WHERE {where};";
+            return await _db.ExecuteInTxAsync(conn, tx, sql, dp, timeoutSeconds: timeoutSeconds, commandType: CommandType.Text, ct: ct);
+        }
+
+        #endregion
+        
+        #region Select / Delete
 
         public async Task<List<T>> SelectAsync<T>(CancellationToken ct = default)
         {
             var (table, props, _, _, colByProp) = Reflect<T>();
             var cols = string.Join(", ", props.Select(p => $"[{colByProp[p.Name]}] AS [{p.Name}]"));
             return await _db.QueryAsync<T>($"SELECT {cols} FROM {table};", ct: ct);
+        }
+
+        public async Task<List<T>> SelectInTxAsync<T>(
+            SqlConnection conn,
+            SqlTransaction tx,
+            int? timeoutSeconds = null,
+            CancellationToken ct = default)
+        {
+            var (table, props, _, _, colByProp) = Reflect<T>();
+            var cols = string.Join(", ", props.Select(p => $"[{colByProp[p.Name]}] AS [{p.Name}]"));
+            return await _db.QueryInTxAsync<T>(conn, tx, $"SELECT {cols} FROM {table};",
+                param: null, timeoutSeconds: timeoutSeconds, commandType: CommandType.Text, ct: ct);
         }
 
         public async Task<List<T>> SelectWhereAsync<T>(WhereBuilder<T> where, CancellationToken ct = default)
@@ -170,12 +298,40 @@ namespace DcMateH5Api.SqlHelper
             return await _db.QueryAsync<T>($"SELECT {cols} FROM {table} {w};", param, ct: ct);
         }
 
+        public async Task<List<T>> SelectWhereInTxAsync<T>(
+            SqlConnection conn,
+            SqlTransaction tx,
+            WhereBuilder<T> where,
+            int? timeoutSeconds = null,
+            CancellationToken ct = default)
+        {
+            var (table, props, _, _, colByProp) = Reflect<T>();
+            var cols = string.Join(", ", props.Select(p => $"[{colByProp[p.Name]}] AS [{p.Name}]"));
+            var (w, param) = where.Build();
+            var sql = $"SELECT {cols} FROM {table} {w};";
+            return await _db.QueryInTxAsync<T>(conn, tx, sql, param, timeoutSeconds: timeoutSeconds, commandType: CommandType.Text, ct: ct);
+        }
+
         public async Task<T?> SelectFirstOrDefaultAsync<T>(WhereBuilder<T> where, CancellationToken ct = default)
         {
             var (table, props, _, _, colByProp) = Reflect<T>();
             var cols = string.Join(", ", props.Select(p => $"[{colByProp[p.Name]}] AS [{p.Name}]"));
             var (w, param) = where.Build();
             return await _db.QueryFirstOrDefaultAsync<T>($"SELECT TOP (1) {cols} FROM {table} {w};", param, ct: ct);
+        }
+
+        public async Task<T?> SelectFirstOrDefaultInTxAsync<T>(
+            SqlConnection conn,
+            SqlTransaction tx,
+            WhereBuilder<T> where,
+            int? timeoutSeconds = null,
+            CancellationToken ct = default)
+        {
+            var (table, props, _, _, colByProp) = Reflect<T>();
+            var cols = string.Join(", ", props.Select(p => $"[{colByProp[p.Name]}] AS [{p.Name}]"));
+            var (w, param) = where.Build();
+            var sql = $"SELECT TOP (1) {cols} FROM {table} {w};";
+            return await _db.QueryFirstOrDefaultInTxAsync<T>(conn, tx, sql, param, timeoutSeconds: timeoutSeconds, commandType: CommandType.Text, ct: ct);
         }
 
         public async Task<int> DeleteWhereAsync<T>(WhereBuilder<T> where, CancellationToken ct = default)
@@ -185,7 +341,43 @@ namespace DcMateH5Api.SqlHelper
             return await _db.ExecuteAsync($"UPDATE {table} SET [{COL_IS_DELETE}] = 1 {w};", param, ct: ct);
         }
 
-        // ------------------------ 反射快取 ------------------------
+        public async Task<int> DeleteWhereInTxAsync<T>(
+            SqlConnection conn,
+            SqlTransaction tx,
+            WhereBuilder<T> where,
+            int? timeoutSeconds = null,
+            CancellationToken ct = default)
+        {
+            var (table, _, _, _, _) = Reflect<T>();
+            var (w, param) = where.Build();
+            var sql = $"UPDATE {table} SET [{COL_IS_DELETE}] = 1 {w};";
+            return await _db.ExecuteInTxAsync(conn, tx, sql, param, timeoutSeconds: timeoutSeconds, commandType: CommandType.Text, ct: ct);
+        }
+
+        /// <summary>
+        /// [ !!!!謹慎使用 ] 物理刪除（Tx 版本）
+        /// </summary>
+        public async Task<int> DeletePhysicalWhereInTxAsync<T>(
+            SqlConnection conn,
+            SqlTransaction tx,
+            WhereBuilder<T> where,
+            int? timeoutSeconds = null,
+            CancellationToken ct = default)
+        {
+            var (table, _, _, _, _) = Reflect<T>();
+            var (w, param) = where.Build();
+
+            if (string.IsNullOrWhiteSpace(w))
+                throw new InvalidOperationException(
+                    $"DeletePhysicalWhereInTxAsync<{typeof(T).Name}> 必須提供 WHERE 條件，禁止全表物理刪除。");
+
+            var sql = $"DELETE FROM {table} {w};";
+            return await _db.ExecuteInTxAsync(conn, tx, sql, param, timeoutSeconds: timeoutSeconds, commandType: CommandType.Text, ct: ct);
+        }
+
+        #endregion 
+        
+        #region 反射快取 
 
         private static readonly ConcurrentDictionary<Type, (string table, List<PropertyInfo> props, PropertyInfo? rowVersion, PropertyInfo key, Dictionary<string, string> colByProp)>
             _metaCache = new();
@@ -221,6 +413,7 @@ namespace DcMateH5Api.SqlHelper
             });
         }
 
+        #endregion
         // -------------------- Fluent Update Builder --------------------
 
         public sealed class UpdateByIdBuilder<T>
@@ -254,15 +447,14 @@ namespace DcMateH5Api.SqlHelper
             /// <summary>若 T 有 [Timestamp] 欄位，請帶前端取得的原始值</summary>
             public UpdateByIdBuilder<T> WithRowVersion(byte[]? rv) { _rowVersion = rv; return this; }
 
-            /// <summary>組 SQL 並執行</summary>
+            /// <summary>組 SQL 並執行（短連線版本）</summary>
             public async Task<int> ExecuteAsync(CancellationToken ct = default)
             {
-                var (table, props, rowVersion, key, colByProp) = Reflect<T>();
+                var (table, _, rowVersion, key, colByProp) = Reflect<T>();
 
                 if (_setters.Count == 0)
                     throw new InvalidOperationException("請至少 Set 一個欄位。");
 
-                // 移除不可更新欄位（主鍵/RowVersion），同欄位以最後一次 Set 為準
                 var candidates = _setters
                     .Where(s => s.Prop != key && (rowVersion == null || s.Prop != rowVersion))
                     .GroupBy(s => s.Prop.Name, StringComparer.OrdinalIgnoreCase)
@@ -276,7 +468,7 @@ namespace DcMateH5Api.SqlHelper
                     throw new ArgumentException("沒有可更新的欄位（可能皆為 null 且 IgnoreNulls）。");
 
                 var sets = new List<string>(capacity: candidates.Count + 2);
-                var dp   = new DynamicParameters();
+                var dp = new DynamicParameters();
 
                 foreach (var (prop, val) in candidates)
                 {
@@ -287,15 +479,13 @@ namespace DcMateH5Api.SqlHelper
                 if (_audit)
                 {
                     var uid = _h.CurrentUserIdOrEmpty();
-                    var now = await _h.GetDbUtcNowAsync(ct);
+                    var now = await _h.GetDbNowAsync(ct);
                     AddAuditForUpdate(sets, dp, uid, now);
                 }
 
-                // WHERE 主鍵
                 dp.Add(key.Name, ConvertTo(key.PropertyType, _id));
                 var where = $"[{colByProp[key.Name]}] = @{key.Name}";
 
-                // 若有 RowVersion，強制要求呼叫端帶原值做樂觀鎖
                 if (rowVersion != null)
                 {
                     if (_rowVersion is null) throw new InvalidOperationException("此實體含 [Timestamp]，請呼叫 WithRowVersion(...) 帶原值。");
@@ -307,7 +497,60 @@ namespace DcMateH5Api.SqlHelper
                 return await _h._db.ExecuteAsync(sql, dp, ct: ct);
             }
 
-            // 取出屬性資訊（支援 x => x.Prop / 裝箱）
+            /// <summary>組 SQL 並執行（Tx 版本）</summary>
+            public async Task<int> ExecuteInTxAsync(
+                SqlConnection conn,
+                SqlTransaction tx,
+                int? timeoutSeconds = null,
+                CancellationToken ct = default)
+            {
+                var (table, _, rowVersion, key, colByProp) = Reflect<T>();
+
+                if (_setters.Count == 0)
+                    throw new InvalidOperationException("請至少 Set 一個欄位。");
+
+                var candidates = _setters
+                    .Where(s => s.Prop != key && (rowVersion == null || s.Prop != rowVersion))
+                    .GroupBy(s => s.Prop.Name, StringComparer.OrdinalIgnoreCase)
+                    .Select(g => g.Last())
+                    .ToList();
+
+                if (_mode == UpdateNullBehavior.IgnoreNulls)
+                    candidates = candidates.Where(s => s.Value != null).ToList();
+
+                if (candidates.Count == 0)
+                    throw new ArgumentException("沒有可更新的欄位（可能皆為 null 且 IgnoreNulls）。");
+
+                var sets = new List<string>(capacity: candidates.Count + 2);
+                var dp = new DynamicParameters();
+
+                foreach (var (prop, val) in candidates)
+                {
+                    sets.Add($"[{colByProp[prop.Name]}] = @{prop.Name}");
+                    dp.Add(prop.Name, val);
+                }
+
+                if (_audit)
+                {
+                    var uid = _h.CurrentUserIdOrEmpty();
+                    var now = await _h.GetDbNowInTxAsync(conn, tx, ct);
+                    AddAuditForUpdate(sets, dp, uid, now);
+                }
+
+                dp.Add(key.Name, ConvertTo(key.PropertyType, _id));
+                var where = $"[{colByProp[key.Name]}] = @{key.Name}";
+
+                if (rowVersion != null)
+                {
+                    if (_rowVersion is null) throw new InvalidOperationException("此實體含 [Timestamp]，請呼叫 WithRowVersion(...) 帶原值。");
+                    dp.Add(rowVersion.Name, _rowVersion);
+                    where += $" AND [{colByProp[rowVersion.Name]}] = @{rowVersion.Name}";
+                }
+
+                var sql = $"UPDATE {table} SET {string.Join(", ", sets)} WHERE {where};";
+                return await _h._db.ExecuteInTxAsync(conn, tx, sql, dp, timeoutSeconds: timeoutSeconds, commandType: CommandType.Text, ct: ct);
+            }
+
             internal static PropertyInfo GetProperty(Expression<Func<T, object>> selector)
             {
                 if (selector.Body is MemberExpression me && me.Member is PropertyInfo pi) return pi;
@@ -358,16 +601,23 @@ namespace DcMateH5Api.SqlHelper
 
         public WhereBuilder<T> AndIn<TVal>(Expression<Func<T, object>> field, IEnumerable<TVal> values)
         {
+            var list = values?.ToList() ?? throw new ArgumentNullException(nameof(values));
+            if (list.Count == 0)
+            {
+                _clauses.Add("1 = 0"); // 避免 IN ()，且語意是「不可能命中」
+                return this;
+            }
+
             var col = GetColumnName(field);
             var p = Next(col);
-            _clauses.Add($"[{col}] IN @{p}"); // Dapper 會展開 IEnumerable
-            _param.Add(p, values);
+            _clauses.Add($"[{col}] IN @{p}");
+            _param.Add(p, list);
             return this;
         }
 
-        public WhereBuilder<T> AndGt (Expression<Func<T, object>> f, object v) => Add(f, ">",  v);
+        public WhereBuilder<T> AndGt(Expression<Func<T, object>> f, object v) => Add(f, ">", v);
         public WhereBuilder<T> AndGte(Expression<Func<T, object>> f, object v) => Add(f, ">=", v);
-        public WhereBuilder<T> AndLt (Expression<Func<T, object>> f, object v) => Add(f, "<",  v);
+        public WhereBuilder<T> AndLt(Expression<Func<T, object>> f, object v) => Add(f, "<", v);
         public WhereBuilder<T> AndLte(Expression<Func<T, object>> f, object v) => Add(f, "<=", v);
 
         public WhereBuilder<T> AndBetween(Expression<Func<T, object>> field, object from, object to)

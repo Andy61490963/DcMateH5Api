@@ -159,7 +159,6 @@ public sealed class DbExecutor : IDbExecutor
         catch (Exception ex)
         {
             // 失敗不處理，會影響主交易
-            throw new InvalidOperationException("SQL Log 寫入失敗", ex);
         }
     }
 
@@ -333,7 +332,7 @@ public sealed class DbExecutor : IDbExecutor
     // 有交易版本 (使用既有 conn/tx)
     // -------------------------
     // （以下跟上面幾乎一樣，只是多帶 SqlConnection / SqlTransaction）
-    public async Task<List<T>> QueryAsync<T>(SqlConnection conn, SqlTransaction? tx,
+    public async Task<List<T>> QueryInTxAsync<T>(SqlConnection conn, SqlTransaction tx,
         string sql, object? param = null, int? timeoutSeconds = null,
         CommandType commandType = CommandType.Text, CancellationToken ct = default)
     {
@@ -363,7 +362,7 @@ public sealed class DbExecutor : IDbExecutor
         }
     }
 
-    public async Task<T?> QueryFirstOrDefaultAsync<T>(SqlConnection conn, SqlTransaction? tx,
+    public async Task<T?> QueryFirstOrDefaultInTxAsync<T>(SqlConnection conn, SqlTransaction tx,
         string sql, object? param = null, int? timeoutSeconds = null,
         CommandType commandType = CommandType.Text, CancellationToken ct = default)
     {
@@ -391,7 +390,7 @@ public sealed class DbExecutor : IDbExecutor
         }
     }
 
-    public async Task<T?> QuerySingleOrDefaultAsync<T>(SqlConnection conn, SqlTransaction? tx,
+    public async Task<T?> QuerySingleOrDefaultInTxAsync<T>(SqlConnection conn, SqlTransaction tx,
         string sql, object? param = null, int? timeoutSeconds = null,
         CommandType commandType = CommandType.Text, CancellationToken ct = default)
     {
@@ -419,7 +418,7 @@ public sealed class DbExecutor : IDbExecutor
         }
     }
 
-    public async Task<int> ExecuteAsync(SqlConnection conn, SqlTransaction? tx,
+    public async Task<int> ExecuteInTxAsync(SqlConnection conn, SqlTransaction tx,
         string sql, object? param = null, int? timeoutSeconds = null,
         CommandType commandType = CommandType.Text, CancellationToken ct = default)
     {
@@ -447,7 +446,7 @@ public sealed class DbExecutor : IDbExecutor
         }
     }
 
-    public async Task<T?> ExecuteScalarAsync<T>(SqlConnection conn, SqlTransaction? tx,
+    public async Task<T?> ExecuteScalarInTxAsync<T>(SqlConnection conn, SqlTransaction tx,
         string sql, object? param = null, int? timeoutSeconds = null,
         CommandType commandType = CommandType.Text, CancellationToken ct = default)
     {

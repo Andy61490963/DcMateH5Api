@@ -13,6 +13,11 @@ public interface IDbExecutor
         int? timeoutSeconds = null, CommandType commandType = CommandType.Text,
         CancellationToken ct = default);
 
+    Task<T?> QuerySingleOrDefaultAsync<T>(
+        string sql, object? param = null,
+        int? timeoutSeconds = null, CommandType commandType = CommandType.Text,
+        CancellationToken ct = default);
+    
     Task<int> ExecuteAsync(
         string sql, object? param = null,
         int? timeoutSeconds = null, CommandType commandType = CommandType.Text,
@@ -25,29 +30,24 @@ public interface IDbExecutor
         CommandType commandType = CommandType.Text,
         CancellationToken ct = default);
     
-    Task<T?> QuerySingleOrDefaultAsync<T>(
-        string sql, object? param = null,
-        int? timeoutSeconds = null, CommandType commandType = CommandType.Text,
-        CancellationToken ct = default);
-    
     // 有交易
-    Task<List<T>> QueryAsync<T>(SqlConnection conn, SqlTransaction? tx,
+    Task<List<T>> QueryInTxAsync<T>(SqlConnection conn, SqlTransaction tx,
         string sql, object? param = null, int? timeoutSeconds = null,
         CommandType commandType = CommandType.Text, CancellationToken ct = default);
 
-    Task<T?> QueryFirstOrDefaultAsync<T>(SqlConnection conn, SqlTransaction? tx,
+    Task<T?> QueryFirstOrDefaultInTxAsync<T>(SqlConnection conn, SqlTransaction tx,
         string sql, object? param = null, int? timeoutSeconds = null,
         CommandType commandType = CommandType.Text, CancellationToken ct = default);
 
-    Task<T?> QuerySingleOrDefaultAsync<T>(SqlConnection conn, SqlTransaction? tx,
+    Task<T?> QuerySingleOrDefaultInTxAsync<T>(SqlConnection conn, SqlTransaction tx,
         string sql, object? param = null, int? timeoutSeconds = null,
         CommandType commandType = CommandType.Text, CancellationToken ct = default);
 
-    Task<int> ExecuteAsync(SqlConnection conn, SqlTransaction? tx,
+    Task<int> ExecuteInTxAsync(SqlConnection conn, SqlTransaction tx,
         string sql, object? param = null, int? timeoutSeconds = null,
         CommandType commandType = CommandType.Text, CancellationToken ct = default);
 
-    Task<T?> ExecuteScalarAsync<T>(SqlConnection conn, SqlTransaction? tx,
+    Task<T?> ExecuteScalarInTxAsync<T>(SqlConnection conn, SqlTransaction tx,
         string sql, object? param = null, int? timeoutSeconds = null,
         CommandType commandType = CommandType.Text, CancellationToken ct = default);
     

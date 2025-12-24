@@ -60,9 +60,9 @@ public class FormDesignerController : ControllerBase
     [HttpDelete("{id}")]
     [ProducesResponseType(StatusCodes.Status204NoContent)]
     [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status400BadRequest)]
-    public IActionResult Delete( Guid id )
+    public async Task<IActionResult> Delete( Guid id )
     {
-        _formDesignerService.DeleteFormMaster( id );
+        await _formDesignerService.DeleteFormMaster( id );
         return NoContent();
     }
     
