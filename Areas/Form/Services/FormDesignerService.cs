@@ -621,19 +621,17 @@ ORDER BY TABLE_SCHEMA, TABLE_NAME;";
                 break;
         }
         
-        // 4) 取得目前已存在的欄位設定（若有）
-        // - formMasterId 代表「這次操作所屬的主檔」
-        // - 若為 null，代表可能是第一次進入，需要從現有設定或建立新主檔
-        var configs = await GetFieldConfigs(tableName, formMasterId);
-        
         // 決定最終使用的 FORM_FIELD_MASTER_ID：
         // 1. 優先使用呼叫端傳入的 formMasterId
         // 2. 否則從既有欄位設定中推斷
         // 3. 若仍不存在，則建立新的 FormMaster
         // TODO: 之後需要釐清是否需要configs.Values.FirstOrDefault()?.FORM_FIELD_MASTER_ID
-        var masterId = formMasterId
-                       ?? configs.Values.FirstOrDefault()?.FORM_FIELD_MASTER_ID
-                       ?? GetOrCreateFormMasterId(master);
+        var masterId = formMasterId ?? GetOrCreateFormMasterId(master);
+        
+        // 4) 取得目前已存在的欄位設定（若有）
+        // - formMasterId 代表「這次操作所屬的主檔」
+        // - 若為 null，代表可能是第一次進入，需要從現有設定或建立新主檔
+        var configs = await GetFieldConfigs(tableName, masterId);
         
         // 5) 計算欄位排序起始值
         // - 既有欄位保留原排序
@@ -1570,9 +1568,19 @@ WHEN NOT MATCHED THEN
 OUTPUT INSERTED.ID;";
         
         public const string UpsertField = @"
-MERGE FORM_FIELD_CONFIG AS target
-USING (VALUES (@ID)) AS src(ID)
-ON target.ID = src.ID
+MERGE dbo.FORM_FIELD_CONFIG WITH (HOLDLOCK) AS target
+
+USING (
+    SELECT
+        @FORM_FIELD_MASTER_ID AS FORM_FIELD_MASTER_ID,
+        @TABLE_NAME           AS TABLE_NAME,
+        @COLUMN_NAME          AS COLUMN_NAME
+) AS src
+ON  target.FORM_FIELD_MASTER_ID = src.FORM_FIELD_MASTER_ID
+AND target.TABLE_NAME           = src.TABLE_NAME
+AND target.COLUMN_NAME          = src.COLUMN_NAME
+AND target.IS_DELETE            = 0
+
 WHEN MATCHED THEN
     UPDATE SET
         CONTROL_TYPE   = @CONTROL_TYPE,

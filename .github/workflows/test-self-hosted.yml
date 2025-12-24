@@ -1,0 +1,26 @@
+name: Test Self Hosted Runner
+
+on:
+  workflow_dispatch:
+
+jobs:
+  test:
+    runs-on: [self-hosted, windows, iis, dcmate]
+
+    steps:
+      - name: Show runner info
+        run: |
+          echo "Runner name: $env:RUNNER_NAME"
+          echo "Machine name:"
+          hostname
+          echo "User:"
+          whoami
+
+      - name: Check .NET
+        run: dotnet --version
+
+      - name: Check IIS
+        shell: pwsh
+        run: |
+          Import-Module WebAdministration
+          Get-Website | Select-Object Name, State
