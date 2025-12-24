@@ -1,11 +1,11 @@
 name: Test Self Hosted Runner
 
-on:
+"on":
   workflow_dispatch:
 
 jobs:
   test:
-    runs-on: [self-hosted, windows, iis, dcmate]
+    runs-on: [self-hosted, Windows, iis, dcmate]
 
     steps:
       - name: Show runner info
