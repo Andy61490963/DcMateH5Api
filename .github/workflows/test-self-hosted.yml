@@ -5,10 +5,8 @@ on:
 
 env:
   PROJECT_PATH: "DcMateH5Api.csproj"
-
   DEPLOY_ROOT: "C:\\CICDDeploy"
   PUBLISH_DIR: "C:\\CICDDeploy\\publish"
-
   IIS_PHYSICAL_PATH: "C:\\inetpub\\wwwroot\\測試"
   IIS_APP_POOL: "DcMateH5Api"
 
@@ -20,11 +18,10 @@ jobs:
       - name: Ensure pwsh path for Actions
         shell: powershell
         run: |
-          $ps7Dir = "$env:ProgramFiles\PowerShell\7"
-          if (Test-Path (Join-Path $ps7Dir "pwsh.exe")) {
-            $ps7Dir | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
-          }
-          pwsh -NoLogo -NoProfile -Command '$PSVersionTable.PSVersion'
+          $ps7 = Join-Path "$env:ProgramFiles\PowerShell\7" "pwsh.exe"
+          if (!(Test-Path $ps7)) { throw "pwsh.exe not found at: $ps7" }
+          Split-Path $ps7 | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
+          & $ps7 -NoLogo -NoProfile -Command '$PSVersionTable.PSVersion'
           where.exe pwsh
 
       - name: Checkout
@@ -34,135 +31,59 @@ jobs:
         shell: pwsh
         run: |
           $ErrorActionPreference = 'Stop'
-
-          $root    = $env:DEPLOY_ROOT
-          $publish = $env:PUBLISH_DIR
-          $target  = $env:IIS_PHYSICAL_PATH
-
-          foreach ($p in @($root, $publish, $target)) {
-            if (!(Test-Path $p)) {
-              New-Item -ItemType Directory -Path $p | Out-Null
-            }
+          foreach ($p in @($env:DEPLOY_ROOT, $env:PUBLISH_DIR, $env:IIS_PHYSICAL_PATH)) {
+            if (!(Test-Path $p)) { New-Item -ItemType Directory -Path $p | Out-Null }
           }
-
-          Write-Host "DEPLOY_ROOT: $root"
-          Write-Host "PUBLISH_DIR : $publish"
-          Write-Host "IIS_TARGET  : $target"
+          Write-Host "PUBLISH_DIR: $env:PUBLISH_DIR"
+          Write-Host "IIS_PATH   : $env:IIS_PHYSICAL_PATH"
 
       - name: Publish (Release)
         shell: pwsh
         run: |
           $ErrorActionPreference = 'Stop'
 
-          $project = $env:PROJECT_PATH
-          $publish = $env:PUBLISH_DIR
-
-          Write-Host "Project: $project"
-          Write-Host "Publish: $publish"
-
           dotnet --info
-          dotnet restore "$project"
-          dotnet build "$project" -c Release --no-restore
+          dotnet restore $env:PROJECT_PATH
+          dotnet build   $env:PROJECT_PATH -c Release --no-restore
 
-          # 清空舊產物（避免殘留）
-          Remove-Item "$publish\*" -Recurse -Force -ErrorAction SilentlyContinue
+          Remove-Item "$env:PUBLISH_DIR\*" -Recurse -Force -ErrorAction SilentlyContinue
+          dotnet publish $env:PROJECT_PATH -c Release -o $env:PUBLISH_DIR --no-build
 
-          dotnet publish "$project" -c Release -o "$publish" --no-build
-
-          if (!(Test-Path "$publish")) {
-            throw "Publish folder not found: $publish"
-          }
-
-      - name: Deploy to IIS folder
+      - name: Deploy to IIS
         shell: pwsh
         run: |
           $ErrorActionPreference = 'Stop'
-          Import-Module WebAdministration -ErrorAction Stop
+          Import-Module WebAdministration -SkipEditionCheck -ErrorAction Stop
 
           $publish = $env:PUBLISH_DIR
           $target  = $env:IIS_PHYSICAL_PATH
-          $appPool = $env:IIS_APP_POOL
+          $pool    = $env:IIS_APP_POOL
 
-          Write-Host "From: $publish"
-          Write-Host "To  : $target"
-          Write-Host "Pool: $appPool"
-
-          if (!(Test-Path $target)) {
-            New-Item -ItemType Directory -Path $target | Out-Null
-          }
-
-          $offlineFile = Join-Path $target "app_offline.htm"
+          $offline = Join-Path $target "app_offline.htm"
 
           try {
-            # 1) app_offline：讓 In-Process 釋放 DLL 鎖
-            "Deploying... Please wait." | Out-File -FilePath $offlineFile -Encoding utf8
+            # 1) offline（最關鍵：解鎖 dll）
+            "Deploying... Please wait." | Out-File -FilePath $offline -Encoding utf8
 
-            # 2) Stop AppPool
-            Write-Host "Stopping AppPool: $appPool"
-            Stop-WebAppPool -Name $appPool -ErrorAction SilentlyContinue
+            # 2) stop pool
+            Stop-WebAppPool -Name $pool -ErrorAction SilentlyContinue
 
-            # 3) Wait stop
-            $timeoutSec = 30
-            for ($i = 0; $i -lt $timeoutSec; $i++) {
-              $state = (Get-WebAppPoolState -Name $appPool).Value
-              Write-Host "AppPool state: $state"
-              if ($state -eq "Stopped") { break }
-              Start-Sleep -Seconds 1
-            }
+            # 3) copy（注意：robocopy exit code 要自己判斷）
+            robocopy "$publish" "$target" /MIR /R:2 /W:2 /NFL /NDL /NP /XF "*.pdb"
+            $rc = $LASTEXITCODE
+            if ($rc -ge 8) { throw "Robocopy failed. ExitCode=$rc" }
 
-            # 4) Still not stopped -> kill only this pool's w3wp
-            $state = (Get-WebAppPoolState -Name $appPool).Value
-            if ($state -ne "Stopped") {
-              Write-Host "AppPool still not stopped. Killing w3wp for AppPool: $appPool"
-              $w3wp = Get-CimInstance Win32_Process -Filter "name='w3wp.exe'" |
-                      Where-Object { $_.CommandLine -match "ap `"$appPool`"" }
+            # ✅ 吃掉 robocopy 的非 0（不然 Actions 會當失敗）
+            $global:LASTEXITCODE = 0
 
-              foreach ($p in $w3wp) {
-                Write-Host "Killing w3wp PID=$($p.ProcessId)"
-                Stop-Process -Id $p.ProcessId -Force
-              }
-            }
+            # 4) remove offline
+            if (Test-Path $offline) { Remove-Item $offline -Force }
 
-            # 5) Robocopy with retry
-            $maxTry = 5
-            for ($try = 1; $try -le $maxTry; $try++) {
-              Write-Host "Robocopy attempt $try/$maxTry"
-              robocopy "$publish" "$target" /MIR /R:2 /W:2 /NFL /NDL /NP /XD ".git" "obj" "bin" "DcMateH5Api.Tests" /XF "*.pdb"
-              $rc = $LASTEXITCODE
-
-              if ($rc -lt 8) {
-                Write-Host "Robocopy success. ExitCode=$rc"
-                break
-              }
-
-              if ($try -eq $maxTry) { throw "Robocopy failed after retries. ExitCode=$rc" }
-              Start-Sleep -Seconds 2
-            }
-
-            # 6) Remove app_offline
-            if (Test-Path $offlineFile) { Remove-Item $offlineFile -Force }
-
-            # 7) Start AppPool + wait
-            Write-Host "Starting AppPool: $appPool"
-            Start-WebAppPool -Name $appPool
-
-            for ($i = 0; $i -lt 15; $i++) {
-              $state = (Get-WebAppPoolState -Name $appPool).Value
-              Write-Host "AppPool state: $state"
-              if ($state -eq "Started") { break }
-              Start-Sleep -Seconds 1
-            }
-
-            $state = (Get-WebAppPoolState -Name $appPool).Value
-            if ($state -ne "Started") {
-              throw "AppPool did not reach Started state. Current=$state"
-            }
-
+            # 5) start pool
+            Start-WebAppPool -Name $pool
             Write-Host "Deploy done."
           }
           finally {
-            # 失敗也別讓站台卡死在 offline
-            if (Test-Path $offlineFile) {
-              Remove-Item $offlineFile -Force -ErrorAction SilentlyContinue
-            }
+            # 失敗也不要卡 offline
+            if (Test-Path $offline) { Remove-Item $offline -Force -ErrorAction SilentlyContinue }
           }
