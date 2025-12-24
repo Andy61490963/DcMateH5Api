@@ -13,8 +13,16 @@ public class FormFieldMasterDto
     [Column("ID")]
     public Guid ID { get; set; } = Guid.NewGuid();
     
+    
+    
     [Column("FORM_NAME")]
     public string FORM_NAME { get; set; }  
+    
+    [Column("FORM_CODE")]
+    public string FORM_CODE { get; set; }  
+    
+    [Column("FORM_DESCRIPTION")]
+    public string FORM_DESCRIPTION { get; set; }  
     
     
     

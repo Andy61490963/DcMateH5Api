@@ -81,6 +81,8 @@ public class FormDesignerService : IFormDesignerService
     {
         return _sqlHelper.UpdateById<FormFieldMasterDto>(model.ID)
             .Set(x => x.FORM_NAME, model.FORM_NAME)
+            .Set(x => x.FORM_CODE, model.FORM_CODE)
+            .Set(x => x.FORM_DESCRIPTION, model.FORM_DESCRIPTION)
             .ExecuteAsync(ct);
     }
     
