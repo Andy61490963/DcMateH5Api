@@ -1,6 +1,6 @@
 name: Test Self Hosted Runner
 
-"on":
+on:
   workflow_dispatch:
 
 jobs:
