@@ -23,6 +23,10 @@
    - 多對多：`SaveMultipleMappingFormHeader` 會確認三張表存在、檢查關聯欄位（依設定尾碼比對），並以 `UpsertMultipleMappingFormMaster` 寫回 `FORM_FIELD_MASTER`。View 可選，提供顯示用途。 【F:Areas/Form/Services/FormDesignerService.cs†L1072-L1149】【F:Areas/Form/Services/FormDesignerService.cs†L1270-L1360】
    - 單表/一對多沿用原有 `SaveFormHeader`、`SaveMasterDetailFormHeader`，並帶入 `FUNCTION_TYPE`。 【F:Areas/Form/Services/FormDesignerService.cs†L946-L1053】
 
+5. **先前查詢下拉值匯入**
+   - `ImportPreviousQueryDropdownValues` 僅接受 `SELECT`，且結果欄位需使用 `AS NAME`。成功後會將 NAME 清單序列化寫入 `FORM_FIELD_DROPDOWN.DROPDOWNSQL`，並將 `IS_QUERY_DROPDOWN` 設為 `1`。 【F:Areas/Form/Controllers/FormDesignerController.cs†L410-L430】【F:Areas/Form/Services/FormDesignerService.cs†L1135-L1218】
+   - `FormService.BuildFieldViewModel` 會解析 `DROPDOWNSQL` 轉成 `PREVIOUS_QUERY_LIST` 回傳給前端。 【F:Areas/Form/Services/FormService.cs†L391-L447】
+
 ## 資料表/列舉調整
 - `FormFunctionType`：新增 `MultipleMappingMaintenance`，並以 Display 名稱標示三種模式。 【F:DcMateClassLibrary/Enum/FormFunctionType.cs†L1-L17】
 - `TableSchemaQueryType`：新增 `OnlyMapping (4)`，保留既有數值，避免舊資料斷層。 【F:DcMateClassLibrary/Enum/TableSchemaQueryType.cs†L1-L19】

@@ -12,6 +12,7 @@ using DcMateH5Api.Areas.Form.ViewModels;
 using DcMateH5Api.SqlHelper;
 using Microsoft.Data.SqlClient;
 using Microsoft.Extensions.Options;
+using System.Text.Json;
 
 namespace DcMateH5Api.Areas.Form.Services;
 
@@ -1029,6 +1030,7 @@ ORDER BY TABLE_SCHEMA, TABLE_NAME;";
     {
         return _sqlHelper.UpdateById<FormDropDownDto>(dropdownId)
             .Set(x => x.ISUSESQL, true)
+            .Set(x => x.IS_QUERY_DROPDOWN, false)
             .Set(x => x.DROPDOWNSQL, sql)
             .ExecuteAsync(ct);
     }
@@ -1110,6 +1112,32 @@ ORDER BY TABLE_SCHEMA, TABLE_NAME;";
         return result;
     }
 
+    private PreviousQueryDropdownImportResultViewModel ValidatePreviousQueryDropdownSql(string sql)
+    {
+        if (string.IsNullOrWhiteSpace(sql))
+        {
+            return new PreviousQueryDropdownImportResultViewModel
+            {
+                Success = false,
+                Message = "SQL 不可為空。"
+            };
+        }
+
+        if (!IsSelectSql(sql))
+        {
+            return new PreviousQueryDropdownImportResultViewModel
+            {
+                Success = false,
+                Message = "僅允許 SELECT 查詢語法。"
+            };
+        }
+
+        return new PreviousQueryDropdownImportResultViewModel
+        {
+            Success = true
+        };
+    }
+    
     /// <summary>
     /// 從 SQL 匯入下拉選項：要求結果欄位別名為 ID 與 NAME
     /// 1) 先 Validate SQL
@@ -1169,7 +1197,59 @@ ORDER BY TABLE_SCHEMA, TABLE_NAME;";
                 _con.Close();
         }
     }
-    
+
+    /// <summary>
+    /// 匯入先前查詢的下拉選單設定（只儲存 SQL；解析時才執行 SQL 取 NAME）。
+    /// </summary>
+    /// <param name="sql">僅允許 SELECT 的 SQL 語句</param>
+    /// <param name="dropdownId">FORM_FIELD_DROPDOWN 的ID</param>
+    /// <returns>匯入結果</returns>
+    public PreviousQueryDropdownImportResultViewModel ImportPreviousQueryDropdownValues(string sql, Guid dropdownId)
+    {
+        var validation = ValidatePreviousQueryDropdownSql(sql);
+        if (!validation.Success)
+            return validation;
+
+        var wasClosed = _con.State != System.Data.ConnectionState.Open;
+        if (wasClosed)
+            _con.Open();
+
+        using var tx = _con.BeginTransaction();
+        try
+        {
+            // 只存 SQL（不在這裡跑查詢）
+            _con.Execute(
+                Sql.UpdatePreviousQueryDropdownSourceSql,
+                new { DropdownId = dropdownId, Sql = sql },
+                tx);
+
+            tx.Commit();
+
+            return new PreviousQueryDropdownImportResultViewModel
+            {
+                Success = true,
+                Message = "匯入完成。",
+                RowCount = 0,
+                Values = new List<string>()
+            };
+        }
+        catch (Exception ex)
+        {
+            tx.Rollback();
+            return new PreviousQueryDropdownImportResultViewModel
+            {
+                Success = false,
+                Message = $"匯入失敗：{ex.Message}"
+            };
+        }
+        finally
+        {
+            if (wasClosed)
+                _con.Close();
+        }
+    }
+
+        
     public async Task<Guid> SaveFormHeader( FormHeaderViewModel model )
     {
         var whereBase = new WhereBuilder<FormFieldMasterDto>()
@@ -1503,6 +1583,26 @@ ORDER BY TABLE_SCHEMA, TABLE_NAME;";
         }
     }
 
+    /// <summary>
+    /// 判斷 SQL 是否為允許的 SELECT 查詢語法。
+    /// </summary>
+    /// <param name="sql">使用者輸入的 SQL</param>
+    /// <returns>符合查詢條件則回傳 true</returns>
+    private static bool IsSelectSql(string sql)
+    {
+        if (!Regex.IsMatch(sql, @"^\s*select\b", RegexOptions.IgnoreCase))
+        {
+            return false;
+        }
+
+        if (Regex.IsMatch(sql, @"\b(insert|update|delete|drop|alter|truncate|exec|merge)\b", RegexOptions.IgnoreCase))
+        {
+            return false;
+        }
+
+        return true;
+    }
+
 
     /// <summary>
     /// 查詢所有有設定驗證規則的欄位 ID 清單。
@@ -1731,15 +1831,23 @@ IF NOT EXISTS (
     SELECT 1 FROM FORM_FIELD_DROPDOWN WHERE FORM_FIELD_CONFIG_ID = @fieldId
 )
 BEGIN
-    INSERT INTO FORM_FIELD_DROPDOWN (ID, FORM_FIELD_CONFIG_ID, ISUSESQL, DROPDOWNSQL, IS_DELETE)
-    VALUES (NEWID(), @fieldId, @isUseSql, @sql, 0)
+    INSERT INTO FORM_FIELD_DROPDOWN (ID, FORM_FIELD_CONFIG_ID, ISUSESQL, DROPDOWNSQL, IS_QUERY_DROPDOWN, IS_DELETE)
+    VALUES (NEWID(), @fieldId, @isUseSql, @sql, 0, 0)
 END
 ";
 
         public const string UpdateDropdownSql = @"/**/
 UPDATE FORM_FIELD_DROPDOWN
 SET DROPDOWNSQL = @Sql,
-    ISUSESQL = 1
+    ISUSESQL = 1,
+    IS_QUERY_DROPDOWN = 0
+WHERE ID = @DropdownId;";
+
+        public const string UpdatePreviousQueryDropdownSourceSql = @"/**/
+UPDATE FORM_FIELD_DROPDOWN
+SET DROPDOWNSQL = @Sql,
+    ISUSESQL = 0,
+    IS_QUERY_DROPDOWN = 1
 WHERE ID = @DropdownId;";
         
         public const string UpsertDropdownOption = @"/**/
