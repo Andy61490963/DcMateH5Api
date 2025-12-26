@@ -21,6 +21,17 @@ namespace DcMateH5Api.SqlHelper
     /// <summary>
     /// 精簡版 CRUD + Fluent UpdateById。
     /// 僅依賴 DataAnnotations：[Table]、[Column]、[Key]、[Timestamp]。
+    ///
+    /// 注意：
+    /// 1. 本 Helper 會「根據 Entity 的屬性」產生 SQL；SQL 的 Table/Column 名稱來自 Attribute 或 PropertyName。
+    /// 2. DeleteWhere 系列採用軟刪除（IS_DELETE = 1）。查詢方法不會自動過濾 IS_DELETE，
+    ///    需要自行在 WhereBuilder 加上 AndNotDeleted()。
+    /// 3. EnableAuditColumns 若啟用，INSERT/UPDATE 會固定嘗試寫入審計欄位：
+    ///    CREATE_USER / CREATE_TIME / EDIT_USER / EDIT_TIME / IS_DELETE。
+    ///    → 因為目前不會檢查資料表是否存在這些欄位，
+    ///      所以「只有在所有目標表都具備上述欄位」時才建議開啟。
+    /// 4. 若 Entity 含 [Timestamp] 欄位，UpdateById 會自動做樂觀鎖，
+    ///    呼叫端必須透過 WithRowVersion(...) 傳入原始值，否則會丟 InvalidOperationException。
     /// </summary>
     public sealed class SQLGenerateHelper
     {
@@ -30,7 +41,11 @@ namespace DcMateH5Api.SqlHelper
         public SQLGenerateHelper(IDbExecutor db, IHttpContextAccessor http)
         { _db = db; _http = http; }
 
-        // 是否在 INSERT 自動寫入 5 個審計欄位（若表上有）
+        /// <summary>
+        /// 是否在 INSERT/UPDATE 自動寫入審計欄位（固定欄位名：CREATE_USER/CREATE_TIME/EDIT_USER/EDIT_TIME/IS_DELETE）。
+        /// 目前不會檢查資料表是否存在這些欄位：
+        /// - 若資料表缺欄位會直接 SQL error
+        /// </summary>
         public bool EnableAuditColumns { get; set; } = true;
 
         // 審計欄位（資料庫欄位名）
@@ -93,6 +108,11 @@ namespace DcMateH5Api.SqlHelper
         
         #region Insert
 
+        /// <summary>
+        /// 插入一筆資料（短連線）。
+        /// - 會排除 [Timestamp] 欄位（rowversion 由 SQL Server 生成）
+        /// - 若 EnableAuditColumns=true，會額外寫入審計欄位（需資料表具備對應欄位）
+        /// </summary>
         public async Task<int> InsertAsync<T>(T entity, CancellationToken ct = default)
         {
             var (table, props, rowVersion, _, colByProp) = Reflect<T>();
@@ -195,7 +215,12 @@ namespace DcMateH5Api.SqlHelper
         public UpdateByIdBuilder<T> UpdateById<T>(object id) => new(this, id);
 
         /// <summary>
-        /// 舊版整筆更新（保留相容；建議改用 UpdateById）。
+        /// 舊版整筆更新（以 Entity 當作更新來源）。
+        /// 建議只用於「明確要整筆覆蓋」的情境；一般局部更新請改用 UpdateById。
+        ///
+        /// - mode = IncludeNulls：entity 的 null 會寫回 DB（可用來清空欄位）
+        /// - mode = IgnoreNulls：entity 的 null 會被略過（避免誤清空）
+        /// - 若 Entity 含 [Timestamp]，會把 rowversion 放進 WHERE 做樂觀鎖
         /// </summary>
         [Obsolete("如果要針對特定欄位進行更新，使用UpdateById")]
         public async Task<int> UpdateAllByIdAsync<T>(
@@ -271,6 +296,10 @@ namespace DcMateH5Api.SqlHelper
         
         #region Select / Delete
 
+        /// <summary>
+        /// 查詢全表（不會自動排除軟刪除資料）。
+        /// 若使用 DeleteWhere 進行軟刪除，查詢建議搭配 WhereBuilder.AndNotDeleted()。
+        /// </summary>
         public async Task<List<T>> SelectAsync<T>(CancellationToken ct = default)
         {
             var (table, props, _, _, colByProp) = Reflect<T>();
@@ -334,6 +363,11 @@ namespace DcMateH5Api.SqlHelper
             return await _db.QueryFirstOrDefaultInTxAsync<T>(conn, tx, sql, param, timeoutSeconds: timeoutSeconds, commandType: CommandType.Text, ct: ct);
         }
 
+        /// <summary>
+        /// 軟刪除（IS_DELETE = 1）。
+        /// 本方法不會自動加上 IS_DELETE = 0 條件，
+        ///    若需要「只刪除未刪除資料」請自行在 where 加上 AndNotDeleted()。
+        /// </summary>
         public async Task<int> DeleteWhereAsync<T>(WhereBuilder<T> where, CancellationToken ct = default)
         {
             var (table, _, _, _, _) = Reflect<T>();
@@ -561,15 +595,35 @@ namespace DcMateH5Api.SqlHelper
             private static object? ConvertTo(Type t, object? value)
             {
                 if (value is null) return null;
+
                 var u = Nullable.GetUnderlyingType(t) ?? t;
-                if (u.IsEnum) return Enum.ToObject(u, value);
+
+                if (u == typeof(Guid))
+                {
+                    if (value is Guid g) return g;
+                    if (value is string s && Guid.TryParse(s, out var gid)) return gid;
+                    throw new InvalidCastException($"無法將 {value} 轉為 Guid");
+                }
+
+                if (u.IsEnum)
+                {
+                    if (value is string es) return Enum.Parse(u, es, ignoreCase: true);
+                    return Enum.ToObject(u, value);
+                }
+
                 return u == value.GetType() ? value : System.Convert.ChangeType(value, u);
             }
+
         }
     }
 
     /// <summary>
     /// AND-only Where Builder（欄位用 Lambda；值一律參數化，防 SQL Injection）
+    ///
+    /// 限制與設計：
+    /// 1. 只支援 AND 串接（不支援 OR / 括號群組）
+    /// 2. Build() 會強制至少 1 個條件，避免誤刪 / 誤更整張表
+    /// 3. 常用軟刪除條件可用 AndNotDeleted()（IS_DELETE = 0）
     /// </summary>
     public sealed class WhereBuilder<T>
     {

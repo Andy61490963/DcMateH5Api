@@ -13,8 +13,12 @@ namespace DcMateH5Api.DbExtensions;
 
 /// <summary>
 /// DbExecutor 是一個包裝 Dapper 的資料存取層，
-/// 對外提供 Query/Execute/Transaction 等方法，
-/// 並且內建 SQL 執行紀錄 (Logging)。
+/// 對外提供 Query/Execute/Transaction 等方法，並且內建 SQL 執行紀錄 (Logging)。
+///
+/// 注意：
+/// 1. Logging 為「最佳努力」：寫入失敗會被吞掉，避免影響主交易（主流程仍會照常 throw 原例外）。
+/// 2. Parameters 會序列化成 JSON，並有長度上限（避免 log 過大）。
+/// 3. 每個 Request 會共用同一個 CorrelationId（透過 HttpContext.Items）。
 /// </summary>
 public sealed class DbExecutor : IDbExecutor
 {

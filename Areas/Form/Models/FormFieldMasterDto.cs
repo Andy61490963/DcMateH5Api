@@ -66,4 +66,8 @@ public class FormFieldMasterDto
     
     [Column("SCHEMA_TYPE")]
     public TableSchemaQueryType SCHEMA_TYPE { get; set; }
+    
+    // [Timestamp]
+    // [Column("ROW_VERSION")]
+    // public byte[] ROW_VERSION { get; set; } = default!;
 }
