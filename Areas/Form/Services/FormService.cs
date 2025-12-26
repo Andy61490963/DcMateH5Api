@@ -99,6 +99,13 @@ public class FormService : IFormService
             // 3.6 將每一筆資料列組成 ViewModel，並加入回傳清單
             foreach (var row in rows)
             {
+                if (row.PkId == null)
+                {
+                    throw new InvalidOperationException(
+                        $"缺失 PK 欄位，請檢查 VIEW_TABLE_NAME -> [{master.VIEW_TABLE_NAME}]"
+                    );
+                }
+                
                 // 將每個欄位設定（template）填入對應的實際值（CurrentValue）
                 var rowFields = fieldTemplates
                     .Select(f => new FormFieldInputViewModel
