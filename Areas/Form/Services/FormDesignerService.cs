@@ -1112,6 +1112,32 @@ ORDER BY TABLE_SCHEMA, TABLE_NAME;";
         return result;
     }
 
+    private PreviousQueryDropdownImportResultViewModel ValidatePreviousQueryDropdownSql(string sql)
+    {
+        if (string.IsNullOrWhiteSpace(sql))
+        {
+            return new PreviousQueryDropdownImportResultViewModel
+            {
+                Success = false,
+                Message = "SQL 不可為空。"
+            };
+        }
+
+        if (!IsSelectSql(sql))
+        {
+            return new PreviousQueryDropdownImportResultViewModel
+            {
+                Success = false,
+                Message = "僅允許 SELECT 查詢語法。"
+            };
+        }
+
+        return new PreviousQueryDropdownImportResultViewModel
+        {
+            Success = true
+        };
+    }
+    
     /// <summary>
     /// 從 SQL 匯入下拉選項：要求結果欄位別名為 ID 與 NAME
     /// 1) 先 Validate SQL
@@ -1173,87 +1199,28 @@ ORDER BY TABLE_SCHEMA, TABLE_NAME;";
     }
 
     /// <summary>
-    /// 匯入先前查詢的下拉選單值（欄位別名必須為 NAME）。
+    /// 匯入先前查詢的下拉選單設定（只儲存 SQL；解析時才執行 SQL 取 NAME）。
     /// </summary>
     /// <param name="sql">僅允許 SELECT 的 SQL 語句</param>
     /// <param name="dropdownId">FORM_FIELD_DROPDOWN 的ID</param>
-    /// <returns>匯入結果與清單資料</returns>
+    /// <returns>匯入結果</returns>
     public PreviousQueryDropdownImportResultViewModel ImportPreviousQueryDropdownValues(string sql, Guid dropdownId)
     {
-        if (string.IsNullOrWhiteSpace(sql))
-        {
-            return new PreviousQueryDropdownImportResultViewModel
-            {
-                Success = false,
-                Message = "SQL 不可為空。"
-            };
-        }
-
-        if (!IsSelectSql(sql))
-        {
-            return new PreviousQueryDropdownImportResultViewModel
-            {
-                Success = false,
-                Message = "僅允許 SELECT 查詢語法。"
-            };
-        }
+        var validation = ValidatePreviousQueryDropdownSql(sql);
+        if (!validation.Success)
+            return validation;
 
         var wasClosed = _con.State != System.Data.ConnectionState.Open;
         if (wasClosed)
-        {
             _con.Open();
-        }
 
         using var tx = _con.BeginTransaction();
         try
         {
-            using var reader = _con.ExecuteReader(sql, transaction: tx);
-            var columns = reader.GetColumnSchema();
-            var nameColumn = columns.FirstOrDefault(column =>
-                string.Equals(column.ColumnName, "NAME", StringComparison.OrdinalIgnoreCase));
-
-            if (nameColumn == null)
-            {
-                tx.Rollback();
-                return new PreviousQueryDropdownImportResultViewModel
-                {
-                    Success = false,
-                    Message = "SQL 結果必須包含別名為 NAME 的欄位。"
-                };
-            }
-
-            var nameOrdinal = reader.GetOrdinal(nameColumn.ColumnName);
-            var values = new List<string>();
-            while (reader.Read())
-            {
-                if (reader.IsDBNull(nameOrdinal))
-                {
-                    tx.Rollback();
-                    return new PreviousQueryDropdownImportResultViewModel
-                    {
-                        Success = false,
-                        Message = "查詢結果的 NAME 不可為空值。"
-                    };
-                }
-
-                var value = reader.GetValue(nameOrdinal)?.ToString()?.Trim();
-                if (string.IsNullOrWhiteSpace(value))
-                {
-                    tx.Rollback();
-                    return new PreviousQueryDropdownImportResultViewModel
-                    {
-                        Success = false,
-                        Message = "查詢結果的 NAME 不可為空白。"
-                    };
-                }
-
-                values.Add(value);
-            }
-
-            var dropdownSql = JsonSerializer.Serialize(values);
+            // 只存 SQL（不在這裡跑查詢）
             _con.Execute(
-                Sql.UpdatePreviousQueryDropdownValues,
-                new { DropdownId = dropdownId, DropdownSql = dropdownSql },
+                Sql.UpdatePreviousQueryDropdownSourceSql,
+                new { DropdownId = dropdownId, Sql = sql },
                 tx);
 
             tx.Commit();
@@ -1262,8 +1229,8 @@ ORDER BY TABLE_SCHEMA, TABLE_NAME;";
             {
                 Success = true,
                 Message = "匯入完成。",
-                RowCount = values.Count,
-                Values = values
+                RowCount = 0,
+                Values = new List<string>()
             };
         }
         catch (Exception ex)
@@ -1278,12 +1245,11 @@ ORDER BY TABLE_SCHEMA, TABLE_NAME;";
         finally
         {
             if (wasClosed)
-            {
                 _con.Close();
-            }
         }
     }
-    
+
+        
     public async Task<Guid> SaveFormHeader( FormHeaderViewModel model )
     {
         var whereBase = new WhereBuilder<FormFieldMasterDto>()
@@ -1877,9 +1843,9 @@ SET DROPDOWNSQL = @Sql,
     IS_QUERY_DROPDOWN = 0
 WHERE ID = @DropdownId;";
 
-        public const string UpdatePreviousQueryDropdownValues = @"/**/
+        public const string UpdatePreviousQueryDropdownSourceSql = @"/**/
 UPDATE FORM_FIELD_DROPDOWN
-SET DROPDOWNSQL = @DropdownSql,
+SET DROPDOWNSQL = @Sql,
     ISUSESQL = 0,
     IS_QUERY_DROPDOWN = 1
 WHERE ID = @DropdownId;";

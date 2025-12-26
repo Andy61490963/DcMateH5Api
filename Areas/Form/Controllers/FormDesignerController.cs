@@ -317,10 +317,10 @@ public class FormDesignerController : ControllerBase
         {
             return BadRequest( "查無此設定檔，請確認ID是否正確。" );
         }
-        if (field.SchemaType != TableSchemaQueryType.OnlyTable)
-        {
-            return BadRequest( "下拉選單設定只支援主擋。" );
-        }
+        // if (field.SchemaType != TableSchemaQueryType.OnlyTable)
+        // {
+        //     return BadRequest( "下拉選單設定只支援主擋。" );
+        // }
         _formDesignerService.EnsureDropdownCreated( fieldId );
         var setting = await _formDesignerService.GetDropdownSetting( fieldId );
         return Ok( setting );

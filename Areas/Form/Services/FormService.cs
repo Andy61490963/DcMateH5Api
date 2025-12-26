@@ -359,19 +359,49 @@ public class FormService : IFormService
         HashSet<string> primaryKeys)
     {
         var dropdown = data.DropdownConfigs.FirstOrDefault(d => d.FORM_FIELD_CONFIG_ID == field.ID);
-        var isUseSql = dropdown?.ISUSESQL ?? false;
-        var dropdownId = dropdown?.ID ?? Guid.Empty;
+        
+        var dropdownId       = dropdown?.ID ?? Guid.Empty;
+        var isUseSql         = dropdown?.ISUSESQL ?? false;
+        var isQueryDropdown  = dropdown?.IS_QUERY_DROPDOWN ?? false; // 你 DTO 裡要有這個欄位
+        var dropdownSql      = dropdown?.DROPDOWNSQL;
 
-        var options = data.DropdownOptions.Where(o => o.FORM_FIELD_DROPDOWN_ID == dropdownId).ToList();
+        // 靜態 options（只針對「一般靜態下拉」）
+        var staticOptions = data.DropdownOptions
+            .Where(o => o.FORM_FIELD_DROPDOWN_ID == dropdownId)
+            .Where(o => string.IsNullOrWhiteSpace(o.OPTION_TABLE))
+            .ToList();
+
         List<FormFieldDropdownOptionsDto> finalOptions;
 
-        if (isUseSql && dropdownId != Guid.Empty && !string.IsNullOrWhiteSpace(dropdown?.DROPDOWNSQL))
+        // ------------------------------------------------------------
+        // 下拉資料來源決策：QueryDropdown > UseSql > Static
+        // ------------------------------------------------------------
+        if (isQueryDropdown && dropdownId != Guid.Empty && !string.IsNullOrWhiteSpace(dropdownSql))
         {
+            // 先前查詢：dropdownSql 代表「來源 SQL」，只需產出 NAME 當選項
+            // 這裡直接把 NAME 當成 OPTION_TEXT/OPTION_VALUE（兩者同值）
+            var names = GetPreviousQueryList(dropdown);
+
+            finalOptions = names
+                .Distinct(StringComparer.OrdinalIgnoreCase)
+                .Select(name => new FormFieldDropdownOptionsDto
+                {
+                    ID = Guid.Empty,                    // 不是 DB options，所以不用真的 ID
+                    FORM_FIELD_DROPDOWN_ID = dropdownId,
+                    OPTION_TABLE = null,
+                    OPTION_TEXT = name,
+                    OPTION_VALUE = name
+                })
+                .ToList();
+        }
+        else if (isUseSql && dropdownId != Guid.Empty && !string.IsNullOrWhiteSpace(dropdownSql))
+        {
+            // SQL 同步下拉：dropdownSql 代表「ID/NAME 查詢」
             if (!dynamicOptionCache.TryGetValue(dropdownId, out finalOptions))
             {
                 try
                 {
-                    var syncResult = _dropdownSqlSyncService.Sync(dropdownId, dropdown!.DROPDOWNSQL);
+                    var syncResult = _dropdownSqlSyncService.Sync(dropdownId, dropdownSql!);
                     finalOptions = syncResult.Options;
                 }
                 catch (DropdownSqlSyncException ex)
@@ -384,9 +414,8 @@ public class FormService : IFormService
         }
         else
         {
-            finalOptions = options
-                .Where(x => string.IsNullOrWhiteSpace(x.OPTION_TABLE))
-                .ToList();
+            // 靜態下拉
+            finalOptions = staticOptions;
         }
 
         var rules = data.ValidationRules
@@ -410,10 +439,12 @@ public class FormService : IFormService
             IS_REQUIRED = field.IS_REQUIRED,
             IS_EDITABLE = field.IS_EDITABLE,
             ValidationRules = rules,
+
             OptionList = finalOptions,
-            PREVIOUS_QUERY_LIST = GetPreviousQueryList(dropdown),
+
             ISUSESQL = isUseSql,
-            DROPDOWNSQL = dropdown?.DROPDOWNSQL ?? string.Empty,
+            DROPDOWNSQL = dropdownSql ?? string.Empty,
+
             DATA_TYPE = dataType,
             SOURCE_TABLE = schemaType,
             IS_PK = primaryKeys.Contains(field.COLUMN_NAME),
@@ -421,33 +452,55 @@ public class FormService : IFormService
         };
     }
 
+
+ 
     /// <summary>
-    /// 解析使用者先前查詢的下拉值清單（由 ImportPreviousQueryDropdownValues 寫入）。
+    /// 解析使用者先前查詢的下拉值清單（由 ImportPreviousQueryDropdownValues 寫入 SQL）。
     /// </summary>
     /// <param name="dropdown">下拉選單設定主檔</param>
-    /// <returns>先前查詢結果的值清單</returns>
-    private static List<string> GetPreviousQueryList(FormDropDownDto? dropdown)
+    /// <returns>先前查詢結果的 NAME 值清單</returns>
+    private List<string> GetPreviousQueryList(FormDropDownDto? dropdown)
     {
         if (dropdown is null || !dropdown.IS_QUERY_DROPDOWN)
-        {
             return new List<string>();
-        }
 
-        if (string.IsNullOrWhiteSpace(dropdown.DROPDOWNSQL))
-        {
+        var sourceSql = dropdown.DROPDOWNSQL;
+        if (string.IsNullOrWhiteSpace(sourceSql))
             return new List<string>();
-        }
+
+        var wrappedSql = $@"/**/
+SELECT src.[NAME]
+FROM (
+{sourceSql}
+) AS src;";
+
+        var wasClosed = _con.State != System.Data.ConnectionState.Open;
+        if (wasClosed)
+            _con.Open();
 
         try
         {
-            return JsonSerializer.Deserialize<List<string>>(dropdown.DROPDOWNSQL) ?? new List<string>();
+            var values = _con.Query<string>(
+                    wrappedSql,
+                    transaction: null,
+                    commandTimeout: 10)
+                .Select(x => x?.Trim())
+                .Where(x => !string.IsNullOrWhiteSpace(x))
+                .ToList();
+
+            return values;
         }
-        catch (JsonException)
+        catch
         {
             return new List<string>();
         }
+        finally
+        {
+            if (wasClosed)
+                _con.Close();
+        }
     }
-
+    
     /// <summary>
     /// 儲存或更新表單資料（含下拉選項答案），由呼叫端決定交易界限。
     /// </summary>
