@@ -44,69 +44,168 @@ public class FormService : IFormService
     /// 取得所有表單的資料清單（含對應欄位值），
     /// 並自動轉換下拉選單欄位的選項 ID 為顯示文字（OptionText）。
     /// </summary>
-    /// <param name="funcType">功能類型</param>
+    /// <remarks>
+    /// 【設計說明】
+    ///
+    /// 此方法為「表單列表頁」的核心組裝邏輯，
+    /// 負責整合以下幾件事：
+    ///
+    /// 1. 依功能類型取得表單主設定（FORM_FIELD_Master + 欄位設定）
+    /// 2. 透過 VIEW_TABLE 讀取實際資料列（避免直接查 BASE_TABLE）
+    /// 3. 自動處理 Dropdown 欄位：
+    ///    - 將資料表中的 OptionId
+    ///    - 轉換為前端顯示用的 OptionText
+    /// 4. 將「欄位模板（設定）」與「實際資料值」組合成 ViewModel
+    ///
+    /// 【為什麼用 VIEW 查資料？】
+    /// - VIEW 已封裝 Join / 欄位對應邏輯
+    /// - 可避免在此方法中處理複雜 SQL
+    /// - 與動態表單「設定驅動」的設計理念一致
+    ///
+    /// 【注意事項】
+    /// - VIEW 必須包含 BASE_TABLE 的 PK 欄位，否則無法正確組 RowId
+    /// - Dropdown 相關轉換會依賴 rowIds，若 PK 遺失會直接丟 Exception
+    /// </remarks>
+    /// <param name="funcType">功能類型（決定可用的表單集合）</param>
     /// <param name="request">查詢條件與分頁資訊（可選）</param>
     /// <returns>轉換過欄位顯示內容的表單清單資料</returns>
-    public List<FormListDataViewModel> GetFormList( FormFunctionType funcType, FormSearchRequest? request = null )
+    public List<FormListDataViewModel> GetFormList(FormFunctionType funcType, FormSearchRequest? request = null)
     {
-        // 1. 取得所有表單主設定（含欄位設定），使用 VIEW 為主查詢來源
-        var metas = _formFieldMasterService.GetFormMetaAggregates( funcType, TableSchemaQueryType.All );
+        // ------------------------------------------------------------
+        // 1. 取得表單主設定（含欄位設定）
+        // ------------------------------------------------------------
+        // 回傳結構為：
+        // IEnumerable<(FormMaster master, List<FormFieldConfig> fieldConfigs)>
+        // 每一組代表一張「表單定義」
+        var metas = _formFieldMasterService.GetFormMetaAggregates(
+            funcType,
+            TableSchemaQueryType.All
+        );
 
-        // 若指定 FormMasterId，僅處理該表單
-        if (request?.FormMasterId != Guid.Empty && request?.FormMasterId != null)
+        // ------------------------------------------------------------
+        // 1.1 若指定 FormMasterId，僅處理該表單
+        // ------------------------------------------------------------
+        // 常見於：
+        // - 單一表單列表頁
+        // - 後台指定某張表單查詢
+        if (request?.FormMasterId != null && request.FormMasterId != Guid.Empty)
         {
-            metas = metas.Where(m => m.Master.ID == request.FormMasterId).ToList();
+            metas = metas
+                .Where(m => m.Master.ID == request.FormMasterId)
+                .ToList();
         }
 
-        // 2. 預備回傳結果容器
-            var results = new List<FormListDataViewModel>();
+        // ------------------------------------------------------------
+        // 2. 準備最終回傳結果容器
+        // ------------------------------------------------------------
+        // 注意：這是一個「跨多張表單」的平坦清單
+        var results = new List<FormListDataViewModel>();
 
-        // 3. 對每一個表單主設定進行處理
+        // ------------------------------------------------------------
+        // 3. 逐一處理每一張表單設定
+        // ------------------------------------------------------------
         foreach (var (master, fieldConfigs) in metas)
         {
-            // 3.1 根據 View 撈出該表單的資料列（使用傳入查詢條件與分頁設定）
+            // --------------------------------------------------------
+            // 3.1 透過 VIEW_TABLE 讀取實際資料列
+            // --------------------------------------------------------
+            // - 不直接查 BASE_TABLE
+            // - 查詢條件與分頁由 request 控制
+            // - rawRows 為「尚未處理 Dropdown / PK」的原始資料
             var rawRows = _formDataService.GetRows(
                 master.VIEW_TABLE_NAME!,
                 request?.Conditions,
                 request?.Page,
-                request?.PageSize);
+                request?.PageSize
+            );
 
-            // 3.2 取得主表主鍵欄位，用於辨識每一筆資料的唯一性
+            // --------------------------------------------------------
+            // 3.2 取得 BASE_TABLE 的主鍵欄位
+            // --------------------------------------------------------
+            // 用途：
+            // - 辨識每一筆資料的唯一性
+            // - 作為 Dropdown Answer 查詢的 RowId
             var pk = _schemaService.GetPrimaryKeyColumn(master.BASE_TABLE_NAME!);
 
             if (pk == null)
-                throw new InvalidOperationException("No primary key column found");
-
-            // 3.3 將原始資料轉換為擴充型 Row，並解析出 RowId（主鍵值清單）
-            var rows = _dropdownService.ToFormDataRows(rawRows, pk, out var rowIds);
-
-            // 3.4 若有資料，且包含 Dropdown 欄位，進行 OptionText 轉換
-            if (rowIds.Any())
             {
-                // 取得所有 Row 對應的 Dropdown 選項答案（FIELD_ID ➜ OPTION_ID）
-                var dropdownAnswers = _dropdownService.GetAnswers(rowIds);
-
-                // 根據答案轉成顯示用文字對應表（OPTION_ID ➜ OPTION_TEXT）
-                var optionTextMap = _dropdownService.GetOptionTextMap(dropdownAnswers);
-
-                // 替換每一列資料中的 Dropdown 欄位值為對應的顯示文字
-                _dropdownService.ReplaceDropdownIdsWithTexts(rows, fieldConfigs, dropdownAnswers, optionTextMap);
+                throw new InvalidOperationException(
+                    $"缺失 PK 欄位，請檢查 VIEW_TABLE_NAME -> [{master.BASE_TABLE_NAME}]"
+                );
             }
 
-            // 3.5 根據 VIEW 設定，組裝欄位模板（含控制型態、驗證等）
-            var fieldTemplates = GetFields(master.VIEW_TABLE_ID, TableSchemaQueryType.OnlyView, master.VIEW_TABLE_NAME!);
+            // --------------------------------------------------------
+            // 3.3 將 rawRows 轉為 FormDataRow
+            // --------------------------------------------------------
+            // - 解析 PK 值，存入 row.PkId
+            // - 同時輸出所有 rowIds，供 Dropdown 使用
+            var rows = _dropdownService.ToFormDataRows(
+                rawRows,
+                pk,
+                out var rowIds
+            );
 
-            // 3.6 將每一筆資料列組成 ViewModel，並加入回傳清單
+            // --------------------------------------------------------
+            // 3.4 Dropdown 欄位顯示文字轉換
+            // --------------------------------------------------------
+            // 流程說明：
+            // 1. 先依 rowIds 查出實際儲存的 OPTION_ID
+            // 2. 再將 OPTION_ID 對應為 OPTION_TEXT
+            // 3. 最後直接覆蓋 rows 內對應欄位的值
+            //
+            // 備註：
+            // - 這一步會「直接修改 rows」
+            // - 後續組 ViewModel 時，拿到的就是顯示文字
+            if (rowIds.Any())
+            {
+                var dropdownAnswers = _dropdownService.GetAnswers(rowIds);
+                var optionTextMap = _dropdownService.GetOptionTextMap(dropdownAnswers);
+
+                _dropdownService.ReplaceDropdownIdsWithTexts(
+                    rows,
+                    fieldConfigs,
+                    dropdownAnswers,
+                    optionTextMap
+                );
+            }
+
+            // --------------------------------------------------------
+            // 3.5 取得 VIEW 對應的欄位模板（Field Template）
+            // --------------------------------------------------------
+            // 此模板包含：
+            // - 欄位型態
+            // - 控制項型態
+            // - 驗證規則
+            // - Dropdown 設定
+            //
+            // 注意：
+            // - 這裡是「設定資料」
+            // - 尚未填入實際值
+            var fieldTemplates = GetFields(
+                master.VIEW_TABLE_ID,
+                TableSchemaQueryType.OnlyView,
+                master.VIEW_TABLE_NAME!
+            );
+
+            // --------------------------------------------------------
+            // 3.6 將每一筆資料列組成最終 ViewModel
+            // --------------------------------------------------------
             foreach (var row in rows)
             {
+                // PK 是整個 Row 的識別核心，缺失直接視為結構錯誤
                 if (row.PkId == null)
                 {
                     throw new InvalidOperationException(
                         $"缺失 PK 欄位，請檢查 VIEW_TABLE_NAME -> [{master.VIEW_TABLE_NAME}]"
                     );
                 }
-                
-                // 將每個欄位設定（template）填入對應的實際值（CurrentValue）
+
+                // ----------------------------------------------------
+                // 將「欄位模板」與「實際資料值」合併
+                // ----------------------------------------------------
+                // CurrentValue 來源：
+                // - row.GetValue(f.Column)
+                // - 若為 Dropdown 欄位，值已在前面被轉成 OptionText
                 var rowFields = fieldTemplates
                     .Select(f => new FormFieldInputViewModel
                     {
@@ -127,36 +226,29 @@ public class FormService : IFormService
                         DROPDOWNSQL = f.DROPDOWNSQL,
                         OptionList = f.OptionList,
                         SOURCE_TABLE = f.SOURCE_TABLE,
-                        CurrentValue = row.GetValue(f.Column) // 根據欄位名稱取出該欄位的實際值
+                        CurrentValue = row.GetValue(f.Column)
                     })
-                    // .Where(f =>
-                    //     // 1. 排除固定欄位（精確比對）
-                    //     !_excludeColumns.Any(col => col.Equals(f.Column, StringComparison.OrdinalIgnoreCase))
-                    //
-                    //     // 2. 排除 ID/SID 相關欄位（_excludeColumnsId 模糊比對，含 ABC_ID / XYZ_SID）
-                    //     && !_excludeColumnsId.Any(col =>
-                    //             f.Column.Equals(col, StringComparison.OrdinalIgnoreCase) ||       // 精確
-                    //             f.Column.EndsWith($"_{col}", StringComparison.OrdinalIgnoreCase)  // 結尾為 _ID / _SID
-                    //     )
-                    // )
                     .ToList();
-                
-                // 組合單筆表單的資料 ViewModel
+
+                // ----------------------------------------------------
+                // 組合單筆表單資料
+                // ----------------------------------------------------
                 results.Add(new FormListDataViewModel
                 {
                     FormMasterId = master.ID,
                     BaseId = master.BASE_TABLE_ID,
-                    Pk = row.PkId?.ToString() ?? string.Empty,
+                    Pk = row.PkId.ToString(),
                     Fields = rowFields
                 });
             }
         }
 
-        // 4. 回傳所有表單資料清單（含每列欄位顯示資料）
+        // ------------------------------------------------------------
+        // 4. 回傳完整表單資料清單
+        // ------------------------------------------------------------
         return results;
     }
-
-
+    
     /// <summary>
     /// 根據表單設定抓取主表欄位與現有資料（編輯時用）
     /// 只對主表進行欄位組裝，Dropdown 顯示選項答案
