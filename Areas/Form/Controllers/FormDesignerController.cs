@@ -402,6 +402,23 @@ public class FormDesignerController : ControllerBase
     }
 
     /// <summary>
+    /// 匯入歷史查詢下拉清單（SQL 必須為 SELECT 且結果欄位需別名為 NAME）。
+    /// </summary>
+    /// <param name="dropdownId">FORM_FIELD_DROPDOWN 的ID</param>
+    /// <param name="dto">SQL 匯入資料</param>
+    /// <returns>匯入結果與 NAME 清單</returns>
+    [HttpPost("dropdowns/{dropdownId:guid}/import-previous-query-values")]
+    [ProducesResponseType(typeof(ImportPreviousQueryDropdownValuesResultViewModel), StatusCodes.Status200OK)]
+    [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status400BadRequest)]
+    public IActionResult ImportPreviousQueryDropdownValues( Guid dropdownId, [FromBody] ImportOptionViewModel dto )
+    {
+        var result = _formDesignerService.ImportPreviousQueryDropdownValues( dto.Sql, dropdownId );
+        if ( !result.Success ) return BadRequest( result.Message );
+
+        return Ok( result );
+    }
+
+    /// <summary>
     /// 建立一筆空白下拉選項
     /// </summary>
     /// <param name="dropdownId">FORM_FIELD_DROPDOWN 的ID</param>

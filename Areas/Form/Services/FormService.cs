@@ -7,6 +7,8 @@ using DcMateH5Api.Areas.Form.Interfaces.FormLogic;
 using DcMateH5Api.Areas.Form.Interfaces.Transaction;
 using DcMateH5Api.Areas.Form.ViewModels;
 using Microsoft.Data.SqlClient;
+using System.Data.Common;
+using System.Text.RegularExpressions;
 
 namespace DcMateH5Api.Areas.Form.Services;
 
@@ -343,9 +345,10 @@ public class FormService : IFormService
             // .ToList();
 
         var dynamicOptionCache = new Dictionary<Guid, List<FormFieldDropdownOptionsDto>>();
+        var previousQueryCache = new Dictionary<Guid, List<string>>();
 
         return editableConfigs
-            .Select(cfg => BuildFieldViewModel(cfg, configData, columnTypes, schemaType, dynamicOptionCache, primaryKeys))
+            .Select(cfg => BuildFieldViewModel(cfg, configData, columnTypes, schemaType, dynamicOptionCache, previousQueryCache, primaryKeys))
             .ToList();
     }
 
@@ -355,6 +358,7 @@ public class FormService : IFormService
         Dictionary<string, string> columnTypes,
         TableSchemaQueryType schemaType,
         Dictionary<Guid, List<FormFieldDropdownOptionsDto>> dynamicOptionCache,
+        Dictionary<Guid, List<string>> previousQueryCache,
         HashSet<string> primaryKeys)
     {
         var dropdown = data.DropdownConfigs.FirstOrDefault(d => d.FORM_FIELD_CONFIG_ID == field.ID);
@@ -397,6 +401,8 @@ public class FormService : IFormService
             ? dtype
             : "nvarchar";
 
+        var previousQueryList = GetPreviousQueryList(dropdown, previousQueryCache);
+
         return new FormFieldInputViewModel
         {
             FieldConfigId = field.ID,
@@ -412,11 +418,86 @@ public class FormService : IFormService
             OptionList = finalOptions,
             ISUSESQL = isUseSql,
             DROPDOWNSQL = dropdown?.DROPDOWNSQL ?? string.Empty,
+            PREVIOUS_QUERY_LIST = previousQueryList,
             DATA_TYPE = dataType,
             SOURCE_TABLE = schemaType,
             IS_PK = primaryKeys.Contains(field.COLUMN_NAME),
             IS_RELATION = false,
         };
+    }
+
+    /// <summary>
+    /// 取得歷史查詢下拉清單（來源欄位需命名為 NAME）。
+    /// </summary>
+    private List<string> GetPreviousQueryList(
+        FormDropDownDto? dropdown,
+        Dictionary<Guid, List<string>> previousQueryCache)
+    {
+        if (dropdown == null ||
+            !dropdown.IS_QUERY_DROPDOWN ||
+            string.IsNullOrWhiteSpace(dropdown.DROPDOWNSQL))
+        {
+            return new List<string>();
+        }
+
+        if (previousQueryCache.TryGetValue(dropdown.ID, out var cached))
+        {
+            return cached;
+        }
+
+        if (!IsSelectOnlySql(dropdown.DROPDOWNSQL))
+        {
+            return new List<string>();
+        }
+
+        using var reader = _con.ExecuteReader(dropdown.DROPDOWNSQL);
+        var columns = reader.GetColumnSchema();
+        var nameIndex = GetColumnIndex(columns, "NAME");
+        if (nameIndex < 0)
+        {
+            return new List<string>();
+        }
+
+        var values = new List<string>();
+        while (reader.Read())
+        {
+            if (reader.IsDBNull(nameIndex))
+                continue;
+
+            var value = reader.GetValue(nameIndex)?.ToString();
+            if (!string.IsNullOrWhiteSpace(value))
+                values.Add(value);
+        }
+
+        previousQueryCache[dropdown.ID] = values;
+        return values;
+    }
+
+    /// <summary>
+    /// 檢查 SQL 是否為單純的 SELECT 語法（避免非查詢操作）。
+    /// </summary>
+    private static bool IsSelectOnlySql(string sql)
+    {
+        if (!Regex.IsMatch(sql, @"^\s*select\b", RegexOptions.IgnoreCase))
+            return false;
+
+        return !Regex.IsMatch(sql, @"\b(insert|update|delete|drop|alter|truncate|exec|merge)\b", RegexOptions.IgnoreCase);
+    }
+
+    /// <summary>
+    /// 取得指定欄位名稱在 SQL 結果中的索引位置，找不到回傳 -1。
+    /// </summary>
+    private static int GetColumnIndex(IReadOnlyList<DbColumn> columns, string columnName)
+    {
+        for (var i = 0; i < columns.Count; i++)
+        {
+            if (string.Equals(columns[i].ColumnName, columnName, StringComparison.OrdinalIgnoreCase))
+            {
+                return i;
+            }
+        }
+
+        return -1;
     }
 
     /// <summary>

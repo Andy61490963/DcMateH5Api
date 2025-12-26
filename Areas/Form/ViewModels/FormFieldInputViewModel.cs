@@ -28,10 +28,14 @@ public class FormFieldInputViewModel
     public List<FormFieldDropdownOptionsDto> OptionList { get; set; } = new();
 
     /// <summary>
+    /// 由匯入 SQL 查詢得到的歷史查詢下拉清單（來源欄位需命名為 NAME）。
+    /// </summary>
+    public List<string> PREVIOUS_QUERY_LIST { get; set; } = new();
+
+    /// <summary>
     /// 若欄位來自 View，可紀錄其實際來源表
     /// </summary>
     public TableSchemaQueryType? SOURCE_TABLE { get; set; }
 
     public object? CurrentValue { get; set; }
 }
-

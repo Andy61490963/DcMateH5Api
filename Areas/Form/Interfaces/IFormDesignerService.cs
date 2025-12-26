@@ -72,6 +72,14 @@ public interface IFormDesignerService
     ValidateSqlResultViewModel ValidateDropdownSql( string sql );
     
     ValidateSqlResultViewModel ImportDropdownOptionsFromSql( string sql, Guid dropdownId );
+
+    /// <summary>
+    /// 匯入歷史查詢下拉清單，僅允許 SELECT 且結果欄位需為 NAME。
+    /// </summary>
+    /// <param name="sql">使用者輸入 SQL</param>
+    /// <param name="dropdownId">FORM_FIELD_DROPDOWN 的 ID</param>
+    /// <returns>匯入結果與 NAME 清單</returns>
+    ImportPreviousQueryDropdownValuesResultViewModel ImportPreviousQueryDropdownValues( string sql, Guid dropdownId );
     Task<Guid> SaveFormHeader( FormHeaderViewModel model );
 
     Task<Guid> SaveMasterDetailFormHeader(MasterDetailFormHeaderViewModel model);

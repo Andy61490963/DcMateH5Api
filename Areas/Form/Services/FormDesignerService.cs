@@ -12,6 +12,7 @@ using DcMateH5Api.Areas.Form.ViewModels;
 using DcMateH5Api.SqlHelper;
 using Microsoft.Data.SqlClient;
 using Microsoft.Extensions.Options;
+using System.Data.Common;
 
 namespace DcMateH5Api.Areas.Form.Services;
 
@@ -1169,6 +1170,90 @@ ORDER BY TABLE_SCHEMA, TABLE_NAME;";
                 _con.Close();
         }
     }
+
+    /// <summary>
+    /// 匯入歷史查詢下拉清單（必須為 SELECT 且結果欄位含 NAME），並回寫 FORM_FIELD_DROPDOWN 設定。
+    /// </summary>
+    /// <param name="sql">使用者輸入的查詢語法</param>
+    /// <param name="dropdownId">FORM_FIELD_DROPDOWN 的ID</param>
+    /// <returns>匯入結果與 NAME 清單</returns>
+    public ImportPreviousQueryDropdownValuesResultViewModel ImportPreviousQueryDropdownValues(string sql, Guid dropdownId)
+    {
+        if (string.IsNullOrWhiteSpace(sql))
+        {
+            return new ImportPreviousQueryDropdownValuesResultViewModel
+            {
+                Success = false,
+                Message = "SQL 不可為空。"
+            };
+        }
+
+        if (!Regex.IsMatch(sql, @"^\s*select\b", RegexOptions.IgnoreCase))
+        {
+            return new ImportPreviousQueryDropdownValuesResultViewModel
+            {
+                Success = false,
+                Message = "僅允許 SELECT 語法。"
+            };
+        }
+
+        if (Regex.IsMatch(sql,
+                @"\b(insert|update|delete|drop|alter|truncate|exec|merge)\b", RegexOptions.IgnoreCase))
+        {
+            return new ImportPreviousQueryDropdownValuesResultViewModel
+            {
+                Success = false,
+                Message = "僅允許查詢類 SQL。"
+            };
+        }
+
+        try
+        {
+            return _transactionService.WithTransaction(tx =>
+            {
+                using var reader = _con.ExecuteReader(sql, transaction: tx, commandTimeout: TimeoutSeconds);
+                var columns = reader.GetColumnSchema();
+                var nameIndex = GetColumnIndex(columns, "NAME");
+                if (nameIndex < 0)
+                {
+                    return new ImportPreviousQueryDropdownValuesResultViewModel
+                    {
+                        Success = false,
+                        Message = "SQL 結果必須包含別名 NAME（例如 SELECT ... AS NAME）。"
+                    };
+                }
+
+                var values = new List<string>();
+                while (reader.Read())
+                {
+                    if (reader.IsDBNull(nameIndex))
+                        continue;
+
+                    var value = reader.GetValue(nameIndex)?.ToString();
+                    if (!string.IsNullOrWhiteSpace(value))
+                        values.Add(value);
+                }
+
+                _con.Execute(Sql.UpdatePreviousQueryDropdownSql, new { DropdownId = dropdownId, Sql = sql }, tx);
+
+                return new ImportPreviousQueryDropdownValuesResultViewModel
+                {
+                    Success = true,
+                    Message = "匯入完成。",
+                    RowCount = values.Count,
+                    Values = values
+                };
+            });
+        }
+        catch (Exception ex)
+        {
+            return new ImportPreviousQueryDropdownValuesResultViewModel
+            {
+                Success = false,
+                Message = $"匯入失敗：{ex.Message}"
+            };
+        }
+    }
     
     public async Task<Guid> SaveFormHeader( FormHeaderViewModel model )
     {
@@ -1429,6 +1514,22 @@ ORDER BY TABLE_SCHEMA, TABLE_NAME;";
         var columns = _con.Query<DbColumnInfo>(sql, new { TableName = tableName }).ToList();
         
         return columns;
+    }
+
+    /// <summary>
+    /// 取得指定欄位名稱在 SQL 結果中的索引位置，找不到回傳 -1。
+    /// </summary>
+    private static int GetColumnIndex(IReadOnlyList<DbColumn> columns, string columnName)
+    {
+        for (var i = 0; i < columns.Count; i++)
+        {
+            if (string.Equals(columns[i].ColumnName, columnName, StringComparison.OrdinalIgnoreCase))
+            {
+                return i;
+            }
+        }
+
+        return -1;
     }
 
     /// <summary>
@@ -1731,8 +1832,8 @@ IF NOT EXISTS (
     SELECT 1 FROM FORM_FIELD_DROPDOWN WHERE FORM_FIELD_CONFIG_ID = @fieldId
 )
 BEGIN
-    INSERT INTO FORM_FIELD_DROPDOWN (ID, FORM_FIELD_CONFIG_ID, ISUSESQL, DROPDOWNSQL, IS_DELETE)
-    VALUES (NEWID(), @fieldId, @isUseSql, @sql, 0)
+    INSERT INTO FORM_FIELD_DROPDOWN (ID, FORM_FIELD_CONFIG_ID, ISUSESQL, DROPDOWNSQL, IS_QUERY_DROPDOWN, IS_DELETE)
+    VALUES (NEWID(), @fieldId, @isUseSql, @sql, 0, 0)
 END
 ";
 
@@ -1740,6 +1841,12 @@ END
 UPDATE FORM_FIELD_DROPDOWN
 SET DROPDOWNSQL = @Sql,
     ISUSESQL = 1
+WHERE ID = @DropdownId;";
+
+        public const string UpdatePreviousQueryDropdownSql = @"/**/
+UPDATE FORM_FIELD_DROPDOWN
+SET DROPDOWNSQL = @Sql,
+    IS_QUERY_DROPDOWN = 1
 WHERE ID = @DropdownId;";
         
         public const string UpsertDropdownOption = @"/**/
