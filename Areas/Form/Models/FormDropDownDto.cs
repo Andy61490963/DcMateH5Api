@@ -18,4 +18,7 @@ public class FormDropDownDto
     
     [Column("DROPDOWNSQL")]
     public string DROPDOWNSQL { get; set; } = string.Empty;
+
+    [Column("IS_QUERY_DROPDOWN")]
+    public bool IS_QUERY_DROPDOWN { get; set; }
 }

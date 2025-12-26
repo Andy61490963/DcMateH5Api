@@ -7,6 +7,7 @@ using DcMateH5Api.Areas.Form.Interfaces.FormLogic;
 using DcMateH5Api.Areas.Form.Interfaces.Transaction;
 using DcMateH5Api.Areas.Form.ViewModels;
 using Microsoft.Data.SqlClient;
+using System.Text.Json;
 
 namespace DcMateH5Api.Areas.Form.Services;
 
@@ -410,6 +411,7 @@ public class FormService : IFormService
             IS_EDITABLE = field.IS_EDITABLE,
             ValidationRules = rules,
             OptionList = finalOptions,
+            PREVIOUS_QUERY_LIST = GetPreviousQueryList(dropdown),
             ISUSESQL = isUseSql,
             DROPDOWNSQL = dropdown?.DROPDOWNSQL ?? string.Empty,
             DATA_TYPE = dataType,
@@ -417,6 +419,33 @@ public class FormService : IFormService
             IS_PK = primaryKeys.Contains(field.COLUMN_NAME),
             IS_RELATION = false,
         };
+    }
+
+    /// <summary>
+    /// 解析使用者先前查詢的下拉值清單（由 ImportPreviousQueryDropdownValues 寫入）。
+    /// </summary>
+    /// <param name="dropdown">下拉選單設定主檔</param>
+    /// <returns>先前查詢結果的值清單</returns>
+    private static List<string> GetPreviousQueryList(FormDropDownDto? dropdown)
+    {
+        if (dropdown is null || !dropdown.IS_QUERY_DROPDOWN)
+        {
+            return new List<string>();
+        }
+
+        if (string.IsNullOrWhiteSpace(dropdown.DROPDOWNSQL))
+        {
+            return new List<string>();
+        }
+
+        try
+        {
+            return JsonSerializer.Deserialize<List<string>>(dropdown.DROPDOWNSQL) ?? new List<string>();
+        }
+        catch (JsonException)
+        {
+            return new List<string>();
+        }
     }
 
     /// <summary>
