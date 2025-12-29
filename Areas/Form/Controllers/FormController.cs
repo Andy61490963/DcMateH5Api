@@ -78,6 +78,27 @@ public class FormController : ControllerBase
     }
 
     /// <summary>
+    /// 物理刪除資料（依 BaseId + Pk）
+    /// </summary>
+    /// <remarks>
+    /// - BaseId（formId）為上一支 search 回傳的 BaseId（BASE_TABLE_ID）
+    /// - pk 為上一支 search 回傳的 Pk
+    /// - 會刪除實際 Base Table 的資料列
+    /// - 會同步清除 FORM_FIELD_DROPDOWN_ANSWER
+    /// </remarks>
+    /// <param name="formId">上隻 Api 取得的 BaseId（BASE_TABLE_ID）</param>
+    /// <param name="pk">上隻 Api 取得的 Pk</param>
+    /// <returns></returns>
+    [HttpDelete("{formId}/{pk}")]
+    [ProducesResponseType(StatusCodes.Status204NoContent)]
+    [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status400BadRequest)]
+    public IActionResult PhysicalDelete(Guid formId, string pk)
+    {
+        _formService.PhysicalDeleteByBaseTableId(formId, pk);
+        return NoContent();
+    }
+    
+    /// <summary>
     /// 提交表單
     /// </summary>
     /// <param name="input"></param>
@@ -90,5 +111,5 @@ public class FormController : ControllerBase
         _formService.SubmitForm(input);
         return NoContent();
     }
-
+    
 }
