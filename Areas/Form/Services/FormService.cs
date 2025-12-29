@@ -359,64 +359,12 @@ public class FormService : IFormService
         HashSet<string> primaryKeys)
     {
         var dropdown = data.DropdownConfigs.FirstOrDefault(d => d.FORM_FIELD_CONFIG_ID == field.ID);
-        
-        var dropdownId       = dropdown?.ID ?? Guid.Empty;
-        var isUseSql         = dropdown?.ISUSESQL ?? false;
-        var isQueryDropdown  = dropdown?.IS_QUERY_DROPDOWN ?? false; // 你 DTO 裡要有這個欄位
-        var dropdownSql      = dropdown?.DROPDOWNSQL;
 
-        // 靜態 options（只針對「一般靜態下拉」）
-        var staticOptions = data.DropdownOptions
-            .Where(o => o.FORM_FIELD_DROPDOWN_ID == dropdownId)
-            .Where(o => string.IsNullOrWhiteSpace(o.OPTION_TABLE))
-            .ToList();
-
-        List<FormFieldDropdownOptionsDto> finalOptions;
-
-        // ------------------------------------------------------------
-        // 下拉資料來源決策：QueryDropdown > UseSql > Static
-        // ------------------------------------------------------------
-        if (isQueryDropdown && dropdownId != Guid.Empty && !string.IsNullOrWhiteSpace(dropdownSql))
-        {
-            // 先前查詢：dropdownSql 代表「來源 SQL」，只需產出 NAME 當選項
-            // 這裡直接把 NAME 當成 OPTION_TEXT/OPTION_VALUE（兩者同值）
-            var names = GetPreviousQueryList(dropdown);
-
-            finalOptions = names
-                .Distinct(StringComparer.OrdinalIgnoreCase)
-                .Select(name => new FormFieldDropdownOptionsDto
-                {
-                    ID = Guid.Empty,                    // 不是 DB options，所以不用真的 ID
-                    FORM_FIELD_DROPDOWN_ID = dropdownId,
-                    OPTION_TABLE = null,
-                    OPTION_TEXT = name,
-                    OPTION_VALUE = name
-                })
-                .ToList();
-        }
-        else if (isUseSql && dropdownId != Guid.Empty && !string.IsNullOrWhiteSpace(dropdownSql))
-        {
-            // SQL 同步下拉：dropdownSql 代表「ID/NAME 查詢」
-            if (!dynamicOptionCache.TryGetValue(dropdownId, out finalOptions))
-            {
-                try
-                {
-                    var syncResult = _dropdownSqlSyncService.Sync(dropdownId, dropdownSql!);
-                    finalOptions = syncResult.Options;
-                }
-                catch (DropdownSqlSyncException ex)
-                {
-                    throw new InvalidOperationException($"同步下拉選項失敗（欄位 {field.COLUMN_NAME}）：{ex.Message}", ex);
-                }
-
-                dynamicOptionCache[dropdownId] = finalOptions;
-            }
-        }
-        else
-        {
-            // 靜態下拉
-            finalOptions = staticOptions;
-        }
+        var finalOptions = ResolveDropdownOptions(
+            dropdown,
+            data,
+            dynamicOptionCache,
+            field.COLUMN_NAME);
 
         var rules = data.ValidationRules
             .Where(r => r.FIELD_CONFIG_ID == field.ID)
@@ -431,19 +379,22 @@ public class FormService : IFormService
         {
             FieldConfigId = field.ID,
             Column = field.COLUMN_NAME,
+
             CONTROL_TYPE = field.CONTROL_TYPE,
             QUERY_COMPONENT = field.QUERY_COMPONENT,
             QUERY_CONDITION = field.QUERY_CONDITION,
             CAN_QUERY = field.CAN_QUERY,
+
             DefaultValue = field.QUERY_DEFAULT_VALUE,
             IS_REQUIRED = field.IS_REQUIRED,
             IS_EDITABLE = field.IS_EDITABLE,
-            ValidationRules = rules,
 
+            ValidationRules = rules,
             OptionList = finalOptions,
 
-            ISUSESQL = isUseSql,
-            DROPDOWNSQL = dropdownSql ?? string.Empty,
+            // 這兩個是 dropdown 設定資訊（前端可能要顯示設定）
+            ISUSESQL = dropdown?.ISUSESQL ?? false,
+            DROPDOWNSQL = dropdown?.DROPDOWNSQL ?? string.Empty,
 
             DATA_TYPE = dataType,
             SOURCE_TABLE = schemaType,
@@ -452,8 +403,87 @@ public class FormService : IFormService
         };
     }
 
+    private List<FormFieldDropdownOptionsDto> ResolveDropdownOptions(
+        FormDropDownDto? dropdown,
+        FieldConfigData data,
+        Dictionary<Guid, List<FormFieldDropdownOptionsDto>> dynamicOptionCache,
+        string columnNameForErrorMessage)
+    {
+        if (dropdown is null)
+            return new List<FormFieldDropdownOptionsDto>();
 
- 
+        var dropdownId = dropdown.ID;
+        if (dropdownId == Guid.Empty)
+            return new List<FormFieldDropdownOptionsDto>();
+
+        var dropdownSql = dropdown.DROPDOWNSQL;
+
+        // QueryDropdown 優先
+        if (dropdown.ISUSESQL && dropdown.IS_QUERY_DROPDOWN && !string.IsNullOrWhiteSpace(dropdownSql))
+        {
+            var names = GetPreviousQueryList(dropdown);
+
+            return BuildQueryDropdownOptions(dropdownId, names);
+        }
+
+        // SQL dropdown（ID/NAME）
+        if (dropdown.ISUSESQL && !string.IsNullOrWhiteSpace(dropdownSql))
+        {
+            return GetOrSyncSqlDropdownOptions(dropdownId, dropdownSql, dynamicOptionCache, columnNameForErrorMessage);
+        }
+
+        // 靜態 dropdown
+        return GetStaticDropdownOptions(data, dropdownId);
+    }
+
+    private static List<FormFieldDropdownOptionsDto> BuildQueryDropdownOptions(Guid dropdownId, List<string> names)
+    {
+        return names
+            .Select(x => x?.Trim())
+            .Where(x => !string.IsNullOrWhiteSpace(x))
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .Select(name => new FormFieldDropdownOptionsDto
+            {
+                ID = Guid.Empty,
+                FORM_FIELD_DROPDOWN_ID = dropdownId,
+                OPTION_TABLE = null,
+                OPTION_TEXT = name!,
+                OPTION_VALUE = name!
+            })
+            .ToList();
+    }
+
+    private List<FormFieldDropdownOptionsDto> GetOrSyncSqlDropdownOptions(
+        Guid dropdownId,
+        string dropdownSql,
+        Dictionary<Guid, List<FormFieldDropdownOptionsDto>> dynamicOptionCache,
+        string columnNameForErrorMessage)
+    {
+        if (dynamicOptionCache.TryGetValue(dropdownId, out var cached))
+            return cached;
+
+        try
+        {
+            var syncResult = _dropdownSqlSyncService.Sync(dropdownId, dropdownSql);
+            var options = syncResult.Options;
+
+            dynamicOptionCache[dropdownId] = options;
+            return options;
+        }
+        catch (DropdownSqlSyncException ex)
+        {
+            throw new InvalidOperationException($"同步下拉選項失敗（欄位 {columnNameForErrorMessage}）：{ex.Message}", ex);
+        }
+    }
+
+    private static List<FormFieldDropdownOptionsDto> GetStaticDropdownOptions(FieldConfigData data, Guid dropdownId)
+    {
+        return data.DropdownOptions
+            .Where(o => o.FORM_FIELD_DROPDOWN_ID == dropdownId)
+            .Where(o => string.IsNullOrWhiteSpace(o.OPTION_TABLE))
+            .ToList();
+    }
+    
     /// <summary>
     /// 解析使用者先前查詢的下拉值清單（由 ImportPreviousQueryDropdownValues 寫入 SQL）。
     /// </summary>
