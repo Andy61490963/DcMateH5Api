@@ -18,34 +18,36 @@ namespace DcMateH5Api.Helper
         /// 鎖定物件，確保 thread-safe 的執行（避免多執行緒同時使用 _rnd）
         /// </summary>
         private static readonly object _lock = new();
-
+        
         /// <summary>
-        /// 亂數可用範圍上限：10^15（對應 SQL Server DECIMAL(15,0)）
-        /// 最大值為 999_999_999_999_999（15 位數）
+        /// 產生固定 15 位數的 decimal：
+        /// 格式為 [3 位亂數][yyMMddHHmmss]
+        /// 例如：742240129154233
         /// </summary>
-        private const long RandomDecimalMaxValue = 1_000_000_000_000_000L; // 10^15
-
         /// <summary>
-        /// 產生一個介於 0 ~ 999_999_999_999_999（15 位數以內）的安全亂數 decimal 值。
-        /// 適用於對應 SQL DECIMAL(15,0) 欄位的亂數編號。
+        /// 產生固定 15 位數的時間型亂數碼
+        /// 格式：yyyyMMddHHmm + 3 位亂數
+        /// 範例：202512290524742
+        /// 
+        /// 注意：
+        /// - 同一分鐘內最多可承受約 1000 筆不重複
+        /// - 適合用於業務流水號 / SID / Mapping 識別
+        /// - 非加密用途
         /// </summary>
-        /// <returns>decimal 型別亂數值（最多 15 位整數）</returns>
         public static decimal GenerateRandomDecimal()
         {
-            // 建立 8 byte 陣列（64-bit，對應 long）
-            var bytes = new byte[8];
+            // 產生時間碼（年到分鐘，12 位）
+            var timePart = DateTime.Now.ToString("yyyyMMddHHmm");
 
-            // 使用加密等級的亂數產生器（非傳統 Random）
+            // 產生 3 位亂數（000~999）
+            var bytes = new byte[2];
             RandomNumberGenerator.Fill(bytes);
 
-            // 將 byte 陣列轉成 long，並與 long.MaxValue 做 AND，確保是正數
-            long value = BitConverter.ToInt64(bytes, 0) & long.MaxValue;
+            var rand = BitConverter.ToUInt16(bytes, 0) % 1000;
+            var randPart = rand.ToString("D3");
 
-            // 將結果取餘數，限制在最大 15 位數以內（小於 10^15）
-            long clamped = value % RandomDecimalMaxValue;
-
-            // 轉成 decimal 回傳（對應 DECIMAL(15,0) 欄位不會 overflow）
-            return clamped;
+            // 組合成 15 位
+            return decimal.Parse(timePart + randPart);
         }
 
         /// <summary>

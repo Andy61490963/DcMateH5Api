@@ -116,11 +116,15 @@ public class FormMultipleMappingController : ControllerBase
     [HttpPost("{formMasterId:guid}/items")]
     [ProducesResponseType(StatusCodes.Status204NoContent)]
     [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status400BadRequest)]
-    public IActionResult AddMappings(Guid formMasterId, [FromBody] MultipleMappingUpsertViewModel request, CancellationToken ct)
+    public IActionResult AddMappings(
+        Guid formMasterId,
+        [FromBody] MultipleMappingUpsertViewModel request,
+        CancellationToken ct,
+        [FromQuery] bool isSeq = false)
     {
         try
         {
-            _service.AddMappings(formMasterId, request, ct);
+            _service.AddMappings(formMasterId, request, isSeq, ct);
             return NoContent();
         }
         catch (InvalidOperationException ex)
@@ -128,6 +132,7 @@ public class FormMultipleMappingController : ControllerBase
             return BadRequest(ex.Message);
         }
     }
+
 
     /// <summary>
     /// 將已關聯的明細批次移除關聯（左 → 右），BaseId 傳入上上支 api取得的 BasePk
