@@ -49,4 +49,12 @@
         <None Remove="DcMateClassLibrary\obj\**" />
     </ItemGroup>
 
+    <ItemGroup>
+      <_ContentIncludedByDefault Remove="wwwroot\js\FormDesigner\dropdown\index.js" />
+      <_ContentIncludedByDefault Remove="wwwroot\js\FormDesigner\index.js" />
+      <_ContentIncludedByDefault Remove="wwwroot\js\Form\form-validation.js" />
+      <_ContentIncludedByDefault Remove="wwwroot\js\query-condition.js" />
+      <_ContentIncludedByDefault Remove="wwwroot\js\site.js" />
+    </ItemGroup>
+
 </Project>
