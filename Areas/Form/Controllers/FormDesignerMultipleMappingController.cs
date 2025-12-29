@@ -438,6 +438,12 @@ public class FormDesignerMultipleMappingController : ControllerBase
         {
             return BadRequest("MAPPING_BASE_FK_COLUMN / MAPPING_DETAIL_FK_COLUMN 不可為空");
         }
+        
+        if (string.IsNullOrWhiteSpace(model.MAPPING_BASE_COLUMN_NAME) ||
+            string.IsNullOrWhiteSpace(model.MAPPING_DETAIL_COLUMN_NAME))
+        {
+            return BadRequest("MAPPING_BASE_COLUMN_NAME / MAPPING_DETAIL_COLUMN_NAME 不可為空");
+        }
 
         var id = await _formDesignerService.SaveMultipleMappingFormHeader(model);
         return Ok(new { id });

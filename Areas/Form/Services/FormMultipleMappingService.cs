@@ -53,7 +53,9 @@ SELECT ID AS Id,
        DETAIL_TABLE_NAME AS DetailTableName,
        MAPPING_TABLE_NAME AS MappingTableName,
        MAPPING_BASE_FK_COLUMN AS MappingBaseFkColumn,
-       MAPPING_DETAIL_FK_COLUMN AS MappingDetailFkColumn
+       MAPPING_DETAIL_FK_COLUMN AS MappingDetailFkColumn,
+       MAPPING_BASE_COLUMN_NAME AS MappingBaseColumnName,
+       MAPPING_DETAIL_COLUMN_NAME AS MappingDetailColumnName
   FROM FORM_FIELD_MASTER
  WHERE FUNCTION_TYPE = @funcType
    AND IS_DELETE = 0";
@@ -101,6 +103,8 @@ SELECT CAST([{header.MAPPING_DETAIL_FK_COLUMN}] AS NVARCHAR(4000)) AS Id
             DetailPkColumn = detailPkName,
             MappingBaseFkColumn = header.MAPPING_BASE_FK_COLUMN!,
             MappingDetailFkColumn = header.MAPPING_DETAIL_FK_COLUMN!,
+            MappingBaseColumnName = header.MAPPING_BASE_COLUMN_NAME,
+            MappingDetailColumnName = header.MAPPING_DETAIL_COLUMN_NAME,
             Linked = linkedItems,
             Unlinked = unlinkedItems
         };

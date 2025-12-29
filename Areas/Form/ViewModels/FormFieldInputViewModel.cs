@@ -26,7 +26,6 @@ public class FormFieldInputViewModel
     
     public bool CAN_QUERY { get; set; }
     public List<FormFieldDropdownOptionsDto> OptionList { get; set; } = new();
-    public List<string> PREVIOUS_QUERY_LIST { get; set; } = new();
 
     /// <summary>
     /// 若欄位來自 View，可紀錄其實際來源表

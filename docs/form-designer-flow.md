@@ -21,6 +21,7 @@
 
 4. **表頭儲存**
    - 多對多：`SaveMultipleMappingFormHeader` 會確認三張表存在、檢查關聯欄位（依設定尾碼比對），並以 `UpsertMultipleMappingFormMaster` 寫回 `FORM_FIELD_MASTER`。View 可選，提供顯示用途。 【F:Areas/Form/Services/FormDesignerService.cs†L1072-L1149】【F:Areas/Form/Services/FormDesignerService.cs†L1270-L1360】
+   - 若有設定 `MAPPING_BASE_COLUMN_NAME` / `MAPPING_DETAIL_COLUMN_NAME`，會額外驗證該顯示欄位是否存在於主表與目標表，避免前端顯示欄位查不到資料。 【F:Areas/Form/Services/FormDesignerService.cs†L1379-L1476】
    - 單表/一對多沿用原有 `SaveFormHeader`、`SaveMasterDetailFormHeader`，並帶入 `FUNCTION_TYPE`。 【F:Areas/Form/Services/FormDesignerService.cs†L946-L1053】
 
 5. **先前查詢下拉值匯入**

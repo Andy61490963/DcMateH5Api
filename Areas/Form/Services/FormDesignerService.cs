@@ -1375,7 +1375,10 @@ ORDER BY TABLE_SCHEMA, TABLE_NAME;";
     /// 儲存多對多表單主檔設定並回寫 FORM_FIELD_MASTER。
     /// </summary>
     /// <param name="model">多對多主檔設定</param>
-    /// <remarks>會同步檢查主表、目標表與關聯表的實體存在性與關聯欄位，以避免後續填寫階段出錯。</remarks>
+    /// <remarks>
+    /// 會同步檢查主表、目標表與關聯表的實體存在性與關聯欄位，
+    /// 並在有設定顯示欄位時驗證欄位存在性，避免後續顯示或維護時出錯。
+    /// </remarks>
     public async Task<Guid> SaveMultipleMappingFormHeader(MultipleMappingFormHeaderViewModel model)
     {
         if (string.IsNullOrWhiteSpace(model.MAPPING_BASE_FK_COLUMN) ||
@@ -1386,6 +1389,16 @@ ORDER BY TABLE_SCHEMA, TABLE_NAME;";
 
         ValidateColumnName(model.MAPPING_BASE_FK_COLUMN);
         ValidateColumnName(model.MAPPING_DETAIL_FK_COLUMN);
+
+        if (!string.IsNullOrWhiteSpace(model.MAPPING_BASE_COLUMN_NAME))
+        {
+            ValidateColumnName(model.MAPPING_BASE_COLUMN_NAME);
+        }
+
+        if (!string.IsNullOrWhiteSpace(model.MAPPING_DETAIL_COLUMN_NAME))
+        {
+            ValidateColumnName(model.MAPPING_DETAIL_COLUMN_NAME);
+        }
 
         var whereBase = new WhereBuilder<FormFieldMasterDto>()
             .AndEq(x => x.ID, model.BASE_TABLE_ID)
@@ -1438,6 +1451,14 @@ ORDER BY TABLE_SCHEMA, TABLE_NAME;";
         EnsureColumnExists(mappingTableName, model.MAPPING_DETAIL_FK_COLUMN, "關聯表缺少指向明細表的外鍵欄位");
         EnsureColumnExists(baseTableName, model.MAPPING_BASE_FK_COLUMN, "主表缺少對應的主鍵欄位");
         EnsureColumnExists(detailTableName, model.MAPPING_DETAIL_FK_COLUMN, "目標表缺少對應的主鍵欄位");
+        if (!string.IsNullOrWhiteSpace(model.MAPPING_BASE_COLUMN_NAME))
+        {
+            EnsureColumnExists(baseTableName, model.MAPPING_BASE_COLUMN_NAME, "主表缺少對應的顯示欄位");
+        }
+        if (!string.IsNullOrWhiteSpace(model.MAPPING_DETAIL_COLUMN_NAME))
+        {
+            EnsureColumnExists(detailTableName, model.MAPPING_DETAIL_COLUMN_NAME, "目標表缺少對應的顯示欄位");
+        }
 
         if (model.ID == Guid.Empty)
         {
@@ -1463,6 +1484,8 @@ ORDER BY TABLE_SCHEMA, TABLE_NAME;";
             
             model.MAPPING_BASE_FK_COLUMN,
             model.MAPPING_DETAIL_FK_COLUMN,
+            model.MAPPING_BASE_COLUMN_NAME,
+            model.MAPPING_DETAIL_COLUMN_NAME,
             
             STATUS = (int)TableStatusType.Active,
             SCHEMA_TYPE = TableSchemaQueryType.All,
@@ -1742,6 +1765,8 @@ WHEN MATCHED THEN
         VIEW_TABLE_ID      = @VIEW_TABLE_ID,
         MAPPING_BASE_FK_COLUMN = @MAPPING_BASE_FK_COLUMN,
         MAPPING_DETAIL_FK_COLUMN = @MAPPING_DETAIL_FK_COLUMN,
+        MAPPING_BASE_COLUMN_NAME = @MAPPING_BASE_COLUMN_NAME,
+        MAPPING_DETAIL_COLUMN_NAME = @MAPPING_DETAIL_COLUMN_NAME,
         STATUS             = @STATUS,          
         SCHEMA_TYPE        = @SCHEMA_TYPE,    
         FUNCTION_TYPE      = @FUNCTION_TYPE
@@ -1749,11 +1774,11 @@ WHEN NOT MATCHED THEN
     INSERT (
         ID, FORM_NAME, BASE_TABLE_NAME, DETAIL_TABLE_NAME, MAPPING_TABLE_NAME, VIEW_TABLE_NAME,
         BASE_TABLE_ID, DETAIL_TABLE_ID, MAPPING_TABLE_ID, VIEW_TABLE_ID, STATUS, SCHEMA_TYPE, FUNCTION_TYPE, IS_DELETE,
-        MAPPING_BASE_FK_COLUMN, MAPPING_DETAIL_FK_COLUMN)
+        MAPPING_BASE_FK_COLUMN, MAPPING_DETAIL_FK_COLUMN, MAPPING_BASE_COLUMN_NAME, MAPPING_DETAIL_COLUMN_NAME)
     VALUES (
         @ID, @FORM_NAME, @MASTER_TABLE_NAME, @DETAIL_TABLE_NAME, @MAPPING_TABLE_NAME, @VIEW_TABLE_NAME,
         @BASE_TABLE_ID, @DETAIL_TABLE_ID, @MAPPING_TABLE_ID, @VIEW_TABLE_ID, @STATUS, @SCHEMA_TYPE, @FUNCTION_TYPE, 0,
-        @MAPPING_BASE_FK_COLUMN, @MAPPING_DETAIL_FK_COLUMN)
+        @MAPPING_BASE_FK_COLUMN, @MAPPING_DETAIL_FK_COLUMN, @MAPPING_BASE_COLUMN_NAME, @MAPPING_DETAIL_COLUMN_NAME)
 OUTPUT INSERTED.ID;";
         
         public const string UpsertField = @"
