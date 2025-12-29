@@ -188,6 +188,12 @@ public class FormService : IFormService
                 master.VIEW_TABLE_NAME!
             );
 
+            // 取得要隱藏的欄位：View/Base 共同存在且結尾為 _SID
+            var sidColumnsToHide = GetCommonSidColumnsToHide(
+                master.VIEW_TABLE_NAME!,
+                master.BASE_TABLE_NAME!
+            );
+            
             // --------------------------------------------------------
             // 3.6 將每一筆資料列組成最終 ViewModel
             // --------------------------------------------------------
@@ -208,6 +214,7 @@ public class FormService : IFormService
                 // - row.GetValue(f.Column)
                 // - 若為 Dropdown 欄位，值已在前面被轉成 OptionText
                 var rowFields = fieldTemplates
+                    .Where(f => !sidColumnsToHide.Contains(f.Column)) // 過濾掉 base Table、view Table 相同且結尾為 _SID 形式的資料
                     .Select(f => new FormFieldInputViewModel
                     {
                         FieldConfigId = f.FieldConfigId,
@@ -792,6 +799,28 @@ WHERE [{pkName}] = @RowId;";
             if (!(char.IsLetterOrDigit(ch) || ch == '_'))
                 throw new InvalidOperationException($"不合法的識別字：{identifier}");
         }
+    }
+    
+    /// <summary>
+    /// 取得「View 與 Base 同名」且「欄位結尾為 _sid」的欄位集合（忽略大小寫）
+    /// 用途：在 GetFormList 回傳 Fields 時隱藏這些欄位（避免前端看到重複 FK）
+    /// </summary>
+    private HashSet<string> GetCommonSidColumnsToHide(string viewTableName, string baseTableName, SqlTransaction? tx = null)
+    {
+        // 取得 View/Base 欄位清單（INFORMATION_SCHEMA.COLUMNS）
+        var viewCols = _schemaService.GetFormFieldMaster(viewTableName, tx);
+        var baseCols = _schemaService.GetFormFieldMaster(baseTableName, tx);
+
+        // 用 HashSet 加速查詢（忽略大小寫）
+        var baseSet = baseCols.ToHashSet(StringComparer.OrdinalIgnoreCase);
+
+        // 交集 + 結尾 _SID ， 這邊懶得抽出去了
+        return viewCols
+            .Where(c => !string.IsNullOrWhiteSpace(c))
+            .Select(c => c.Trim())
+            .Where(c => c.EndsWith("_SID", StringComparison.OrdinalIgnoreCase))
+            .Where(c => baseSet.Contains(c))
+            .ToHashSet(StringComparer.OrdinalIgnoreCase);
     }
 
 private static class Sql
