@@ -124,4 +124,46 @@ WHERE TC.CONSTRAINT_TYPE = 'PRIMARY KEY'
 
         return isIdentity == 1;
     }
+    
+    /// <summary>
+    /// 由 TableId（BASE/DETAIL/VIEW 的 *_TABLE_ID）反查資料表名稱
+    /// </summary>
+    /// <param name="tableId">資料表 ID（Guid）</param>
+    /// <param name="tx">交易</param>
+    /// <returns>資料表名稱（不含 schema，例如：WOR_MASTER）</returns>
+    public string GetTableNameByTableId(Guid tableId, SqlTransaction? tx = null)
+    {
+        if (tableId == Guid.Empty)
+            throw new ArgumentException("tableId 不可為空", nameof(tableId));
+
+        const string sql = @"/**/
+SELECT TOP (1)
+    CASE
+        WHEN BASE_TABLE_ID  = @Id THEN BASE_TABLE_NAME
+        WHEN DETAIL_TABLE_ID = @Id THEN DETAIL_TABLE_NAME
+        WHEN VIEW_TABLE_ID   = @Id THEN VIEW_TABLE_NAME
+        ELSE NULL
+    END AS TableName
+FROM FORM_FIELD_MASTER
+WHERE BASE_TABLE_ID = @Id
+   OR DETAIL_TABLE_ID = @Id
+   OR VIEW_TABLE_ID = @Id
+ORDER BY
+    CASE
+        WHEN BASE_TABLE_ID  = @Id THEN 1
+        WHEN DETAIL_TABLE_ID = @Id THEN 2
+        WHEN VIEW_TABLE_ID   = @Id THEN 3
+        ELSE 99
+    END;";
+
+        var tableName = _con.QueryFirstOrDefault<string>(sql, new { Id = tableId }, transaction: tx);
+
+        tableName = tableName?.Trim();
+
+        if (string.IsNullOrWhiteSpace(tableName))
+            throw new InvalidOperationException($"查無 TableName：FORM_FIELD_MASTER 中找不到 TableId = {tableId}");
+
+        return tableName;
+    }
+
 }

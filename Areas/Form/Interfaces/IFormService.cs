@@ -24,6 +24,11 @@ public interface IFormService
     FormSubmissionViewModel GetFormSubmission(Guid? id, string? pk = null);
 
     /// <summary>
+    /// 依 BaseTableId（BASE_TABLE_ID）+ Pk 物理刪除資料
+    /// </summary>
+    void PhysicalDeleteByBaseTableId(Guid baseTableId, string pk);
+    
+    /// <summary>
     /// 儲存或更新表單資料
     /// </summary>
     void SubmitForm(FormSubmissionInputModel input);
