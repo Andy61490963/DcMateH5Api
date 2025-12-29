@@ -1846,7 +1846,7 @@ WHERE ID = @DropdownId;";
         public const string UpdatePreviousQueryDropdownSourceSql = @"/**/
 UPDATE FORM_FIELD_DROPDOWN
 SET DROPDOWNSQL = @Sql,
-    ISUSESQL = 0,
+    ISUSESQL = 1,
     IS_QUERY_DROPDOWN = 1
 WHERE ID = @DropdownId;";
         
