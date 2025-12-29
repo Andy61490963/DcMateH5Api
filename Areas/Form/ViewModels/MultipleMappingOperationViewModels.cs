@@ -42,16 +42,16 @@ public class MultipleMappingConfigViewModel
     /// 關聯表指向明細表的外鍵欄位名稱。
     /// </summary>
     public string MappingDetailFkColumn { get; set; } = string.Empty;
-
+    
     /// <summary>
     /// 關聯表指向主表的顯示欄位名稱。
     /// </summary>
-    public string? MappingBaseColumnName { get; set; }
+    public string MappingBaseColumnName { get; set; } = string.Empty;
 
     /// <summary>
     /// 關聯表指向明細表的顯示欄位名稱。
     /// </summary>
-    public string? MappingDetailColumnName { get; set; }
+    public string MappingDetailColumnName { get; set; } = string.Empty;
 }
 
 /// <summary>
@@ -104,14 +104,14 @@ public class MultipleMappingListViewModel
     /// 關聯表指向明細表的外鍵欄位名稱。
     /// </summary>
     public string MappingDetailFkColumn { get; set; } = string.Empty;
-
+    
     /// <summary>
-    /// 關聯表指向主表的顯示欄位名稱。
+    /// 關聯表指向主表（Base）的顯示欄位名稱。
     /// </summary>
     public string? MappingBaseColumnName { get; set; }
 
     /// <summary>
-    /// 關聯表指向明細表的顯示欄位名稱。
+    /// 關聯表指向目標表（Detail）的顯示欄位名稱。
     /// </summary>
     public string? MappingDetailColumnName { get; set; }
 
