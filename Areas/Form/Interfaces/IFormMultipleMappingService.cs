@@ -29,7 +29,7 @@ public interface IFormMultipleMappingService
     /// <summary>
     /// 批次新增對應關係（右 → 左）。
     /// </summary>
-    void AddMappings(Guid formMasterId, MultipleMappingUpsertViewModel request, CancellationToken ct = default);
+    void AddMappings(Guid formMasterId, MultipleMappingUpsertViewModel request, bool isSeq, CancellationToken ct = default);
 
     /// <summary>
     /// 批次移除對應關係（左 → 右）。
