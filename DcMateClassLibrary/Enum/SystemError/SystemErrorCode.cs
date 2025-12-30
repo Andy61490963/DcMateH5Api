@@ -17,5 +17,8 @@ public enum SystemErrorCode
     ExternalServiceError,
 
     [Display(Name = "系統逾時")]
-    Timeout
+    Timeout,
+    
+    [Display(Name = "資料繫節錯誤")]
+    BadRequest,
 }
