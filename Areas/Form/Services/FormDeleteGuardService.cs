@@ -39,22 +39,22 @@ public sealed class FormDeleteGuardService : IFormDeleteGuardService
         DeleteGuardValidateRequestViewModel request,
         CancellationToken ct = default)
     {
-        // 1️⃣ 撈出所有 Guard 規則
+        // 撈出所有 Guard 規則
         var rules = await GetGuardRulesAsync(request.FormFieldMasterId, ct);
 
         foreach (var rule in rules)
         {
-            // 2️⃣ 驗證 SQL 基本安全性與參數完整性
+            // 驗證 SQL 基本安全性與參數完整性
             var validation = ValidateGuardSql(rule, request.Parameters);
             if (!validation.IsValid)
             {
                 return validation;
             }
 
-            // 3️⃣ 建立 Dapper 參數（只塞 SQL 用得到的）
+            // 建立 Dapper 參數（只塞 SQL 用得到的）
             var parameters = BuildParameters(rule.GUARD_SQL!, request.Parameters);
 
-            // 4️⃣ 執行 Guard SQL
+            // 執行 Guard SQL
             var canDelete = await ExecuteGuardSqlAsync(rule, parameters, ct);
 
             // SQL 沒回傳或回傳格式不對 → 視為規則錯誤
@@ -131,25 +131,25 @@ ORDER BY RULE_ORDER";
 
         var sql = rule.GUARD_SQL.Trim();
 
-        // 1️⃣ 只能 SELECT 開頭
+        // 只能 SELECT 開頭
         if (!sql.StartsWith("SELECT", StringComparison.OrdinalIgnoreCase))
         {
             return BuildInvalidResult("Guard SQL 必須以 SELECT 開頭。");
         }
 
-        // 2️⃣ 禁止分號（避免多段 SQL）
+        // 禁止分號（避免多段 SQL）
         if (sql.Contains(';'))
         {
             return BuildInvalidResult("Guard SQL 不可包含分號。");
         }
 
-        // 3️⃣ 禁止危險關鍵字
+        // 禁止危險關鍵字
         if (ForbiddenKeywordRegex.IsMatch(sql))
         {
             return BuildInvalidResult("Guard SQL 包含禁止的關鍵字。");
         }
 
-        // 4️⃣ 解析 SQL 需要的參數
+        // 解析 SQL 需要的參數
         var requiredParams = ExtractParameters(sql);
 
         // SQL 需要的，每一個都必須由前端提供
