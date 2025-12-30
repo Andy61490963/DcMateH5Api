@@ -1,4 +1,3 @@
-using System;
 using System.Text.RegularExpressions;
 using ClassLibrary;
 using Dapper;
@@ -285,33 +284,75 @@ UPDATE m
         {
             throw new InvalidOperationException("FormMasterId 不可為空。");
         }
-        
-        var mappingTableName = await GetMappingTableNameAsync(formMasterId, ct);
 
-        var columns = _schemaService.GetFormFieldMaster(mappingTableName!);
-        if (columns.Count == 0)
+        var header = GetMappingHeader(formMasterId);
+        // var mappingTableName = await GetMappingTableNameAsync(formMasterId, ct);
+
+        var key = _schemaService.GetPrimaryKeyColumn(header.MAPPING_TABLE_NAME!);
+        if (string.IsNullOrWhiteSpace(key))
         {
-            throw new InvalidOperationException($"無法取得關聯表欄位資訊：{mappingTableName}");
+            throw new InvalidOperationException($"關聯表缺少主鍵欄位：{header.MAPPING_TABLE_NAME!}");
         }
 
-        var key = _schemaService.GetPrimaryKeyColumn(mappingTableName!);
-        
-        var rows = _con.Query($"SELECT * FROM [{mappingTableName}]")
+        var baseDisplayColumn = header.MAPPING_BASE_COLUMN_NAME;
+        var detailDisplayColumn = header.MAPPING_DETAIL_COLUMN_NAME;
+
+        if (string.IsNullOrWhiteSpace(baseDisplayColumn) || string.IsNullOrWhiteSpace(detailDisplayColumn))
+        {
+            throw new InvalidOperationException("多對多設定檔缺少顯示欄位（MAPPING_BASE_COLUMN_NAME / MAPPING_DETAIL_COLUMN_NAME）。");
+        }
+
+        const string BaseAlias = "__BaseDisplay";
+        const string DetailAlias = "__DetailDisplay";
+
+        var sql = $@"/**/
+    SELECT 
+        m.*,
+        b.[{baseDisplayColumn}]   AS [{BaseAlias}],
+        d.[{detailDisplayColumn}] AS [{DetailAlias}]
+    FROM [{header.MAPPING_TABLE_NAME!}] AS m
+    JOIN [{header.BASE_TABLE_NAME}] AS b
+      ON m.[{header.MAPPING_BASE_FK_COLUMN}] = b.[{header.MAPPING_BASE_FK_COLUMN}]
+    JOIN [{header.DETAIL_TABLE_NAME}] AS d
+      ON m.[{header.MAPPING_DETAIL_FK_COLUMN}] = d.[{header.MAPPING_DETAIL_FK_COLUMN}]
+    WHERE m.IS_DELETE = 0;";
+
+        var rawRows = (await _con.QueryAsync(sql))
             .Cast<IDictionary<string, object?>>()
-            .Select(row => new MappingTableRowViewModel
-            {
-                Columns = new Dictionary<string, object?>(row, StringComparer.OrdinalIgnoreCase)
-            })
             .ToList();
+
+        var rows = rawRows.Select(row =>
+        {
+            // 先複製，避免直接動到 row
+            var columns = new Dictionary<string, object?>(row, StringComparer.OrdinalIgnoreCase);
+
+            columns.TryGetValue(BaseAlias, out var baseTextObj);
+            columns.TryGetValue(DetailAlias, out var detailTextObj);
+
+            // 可選：不想讓 alias 混在 Columns，就移除
+            columns.Remove(BaseAlias);
+            columns.Remove(DetailAlias);
+
+            return new MappingTableRowViewModel
+            {
+                BaseDisplayText = baseTextObj?.ToString(),
+                DetailDisplayText = detailTextObj?.ToString(),
+                Columns = columns
+            };
+        }).ToList();
 
         return new MappingTableDataViewModel
         {
             FormMasterId = formMasterId,
-            MappingTableName = mappingTableName!,
-            MappingTableKey = key!,
+            MappingTableName = header.MAPPING_TABLE_NAME!,
+            MappingTableKey = key,
+            MappingBaseColumnName = baseDisplayColumn,
+            MappingDetailColumnName = detailDisplayColumn,
             Rows = rows
         };
     }
+
+
 
     /// <summary>
     /// 依 FormMasterId + MappingRowId 更新關聯表指定欄位資料。
@@ -412,17 +453,29 @@ UPDATE m
         {
             throw new InvalidOperationException("多對多設定檔缺少關聯表外鍵欄位設定");
         }
-
+        if (string.IsNullOrWhiteSpace(header.MAPPING_BASE_COLUMN_NAME) ||
+            string.IsNullOrWhiteSpace(header.MAPPING_DETAIL_COLUMN_NAME))
+        {
+            throw new InvalidOperationException("多對多設定檔缺少關聯表外鍵顯示欄位設定");
+        }
+        
+        ValidateTableName(header.BASE_TABLE_NAME);
+        ValidateTableName(header.DETAIL_TABLE_NAME);
+        ValidateTableName(header.MAPPING_TABLE_NAME);
+        
         ValidateColumnName(header.MAPPING_BASE_FK_COLUMN);
         ValidateColumnName(header.MAPPING_DETAIL_FK_COLUMN);
+        
+        ValidateColumnName(header.MAPPING_BASE_COLUMN_NAME);
+        ValidateColumnName(header.MAPPING_DETAIL_COLUMN_NAME);
 
         EnsureColumnExists(header.MAPPING_TABLE_NAME!, header.MAPPING_BASE_FK_COLUMN!, "關聯表缺少指向主表的外鍵欄位", tx);
         EnsureColumnExists(header.MAPPING_TABLE_NAME!, header.MAPPING_DETAIL_FK_COLUMN!, "關聯表缺少指向明細表的外鍵欄位", tx);
         EnsureColumnExists(header.BASE_TABLE_NAME!, header.MAPPING_BASE_FK_COLUMN!, "主表缺少對應的鍵欄位", tx);
         EnsureColumnExists(header.DETAIL_TABLE_NAME!, header.MAPPING_DETAIL_FK_COLUMN!, "明細表缺少對應的鍵欄位", tx);
 
-        _schemaService.ResolvePk(header.BASE_TABLE_NAME!, null, tx);
-        _schemaService.ResolvePk(header.DETAIL_TABLE_NAME!, null, tx);
+        // _schemaService.ResolvePk(header.BASE_TABLE_NAME!, null, tx);
+        // _schemaService.ResolvePk(header.DETAIL_TABLE_NAME!, null, tx);
 
         return header;
     }
