@@ -1798,7 +1798,7 @@ ORDER BY TABLE_SCHEMA, TABLE_NAME;";
             QUERY_DEFAULT_VALUE = null,
             SchemaType = schemaType,
             QUERY_COMPONENT = QueryComponentType.None,
-            QUERY_CONDITION = ConditionType.None,
+            QUERY_CONDITION = ConditionType.Like,
             // QUERY_CONDITION_SQL = string.Empty,
             CAN_QUERY = false
         };
