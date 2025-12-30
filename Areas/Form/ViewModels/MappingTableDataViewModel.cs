@@ -26,6 +26,16 @@ public class MappingTableDataViewModel
     public string MappingTableKey { get; set; } = string.Empty;
     
     /// <summary>
+    /// 關聯表指向主表的顯示欄位名稱。
+    /// </summary>
+    public string MappingBaseColumnName { get; set; } = string.Empty;
+
+    /// <summary>
+    /// 關聯表指向明細表的顯示欄位名稱。
+    /// </summary>
+    public string MappingDetailColumnName { get; set; } = string.Empty;
+    
+    /// <summary>
     /// <para>該關聯表的所有資料列。</para>
     /// <para>每筆資料列均包含「欄位名稱 / 欄位值」的結構化對應。</para>
     /// </summary>
@@ -35,11 +45,21 @@ public class MappingTableDataViewModel
 /// <summary>
 /// 關聯表的單筆資料列模型，使用明確的字典保存欄位與值，避免 dynamic 帶來的隱藏問題。
 /// </summary>
-public class MappingTableRowViewModel
+public sealed class MappingTableRowViewModel
 {
     /// <summary>
-    /// <para>欄位名稱對應欄位值的集合。</para>
-    /// <para>採用大小寫不敏感的字典以提高容錯與查詢便利性。</para>
+    /// Base 表顯示文字（由 Join 取得）
     /// </summary>
-    public Dictionary<string, object?> Columns { get; set; } = new(StringComparer.OrdinalIgnoreCase);
+    public string? BaseDisplayText { get; init; }
+
+    /// <summary>
+    /// Detail 表顯示文字（由 Join 取得）
+    /// </summary>
+    public string? DetailDisplayText { get; init; }
+
+    /// <summary>
+    /// Mapping table 該列的所有欄位（白名單欄位）
+    /// </summary>
+    public IReadOnlyDictionary<string, object?> Columns { get; init; }
+        = new Dictionary<string, object?>(StringComparer.OrdinalIgnoreCase);
 }
