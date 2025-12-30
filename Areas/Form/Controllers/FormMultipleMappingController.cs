@@ -1,4 +1,5 @@
-﻿using DcMateH5Api.Areas.Form.Interfaces;
+﻿using ClassLibrary;
+using DcMateH5Api.Areas.Form.Interfaces;
 using DcMateH5Api.Areas.Form.Models;
 using DcMateH5Api.Areas.Form.ViewModels;
 using DcMateH5Api.Helper;
@@ -16,13 +17,53 @@ namespace DcMateH5Api.Areas.Form.Controllers;
 [Produces("application/json")]
 public class FormMultipleMappingController : ControllerBase
 {
+    private readonly IFormService _formService;
     private readonly IFormMultipleMappingService _service;
+    private readonly FormFunctionType _funcType = FormFunctionType.MultipleMappingMaintenance;
 
-    public FormMultipleMappingController(IFormMultipleMappingService service)
+    public FormMultipleMappingController(IFormService formService, IFormMultipleMappingService service)
     {
+        _formService = formService;
         _service = service;
     }
 
+    /// <summary>
+    /// 取得多對多維護的資料列表 (暫時用不到)
+    /// </summary>
+    /// <remarks>
+    /// ### 範例輸入
+    /// ```json
+    /// [
+    ///   {
+    ///     "column": "STATUS_CALCD_TIME",
+    ///     "ConditionType": 3,
+    ///     "value": "2024-12-31",
+    ///     "value2": "2025-01-02",
+    ///     "dataType": "datetime"
+    ///   }
+    /// ]
+    /// ```
+    /// </remarks>
+    /// <param name="request">查詢條件與分頁設定</param>
+    /// <returns>查詢結果</returns>
+    [HttpPost("searchView")]
+    [ProducesResponseType(typeof(FormListDataViewModel), StatusCodes.Status200OK)]
+    [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status400BadRequest)]
+    public IActionResult GetForms([FromBody] FormSearchRequest? request)
+    {
+        if (request == null)
+        {
+            return BadRequest(new
+            {
+                Error = "Request body is null",
+                Hint  = "請確認傳入的 JSON 是否正確，至少需要提供查詢條件或分頁參數"
+            });
+        }
+        
+        var vm = _formService.GetFormList( _funcType, request );
+        return Ok(vm);
+    }
+    
     /// <summary>
     /// 取得多對多設定檔清單，供前端呈現可選的維護方案。
     /// </summary>
