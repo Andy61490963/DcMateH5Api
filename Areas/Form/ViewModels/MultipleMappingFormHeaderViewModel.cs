@@ -43,7 +43,7 @@ public class MultipleMappingFormHeaderViewModel
     /// <summary>
     /// 多對多檢視表 FORM_FIELD_MASTER ID，若無則留空。
     /// </summary>
-    public Guid? VIEW_TABLE_ID { get; set; }
+    public Guid VIEW_TABLE_ID { get; set; }
 
     /// <summary>
     /// 關聯表指向主表（Base）的外鍵欄位名稱。
@@ -58,10 +58,10 @@ public class MultipleMappingFormHeaderViewModel
     /// <summary>
     /// 關聯表指向主表（Base）的顯示欄位名稱。
     /// </summary>
-    public string? MAPPING_BASE_COLUMN_NAME { get; set; }
+    public string MAPPING_BASE_COLUMN_NAME { get; set; }
 
     /// <summary>
     /// 關聯表指向目標表（Detail）的顯示欄位名稱。
     /// </summary>
-    public string? MAPPING_DETAIL_COLUMN_NAME { get; set; }
+    public string MAPPING_DETAIL_COLUMN_NAME { get; set; }
 }

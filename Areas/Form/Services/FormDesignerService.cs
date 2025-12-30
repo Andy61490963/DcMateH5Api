@@ -1410,21 +1410,17 @@ ORDER BY TABLE_SCHEMA, TABLE_NAME;";
             .AndEq(x => x.ID, model.MAPPING_TABLE_ID)
             .AndNotDeleted();
 
-        var viewTableId = model.VIEW_TABLE_ID == Guid.Empty ? null : model.VIEW_TABLE_ID;
-        var whereView = viewTableId.HasValue
-            ? new WhereBuilder<FormFieldMasterDto>().AndEq(x => x.ID, viewTableId).AndNotDeleted()
-            : null;
+        var viewTableId = model.VIEW_TABLE_ID;
+        var whereView = new WhereBuilder<FormFieldMasterDto>().AndEq(x => x.ID, viewTableId).AndNotDeleted();
 
         var baseMaster = await _sqlHelper.SelectFirstOrDefaultAsync(whereBase)
-                         ?? throw new InvalidOperationException("主表查無資料");
+                            ?? throw new InvalidOperationException("主表查無資料");
         var detailMaster = await _sqlHelper.SelectFirstOrDefaultAsync(whereDetail)
-                           ?? throw new InvalidOperationException("目標表查無資料");
-        var mappingMaster = await _sqlHelper.SelectFirstOrDefaultAsync(whereMapping)
+                            ?? throw new InvalidOperationException("目標表查無資料");
+        var mappingMaster = await _sqlHelper.SelectFirstOrDefaultAsync(whereMapping) 
                             ?? throw new InvalidOperationException("關聯表查無資料");
-        var viewMaster = whereView == null
-            ? null
-            : await _sqlHelper.SelectFirstOrDefaultAsync(whereView)
-              ?? throw new InvalidOperationException("檢視表查無資料");
+        var viewMaster = await _sqlHelper.SelectFirstOrDefaultAsync(whereView)
+                            ?? throw new InvalidOperationException("檢視表查無資料");
 
         var baseTableName = baseMaster.BASE_TABLE_NAME;
         var detailTableName = detailMaster.DETAIL_TABLE_NAME;

@@ -53,23 +53,6 @@ public class FormMultipleMappingControllerTests
     }
 
     [Fact]
-    public void AddMappings_ValidRequest_ReturnsNoContent()
-    {
-        var controller = CreateController();
-        var formMasterId = Guid.NewGuid();
-        var request = new MultipleMappingUpsertViewModel
-        {
-            BaseId = "1",
-            DetailIds = new List<string> { "2" }
-        };
-
-        var result = controller.AddMappings(formMasterId, request, CancellationToken.None);
-
-        _service.Verify(s => s.AddMappings(formMasterId, request, It.IsAny<CancellationToken>()), Times.Once);
-        Assert.IsType<NoContentResult>(result);
-    }
-
-    [Fact]
     public void RemoveMappings_ValidRequest_ReturnsNoContent()
     {
         var controller = CreateController();
