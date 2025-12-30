@@ -90,6 +90,155 @@ public class FormDesignerService : IFormDesignerService
             .Set(x => x.FORM_DESCRIPTION, model.FORM_DESCRIPTION)
             .ExecuteAsync(ct);
     }
+
+    /// <summary>
+    /// 取得刪除防呆 SQL 規則清單（可依主檔 ID 篩選）。
+    /// </summary>
+    /// <param name="formFieldMasterId">表單主檔 ID（可空）</param>
+    /// <param name="ct">取消權杖</param>
+    /// <returns>規則清單</returns>
+    public async Task<List<FormFieldDeleteGuardSqlDto>> GetDeleteGuardSqls(
+        Guid? formFieldMasterId,
+        CancellationToken ct = default)
+    {
+        var where = new WhereBuilder<FormFieldDeleteGuardSqlDto>()
+            .AndNotDeleted();
+
+        if (formFieldMasterId.HasValue)
+        {
+            where.AndEq(x => x.FORM_FIELD_MASTER_ID, formFieldMasterId.Value);
+        }
+
+        var list = await _sqlHelper.SelectWhereAsync(where, ct);
+        return list
+            .OrderBy(x => x.RULE_ORDER ?? int.MaxValue)
+            .ToList();
+    }
+
+    /// <summary>
+    /// 取得單筆刪除防呆 SQL 規則。
+    /// </summary>
+    /// <param name="id">規則 ID</param>
+    /// <param name="ct">取消權杖</param>
+    /// <returns>規則明細</returns>
+    public Task<FormFieldDeleteGuardSqlDto?> GetDeleteGuardSql(Guid id, CancellationToken ct = default)
+    {
+        var where = new WhereBuilder<FormFieldDeleteGuardSqlDto>()
+            .AndEq(x => x.ID, id)
+            .AndNotDeleted();
+
+        return _sqlHelper.SelectFirstOrDefaultAsync(where, ct);
+    }
+
+    /// <summary>
+    /// 新增刪除防呆 SQL 規則。
+    /// </summary>
+    /// <param name="model">新增內容</param>
+    /// <param name="currentUserId">目前登入使用者 ID</param>
+    /// <param name="ct">取消權杖</param>
+    /// <returns>新增後的規則資料</returns>
+    public async Task<FormFieldDeleteGuardSqlDto> CreateDeleteGuardSql(
+        FormFieldDeleteGuardSqlCreateViewModel model,
+        Guid? currentUserId,
+        CancellationToken ct = default)
+    {
+        var entity = new FormFieldDeleteGuardSqlDto
+        {
+            ID = Guid.NewGuid(),
+            FORM_FIELD_MASTER_ID = model.FORM_FIELD_MASTER_ID,
+            NAME = model.NAME,
+            GUARD_SQL = model.GUARD_SQL,
+            IS_ENABLED = model.IS_ENABLED,
+            RULE_ORDER = model.RULE_ORDER,
+            CREATE_USER = currentUserId,
+            CREATE_TIME = DateTime.Now,
+            EDIT_USER = currentUserId,
+            EDIT_TIME = DateTime.Now,
+            IS_DELETE = false
+        };
+
+        var originalAudit = _sqlHelper.EnableAuditColumns;
+        _sqlHelper.EnableAuditColumns = false;
+        try
+        {
+            await _sqlHelper.InsertAsync(entity, ct);
+        }
+        finally
+        {
+            _sqlHelper.EnableAuditColumns = originalAudit;
+        }
+
+        return entity;
+    }
+
+    /// <summary>
+    /// 更新刪除防呆 SQL 規則。
+    /// </summary>
+    /// <param name="id">規則 ID</param>
+    /// <param name="model">更新內容</param>
+    /// <param name="currentUserId">目前登入使用者 ID</param>
+    /// <param name="ct">取消權杖</param>
+    /// <returns>更新後的規則資料（找不到則回傳 null）</returns>
+    public async Task<FormFieldDeleteGuardSqlDto?> UpdateDeleteGuardSql(
+        Guid id,
+        FormFieldDeleteGuardSqlUpdateViewModel model,
+        Guid? currentUserId,
+        CancellationToken ct = default)
+    {
+        var existing = await GetDeleteGuardSql(id, ct);
+        if (existing == null) return null;
+
+        existing.FORM_FIELD_MASTER_ID = model.FORM_FIELD_MASTER_ID;
+        existing.NAME = model.NAME;
+        existing.GUARD_SQL = model.GUARD_SQL;
+        existing.IS_ENABLED = model.IS_ENABLED;
+        existing.RULE_ORDER = model.RULE_ORDER;
+        existing.EDIT_USER = currentUserId;
+        existing.EDIT_TIME = DateTime.Now;
+
+        var originalAudit = _sqlHelper.EnableAuditColumns;
+        _sqlHelper.EnableAuditColumns = false;
+        try
+        {
+            await _sqlHelper.UpdateAllByIdAsync(existing, UpdateNullBehavior.IncludeNulls, false, ct);
+        }
+        finally
+        {
+            _sqlHelper.EnableAuditColumns = originalAudit;
+        }
+
+        return existing;
+    }
+
+    /// <summary>
+    /// 刪除刪除防呆 SQL 規則（軟刪除）。
+    /// </summary>
+    /// <param name="id">規則 ID</param>
+    /// <param name="currentUserId">目前登入使用者 ID</param>
+    /// <param name="ct">取消權杖</param>
+    /// <returns>是否刪除成功</returns>
+    public async Task<bool> DeleteDeleteGuardSql(Guid id, Guid? currentUserId, CancellationToken ct = default)
+    {
+        var existing = await GetDeleteGuardSql(id, ct);
+        if (existing == null) return false;
+
+        existing.EDIT_USER = currentUserId;
+        existing.EDIT_TIME = DateTime.Now;
+        existing.IS_DELETE = true;
+
+        var originalAudit = _sqlHelper.EnableAuditColumns;
+        _sqlHelper.EnableAuditColumns = false;
+        try
+        {
+            await _sqlHelper.UpdateAllByIdAsync(existing, UpdateNullBehavior.IncludeNulls, false, ct);
+        }
+        finally
+        {
+            _sqlHelper.EnableAuditColumns = originalAudit;
+        }
+
+        return true;
+    }
     
     /// <summary>
     /// 取得單一主表設定
@@ -1410,21 +1559,17 @@ ORDER BY TABLE_SCHEMA, TABLE_NAME;";
             .AndEq(x => x.ID, model.MAPPING_TABLE_ID)
             .AndNotDeleted();
 
-        var viewTableId = model.VIEW_TABLE_ID == Guid.Empty ? null : model.VIEW_TABLE_ID;
-        var whereView = viewTableId.HasValue
-            ? new WhereBuilder<FormFieldMasterDto>().AndEq(x => x.ID, viewTableId).AndNotDeleted()
-            : null;
+        var viewTableId = model.VIEW_TABLE_ID;
+        var whereView = new WhereBuilder<FormFieldMasterDto>().AndEq(x => x.ID, viewTableId).AndNotDeleted();
 
         var baseMaster = await _sqlHelper.SelectFirstOrDefaultAsync(whereBase)
-                         ?? throw new InvalidOperationException("主表查無資料");
+                            ?? throw new InvalidOperationException("主表查無資料");
         var detailMaster = await _sqlHelper.SelectFirstOrDefaultAsync(whereDetail)
-                           ?? throw new InvalidOperationException("目標表查無資料");
-        var mappingMaster = await _sqlHelper.SelectFirstOrDefaultAsync(whereMapping)
+                            ?? throw new InvalidOperationException("目標表查無資料");
+        var mappingMaster = await _sqlHelper.SelectFirstOrDefaultAsync(whereMapping) 
                             ?? throw new InvalidOperationException("關聯表查無資料");
-        var viewMaster = whereView == null
-            ? null
-            : await _sqlHelper.SelectFirstOrDefaultAsync(whereView)
-              ?? throw new InvalidOperationException("檢視表查無資料");
+        var viewMaster = await _sqlHelper.SelectFirstOrDefaultAsync(whereView)
+                            ?? throw new InvalidOperationException("檢視表查無資料");
 
         var baseTableName = baseMaster.BASE_TABLE_NAME;
         var detailTableName = detailMaster.DETAIL_TABLE_NAME;
@@ -1849,6 +1994,7 @@ SELECT CONTROL_TYPE FROM FORM_FIELD_CONFIG WHERE ID = @fieldId";
 
         public const string GetRequiredFieldIds      = @"/**/
 SELECT FIELD_CONFIG_ID FROM FORM_FIELD_VALIDATION_RULE WHERE IS_DELETE = 0";
+
 
         public const string EnsureDropdownExists = @"
 /* 僅在尚未存在時插入 dropdown 主檔 */

@@ -4,6 +4,7 @@ using DcMateH5Api.Areas.Form.Interfaces;
 using DcMateH5Api.Areas.Form.ViewModels;
 using Microsoft.AspNetCore.Mvc;
 using DcMateH5Api.Helper;
+using DcMateH5Api.Controllers;
 
 namespace DcMateH5Api.Areas.Form.Controllers;
 
@@ -11,7 +12,7 @@ namespace DcMateH5Api.Areas.Form.Controllers;
 [ApiController]
 [ApiExplorerSettings(GroupName = SwaggerGroups.Form)]
 [Route("[area]/[controller]")]
-public class FormDesignerController : ControllerBase
+public class FormDesignerController : BaseController
 {
     private readonly IFormDesignerService _formDesignerService;
     private readonly FormFunctionType _funcType = FormFunctionType.MasterMaintenance;
@@ -468,6 +469,95 @@ public class FormDesignerController : ControllerBase
         return Ok(options);
     }
 
+    // ────────── 刪除防呆 SQL ──────────
+
+    /// <summary>
+    /// 取得刪除防呆 SQL 規則清單（可依表單主檔 ID 篩選）。
+    /// </summary>
+    /// <param name="formFieldMasterId">FORM_FIELD_MASTER 的ID</param>
+    /// <param name="ct">CancellationToken</param>
+    /// <returns>刪除防呆 SQL 規則清單</returns>
+    [HttpGet("delete-guard-sqls")]
+    [ProducesResponseType(typeof(List<FormFieldDeleteGuardSqlDto>), StatusCodes.Status200OK)]
+    public async Task<ActionResult<List<FormFieldDeleteGuardSqlDto>>> GetDeleteGuardSqls(
+        [FromQuery] Guid? formFieldMasterId,
+        CancellationToken ct)
+    {
+        var rules = await _formDesignerService.GetDeleteGuardSqls(formFieldMasterId, ct);
+        return Ok(rules);
+    }
+
+    /// <summary>
+    /// 取得單筆刪除防呆 SQL 規則。
+    /// </summary>
+    /// <param name="id">規則 ID</param>
+    /// <param name="ct">CancellationToken</param>
+    /// <returns>刪除防呆 SQL 規則</returns>
+    [HttpGet("delete-guard-sqls/{id:guid}")]
+    [ProducesResponseType(typeof(FormFieldDeleteGuardSqlDto), StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
+    public async Task<IActionResult> GetDeleteGuardSql(Guid id, CancellationToken ct)
+    {
+        var rule = await _formDesignerService.GetDeleteGuardSql(id, ct);
+        if (rule == null) return NotFound();
+        return Ok(rule);
+    }
+
+    /// <summary>
+    /// 新增刪除防呆 SQL 規則。
+    /// </summary>
+    /// <param name="model">新增資料</param>
+    /// <param name="ct">CancellationToken</param>
+    /// <returns>新增後的刪除防呆 SQL 規則</returns>
+    [HttpPost("delete-guard-sqls")]
+    [ProducesResponseType(typeof(FormFieldDeleteGuardSqlDto), StatusCodes.Status200OK)]
+    public async Task<ActionResult<FormFieldDeleteGuardSqlDto>> CreateDeleteGuardSql(
+        [FromBody] FormFieldDeleteGuardSqlCreateViewModel model,
+        CancellationToken ct)
+    {
+        var userId = CurrentUser.IsAuthenticated ? CurrentUser.Id : (Guid?)null;
+        var rule = await _formDesignerService.CreateDeleteGuardSql(model, userId, ct);
+        return Ok(rule);
+    }
+
+    /// <summary>
+    /// 更新刪除防呆 SQL 規則。
+    /// </summary>
+    /// <param name="id">規則 ID</param>
+    /// <param name="model">更新資料</param>
+    /// <param name="ct">CancellationToken</param>
+    /// <returns>更新後的刪除防呆 SQL 規則</returns>
+    [HttpPut("delete-guard-sqls/{id:guid}")]
+    [ProducesResponseType(typeof(FormFieldDeleteGuardSqlDto), StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
+    public async Task<IActionResult> UpdateDeleteGuardSql(
+        Guid id,
+        [FromBody] FormFieldDeleteGuardSqlUpdateViewModel model,
+        CancellationToken ct)
+    {
+        var userId = CurrentUser.IsAuthenticated ? CurrentUser.Id : (Guid?)null;
+        var rule = await _formDesignerService.UpdateDeleteGuardSql(id, model, userId, ct);
+        if (rule == null) return NotFound();
+        return Ok(rule);
+    }
+
+    /// <summary>
+    /// 刪除刪除防呆 SQL 規則
+    /// </summary>
+    /// <param name="id">規則 ID</param>
+    /// <param name="ct">CancellationToken</param>
+    /// <returns>NoContent 回應</returns>
+    [HttpDelete("delete-guard-sqls/{id:guid}")]
+    [ProducesResponseType(StatusCodes.Status204NoContent)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
+    public async Task<IActionResult> DeleteDeleteGuardSql(Guid id, CancellationToken ct)
+    {
+        var userId = CurrentUser.IsAuthenticated ? CurrentUser.Id : (Guid?)null;
+        var deleted = await _formDesignerService.DeleteDeleteGuardSql(id, userId, ct);
+        if (!deleted) return NotFound();
+        return NoContent();
+    }
+    
     // ────────── Form Header ──────────
 
     /// <summary>
