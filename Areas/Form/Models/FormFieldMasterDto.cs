@@ -32,9 +32,14 @@ public class FormFieldMasterDto
     [Column("DETAIL_TABLE_NAME")]
     public string? DETAIL_TABLE_NAME { get; set; }
     
+    [Column("VIEW_DETAIL_TABLE_NAME")]
+    public string? VIEW_DETAIL_TABLE_NAME { get; set; }
+    
     [Column("VIEW_TABLE_NAME")]
     public string? VIEW_TABLE_NAME { get; set; }
     
+    [Column("MAPPING_TABLE_NAME")]
+    public string? MAPPING_TABLE_NAME { get; set; }
     
     
     [Column("BASE_TABLE_ID")]
@@ -43,15 +48,18 @@ public class FormFieldMasterDto
     [Column("DETAIL_TABLE_ID")]
     public Guid? DETAIL_TABLE_ID { get; set; }
     
+    [Column("VIEW_DETAIL_TABLE_ID")]
+    public Guid? VIEW_DETAIL_TABLE_ID { get; set; }
+    
     [Column("VIEW_TABLE_ID")]
     public Guid? VIEW_TABLE_ID { get; set; }
-    
-    [Column("MAPPING_TABLE_NAME")]
-    public string? MAPPING_TABLE_NAME { get; set; }
 
     [Column("MAPPING_TABLE_ID")]
     public Guid? MAPPING_TABLE_ID { get; set; }
 
+    
+    
+    
     [Column("MAPPING_BASE_FK_COLUMN")]
     public string? MAPPING_BASE_FK_COLUMN { get; set; }
 

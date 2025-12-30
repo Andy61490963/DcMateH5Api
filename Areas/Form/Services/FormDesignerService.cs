@@ -534,14 +534,14 @@ ORDER BY TABLE_SCHEMA, TABLE_NAME;";
         _con.Execute(@"
         INSERT INTO FORM_FIELD_MASTER
     (ID, FORM_NAME, STATUS, SCHEMA_TYPE,
-     BASE_TABLE_NAME, VIEW_TABLE_NAME, DETAIL_TABLE_NAME, MAPPING_TABLE_NAME,
-     BASE_TABLE_ID,  VIEW_TABLE_ID,  DETAIL_TABLE_ID, MAPPING_TABLE_ID,
-     FUNCTION_TYPE, IS_DELETE)
+     BASE_TABLE_NAME, VIEW_DETAIL_TABLE_NAME, VIEW_TABLE_NAME, DETAIL_TABLE_NAME, MAPPING_TABLE_NAME,
+     BASE_TABLE_ID, VIEW_DETAIL_TABLE_ID,  VIEW_TABLE_ID,  DETAIL_TABLE_ID, MAPPING_TABLE_ID,
+     FUNCTION_TYPE, IS_DELETE, CREATE_TIME, EDIT_TIME)
     VALUES
     (@ID, @FORM_NAME, @STATUS, @SCHEMA_TYPE,
-     @BASE_TABLE_NAME, @VIEW_TABLE_NAME, @DETAIL_TABLE_NAME, @MAPPING_TABLE_NAME,
-     @BASE_TABLE_ID,  @VIEW_TABLE_ID,  @DETAIL_TABLE_ID, @MAPPING_TABLE_ID,
-     @FUNCTION_TYPE, 0);", new
+     @BASE_TABLE_NAME, @VIEW_DETAIL_TABLE_NAME, @VIEW_TABLE_NAME, @DETAIL_TABLE_NAME, @MAPPING_TABLE_NAME,
+     @BASE_TABLE_ID, @VIEW_DETAIL_TABLE_ID, @VIEW_TABLE_ID,  @DETAIL_TABLE_ID, @MAPPING_TABLE_ID,
+     @FUNCTION_TYPE, 0, GETDATE(), GETDATE());", new
         {
             ID = insertId,
             model.FORM_NAME,
@@ -551,11 +551,13 @@ ORDER BY TABLE_SCHEMA, TABLE_NAME;";
             model.VIEW_TABLE_NAME,
             model.DETAIL_TABLE_NAME,
             model.MAPPING_TABLE_NAME,
+            model.VIEW_DETAIL_TABLE_NAME,
 
             BASE_TABLE_ID   = HasValue(model.BASE_TABLE_NAME)   ? insertId : (Guid?)null,
             VIEW_TABLE_ID   = HasValue(model.VIEW_TABLE_NAME)   ? insertId : (Guid?)null,
             DETAIL_TABLE_ID = HasValue(model.DETAIL_TABLE_NAME) ? insertId : (Guid?)null,
             MAPPING_TABLE_ID = HasValue(model.MAPPING_TABLE_NAME) ? insertId : (Guid?)null,
+            VIEW_DETAIL_TABLE_ID = HasValue(model.VIEW_DETAIL_TABLE_NAME) ? insertId : (Guid?)null,
 
             FUNCTION_TYPE = model.FUNCTION_TYPE,
         });
@@ -817,7 +819,8 @@ ORDER BY TABLE_SCHEMA, TABLE_NAME;";
             BASE_TABLE_NAME   = null,
             DETAIL_TABLE_NAME = null,
             VIEW_TABLE_NAME   = null,
-            MAPPING_TABLE_NAME = null
+            MAPPING_TABLE_NAME = null,
+            VIEW_DETAIL_TABLE_NAME = null
         };
 
         switch (schemaType)
@@ -833,6 +836,9 @@ ORDER BY TABLE_SCHEMA, TABLE_NAME;";
                 break;
             case TableSchemaQueryType.OnlyMapping:
                 master.MAPPING_TABLE_NAME = tableName;
+                break;
+            case TableSchemaQueryType.DetailView:
+                master.VIEW_DETAIL_TABLE_NAME = tableName;
                 break;
         }
         
@@ -1558,9 +1564,12 @@ ORDER BY TABLE_SCHEMA, TABLE_NAME;";
         var whereMapping = new WhereBuilder<FormFieldMasterDto>()
             .AndEq(x => x.ID, model.MAPPING_TABLE_ID)
             .AndNotDeleted();
-
-        var viewTableId = model.VIEW_TABLE_ID;
-        var whereView = new WhereBuilder<FormFieldMasterDto>().AndEq(x => x.ID, viewTableId).AndNotDeleted();
+        var whereDetailView = new WhereBuilder<FormFieldMasterDto>()
+            .AndEq(x => x.ID, model.VIEW_DETAIL_TABLE_ID)
+            .AndNotDeleted();
+        var whereView = new WhereBuilder<FormFieldMasterDto>()
+            .AndEq(x => x.ID, model.VIEW_TABLE_ID)
+            .AndNotDeleted();
 
         var baseMaster = await _sqlHelper.SelectFirstOrDefaultAsync(whereBase)
                             ?? throw new InvalidOperationException("主表查無資料");
@@ -1568,12 +1577,15 @@ ORDER BY TABLE_SCHEMA, TABLE_NAME;";
                             ?? throw new InvalidOperationException("目標表查無資料");
         var mappingMaster = await _sqlHelper.SelectFirstOrDefaultAsync(whereMapping) 
                             ?? throw new InvalidOperationException("關聯表查無資料");
+        var viewDetailMaster = await _sqlHelper.SelectFirstOrDefaultAsync(whereDetailView)
+                         ?? throw new InvalidOperationException("明細檢視表查無資料");
         var viewMaster = await _sqlHelper.SelectFirstOrDefaultAsync(whereView)
                             ?? throw new InvalidOperationException("檢視表查無資料");
 
         var baseTableName = baseMaster.BASE_TABLE_NAME;
         var detailTableName = detailMaster.DETAIL_TABLE_NAME;
         var mappingTableName = mappingMaster.MAPPING_TABLE_NAME;
+        var viewDetailTableName = viewDetailMaster.VIEW_DETAIL_TABLE_NAME;
         var viewTableName = viewMaster?.VIEW_TABLE_NAME;
 
         if (string.IsNullOrWhiteSpace(baseTableName))
@@ -1620,11 +1632,13 @@ ORDER BY TABLE_SCHEMA, TABLE_NAME;";
             model.BASE_TABLE_ID,
             model.DETAIL_TABLE_ID,
             model.MAPPING_TABLE_ID,
-            VIEW_TABLE_ID = viewTableId,
+            model.VIEW_DETAIL_TABLE_ID,
+            model.VIEW_TABLE_ID,
             
             MASTER_TABLE_NAME = baseTableName,
             DETAIL_TABLE_NAME = detailTableName,
             MAPPING_TABLE_NAME = mappingTableName,
+            VIEW_DETAIL_TABLE_NAME = viewDetailTableName,
             VIEW_TABLE_NAME = viewTableName,
             
             model.MAPPING_BASE_FK_COLUMN,
@@ -1900,6 +1914,8 @@ ON target.ID = src.ID
 WHEN MATCHED THEN
     UPDATE SET
         FORM_NAME          = @FORM_NAME,
+        FORM_CODE          = @FORM_CODE,
+        FORM_DESCRIPTION   = @FORM_DESCRIPTION,
         BASE_TABLE_NAME    = @MASTER_TABLE_NAME,
         DETAIL_TABLE_NAME  = @DETAIL_TABLE_NAME,
         MAPPING_TABLE_NAME = @MAPPING_TABLE_NAME,
@@ -1914,16 +1930,17 @@ WHEN MATCHED THEN
         MAPPING_DETAIL_COLUMN_NAME = @MAPPING_DETAIL_COLUMN_NAME,
         STATUS             = @STATUS,          
         SCHEMA_TYPE        = @SCHEMA_TYPE,    
-        FUNCTION_TYPE      = @FUNCTION_TYPE
+        FUNCTION_TYPE      = @FUNCTION_TYPE,
+        EDIT_TIME          = GETDATE()
 WHEN NOT MATCHED THEN
     INSERT (
-        ID, FORM_NAME, BASE_TABLE_NAME, DETAIL_TABLE_NAME, MAPPING_TABLE_NAME, VIEW_TABLE_NAME,
+        ID, FORM_NAME, FORM_CODE, FORM_DESCRIPTION, BASE_TABLE_NAME, DETAIL_TABLE_NAME, MAPPING_TABLE_NAME, VIEW_TABLE_NAME,
         BASE_TABLE_ID, DETAIL_TABLE_ID, MAPPING_TABLE_ID, VIEW_TABLE_ID, STATUS, SCHEMA_TYPE, FUNCTION_TYPE, IS_DELETE,
-        MAPPING_BASE_FK_COLUMN, MAPPING_DETAIL_FK_COLUMN, MAPPING_BASE_COLUMN_NAME, MAPPING_DETAIL_COLUMN_NAME)
+        MAPPING_BASE_FK_COLUMN, MAPPING_DETAIL_FK_COLUMN, MAPPING_BASE_COLUMN_NAME, MAPPING_DETAIL_COLUMN_NAME, CREATE_TIME, EDIT_TIME)
     VALUES (
-        @ID, @FORM_NAME, @MASTER_TABLE_NAME, @DETAIL_TABLE_NAME, @MAPPING_TABLE_NAME, @VIEW_TABLE_NAME,
+        @ID, @FORM_NAME, @FORM_CODE, @FORM_DESCRIPTION, @MASTER_TABLE_NAME, @DETAIL_TABLE_NAME, @MAPPING_TABLE_NAME, @VIEW_TABLE_NAME,
         @BASE_TABLE_ID, @DETAIL_TABLE_ID, @MAPPING_TABLE_ID, @VIEW_TABLE_ID, @STATUS, @SCHEMA_TYPE, @FUNCTION_TYPE, 0,
-        @MAPPING_BASE_FK_COLUMN, @MAPPING_DETAIL_FK_COLUMN, @MAPPING_BASE_COLUMN_NAME, @MAPPING_DETAIL_COLUMN_NAME)
+        @MAPPING_BASE_FK_COLUMN, @MAPPING_DETAIL_FK_COLUMN, @MAPPING_BASE_COLUMN_NAME, @MAPPING_DETAIL_COLUMN_NAME, GETDATE(), GETDATE()
 OUTPUT INSERTED.ID;";
         
         public const string UpsertField = @"
