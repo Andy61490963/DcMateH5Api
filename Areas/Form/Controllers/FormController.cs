@@ -33,7 +33,7 @@ public class FormController : ControllerBase
     /// [
     ///   {
     ///     "column": "STATUS_CALCD_TIME",
-    ///     "queryConditionType": 3,
+    ///     "ConditionType": 3,
     ///     "value": "2024-12-31",
     ///     "value2": "2025-01-02",
     ///     "dataType": "datetime"
