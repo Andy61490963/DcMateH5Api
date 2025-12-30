@@ -41,6 +41,11 @@ public class MultipleMappingFormHeaderViewModel
     public Guid MAPPING_TABLE_ID { get; set; }
 
     /// <summary>
+    /// 多對多明細檢視表 FORM_FIELD_MASTER ID，若無則留空。
+    /// </summary>
+    public Guid VIEW_DETAIL_TABLE_ID { get; set; }
+    
+    /// <summary>
     /// 多對多檢視表 FORM_FIELD_MASTER ID，若無則留空。
     /// </summary>
     public Guid VIEW_TABLE_ID { get; set; }
