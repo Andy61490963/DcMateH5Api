@@ -108,38 +108,50 @@ public class FormService : IFormService
         foreach (var (master, fieldConfigs) in metas)
         {
             // --------------------------------------------------------
-            // 3.1 透過 VIEW_TABLE 讀取實際資料列
+            // 0. 判斷是否為「多對多維護模式」
             // --------------------------------------------------------
-            // - 不直接查 BASE_TABLE
-            // - 查詢條件與分頁由 request 控制
-            // - rawRows 為「尚未處理 Dropdown / PK」的原始資料
+            var isMultipleMappingMaintenance =
+                funcType == FormFunctionType.MultipleMappingMaintenance;
+
+            // --------------------------------------------------------
+            // 1. 決定資料來源表（查資料用）
+            // --------------------------------------------------------
+            var dataTableName = isMultipleMappingMaintenance
+                ? master.BASE_TABLE_NAME!     // 直接查主表
+                : master.VIEW_TABLE_NAME!;    // 一般模式查 VIEW
+
+            // --------------------------------------------------------
+            // 2. 決定 Schema 來源（欄位模板用）
+            // --------------------------------------------------------
+            var schemaTableId = isMultipleMappingMaintenance
+                ? master.BASE_TABLE_ID        // 主表 schema
+                : master.VIEW_TABLE_ID;       // 檢視表 schema
+
+            var schemaQueryType = isMultipleMappingMaintenance
+                ? TableSchemaQueryType.OnlyTable   // 對應 BASE_TABLE
+                : TableSchemaQueryType.OnlyView;   // 原本邏輯
+
+            // --------------------------------------------------------
+            // 3. 讀取實際資料列
+            // --------------------------------------------------------
             var rawRows = _formDataService.GetRows(
-                master.VIEW_TABLE_NAME!,
+                dataTableName,
                 request?.Conditions,
                 request?.Page,
                 request?.PageSize
             );
 
             // --------------------------------------------------------
-            // 3.2 取得 BASE_TABLE 的主鍵欄位
+            // 4. 一律用 BASE_TABLE 的 PK 當 RowId
             // --------------------------------------------------------
-            // 用途：
-            // - 辨識每一筆資料的唯一性
-            // - 作為 Dropdown Answer 查詢的 RowId
             var pk = _schemaService.GetPrimaryKeyColumn(master.BASE_TABLE_NAME!);
-
             if (pk == null)
             {
                 throw new InvalidOperationException(
-                    $"缺失 PK 欄位，請檢查 VIEW_TABLE_NAME -> [{master.BASE_TABLE_NAME}]"
+                    $"缺失 PK 欄位，請檢查 BASE_TABLE_NAME -> [{master.BASE_TABLE_NAME}]"
                 );
             }
 
-            // --------------------------------------------------------
-            // 3.3 將 rawRows 轉為 FormDataRow
-            // --------------------------------------------------------
-            // - 解析 PK 值，存入 row.PkId
-            // - 同時輸出所有 rowIds，供 Dropdown 使用
             var rows = _dropdownService.ToFormDataRows(
                 rawRows,
                 pk,
@@ -147,16 +159,8 @@ public class FormService : IFormService
             );
 
             // --------------------------------------------------------
-            // 3.4 Dropdown 欄位顯示文字轉換
+            // 5. Dropdown 處理（你可依需求決定是否在 Mapping 模式跳過）
             // --------------------------------------------------------
-            // 流程說明：
-            // 1. 先依 rowIds 查出實際儲存的 OPTION_ID
-            // 2. 再將 OPTION_ID 對應為 OPTION_TEXT
-            // 3. 最後直接覆蓋 rows 內對應欄位的值
-            //
-            // 備註：
-            // - 這一步會「直接修改 rows」
-            // - 後續組 ViewModel 時，拿到的就是顯示文字
             if (rowIds.Any())
             {
                 var dropdownAnswers = _dropdownService.GetAnswers(rowIds);
@@ -171,50 +175,35 @@ public class FormService : IFormService
             }
 
             // --------------------------------------------------------
-            // 3.5 取得 VIEW 對應的欄位模板（Field Template）
+            // 6. 取得欄位模板（依 schemaQueryType）
             // --------------------------------------------------------
-            // 此模板包含：
-            // - 欄位型態
-            // - 控制項型態
-            // - 驗證規則
-            // - Dropdown 設定
-            //
-            // 注意：
-            // - 這裡是「設定資料」
-            // - 尚未填入實際值
             var fieldTemplates = GetFields(
-                master.VIEW_TABLE_ID,
-                TableSchemaQueryType.OnlyView,
-                master.VIEW_TABLE_NAME!
+                schemaTableId,
+                schemaQueryType,
+                dataTableName
             );
 
-            // 取得要隱藏的欄位：View/Base 共同存在且結尾為 _SID
-            var sidColumnsToHide = GetCommonSidColumnsToHide(
-                master.VIEW_TABLE_NAME!,
-                master.BASE_TABLE_NAME!
-            );
-            
             // --------------------------------------------------------
-            // 3.6 將每一筆資料列組成最終 ViewModel
+            // 7. SID 欄位隱藏規則
+            // --------------------------------------------------------
+            var sidColumnsToHide = isMultipleMappingMaintenance
+                ? new HashSet<string>(StringComparer.OrdinalIgnoreCase) // BASE 模式不需要隱藏
+                : GetCommonSidColumnsToHide(master.VIEW_TABLE_NAME!, master.BASE_TABLE_NAME!);
+
+            // --------------------------------------------------------
+            // 8. 組 ViewModel
             // --------------------------------------------------------
             foreach (var row in rows)
             {
-                // PK 是整個 Row 的識別核心，缺失直接視為結構錯誤
                 if (row.PkId == null)
                 {
                     throw new InvalidOperationException(
-                        $"缺失 PK 欄位，請檢查 VIEW_TABLE_NAME -> [{master.VIEW_TABLE_NAME}]"
+                        $"缺失 PK 欄位，請檢查資料來源表 -> [{dataTableName}]"
                     );
                 }
 
-                // ----------------------------------------------------
-                // 將「欄位模板」與「實際資料值」合併
-                // ----------------------------------------------------
-                // CurrentValue 來源：
-                // - row.GetValue(f.Column)
-                // - 若為 Dropdown 欄位，值已在前面被轉成 OptionText
                 var rowFields = fieldTemplates
-                    .Where(f => !sidColumnsToHide.Contains(f.Column)) // 過濾掉 base Table、view Table 相同且結尾為 _SID 形式的資料
+                    .Where(f => !sidColumnsToHide.Contains(f.Column))
                     .Select(f => new FormFieldInputViewModel
                     {
                         FieldConfigId = f.FieldConfigId,
@@ -238,9 +227,6 @@ public class FormService : IFormService
                     })
                     .ToList();
 
-                // ----------------------------------------------------
-                // 組合單筆表單資料
-                // ----------------------------------------------------
                 results.Add(new FormListDataViewModel
                 {
                     FormMasterId = master.ID,
@@ -250,7 +236,7 @@ public class FormService : IFormService
                 });
             }
         }
-
+        
         // ------------------------------------------------------------
         // 4. 回傳完整表單資料清單
         // ------------------------------------------------------------
