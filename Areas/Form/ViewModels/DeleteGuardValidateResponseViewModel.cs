@@ -1,18 +1,5 @@
 namespace DcMateH5Api.Areas.Form.ViewModels;
 
-public class DeleteGuardValidateResponseViewModel
-{
-    /// <summary>
-    /// 驗證是否成功執行。
-    /// </summary>
-    public bool Success { get; set; }
-
-    /// <summary>
-    /// 驗證結果資料。
-    /// </summary>
-    public DeleteGuardValidateDataViewModel Data { get; set; } = new();
-}
-
 public class DeleteGuardValidateDataViewModel
 {
     /// <summary>

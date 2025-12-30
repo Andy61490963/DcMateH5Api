@@ -6,9 +6,6 @@ namespace DcMateH5Api.Areas.Form.Models;
 [Table("FORM_FIELD_DELETE_GUARD_SQL")]
 public class FormFieldDeleteGuardSqlDto
 {
-    [Column("SEQNO")]
-    public int SEQNO { get; set; }
-
     [Key]
     [Column("ID")]
     public Guid ID { get; set; }

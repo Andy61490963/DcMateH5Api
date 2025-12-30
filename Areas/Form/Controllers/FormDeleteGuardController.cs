@@ -28,7 +28,7 @@ public class FormDeleteGuardController : ControllerBase
     /// <param name="ct">取消權杖</param>
     /// <returns>刪除驗證結果</returns>
     [HttpPost("validate")]
-    [ProducesResponseType(typeof(DeleteGuardValidateResponseViewModel), StatusCodes.Status200OK)]
+    [ProducesResponseType(typeof(DeleteGuardValidateDataViewModel), StatusCodes.Status200OK)]
     [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status400BadRequest)]
     public async Task<IActionResult> ValidateDeleteGuard(
         [FromBody] DeleteGuardValidateRequestViewModel? request,
@@ -44,25 +44,16 @@ public class FormDeleteGuardController : ControllerBase
             return BadRequest("FormFieldMasterId 不可為空。");
         }
 
-        if (string.IsNullOrWhiteSpace(request.Key))
-        {
-            return BadRequest("Key 不可為空。");
-        }
-
         var result = await _service.ValidateDeleteGuardAsync(request, ct);
         if (!result.IsValid)
         {
             return BadRequest(result.ErrorMessage ?? "Guard SQL 驗證失敗。");
         }
 
-        var response = new DeleteGuardValidateResponseViewModel
+        var response = new DeleteGuardValidateDataViewModel
         {
-            Success = true,
-            Data = new DeleteGuardValidateDataViewModel
-            {
-                CanDelete = result.CanDelete,
-                BlockedByRule = result.BlockedByRule
-            }
+            CanDelete = result.CanDelete,
+            BlockedByRule = result.BlockedByRule
         };
 
         return Ok(response);

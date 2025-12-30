@@ -17,11 +17,13 @@ namespace DcMateH5Api.Areas.Form.Controllers;
 public class FormController : ControllerBase
 {
     private readonly IFormService _formService;
+    private readonly IFormDeleteGuardService _formDeleteGuardService;
     private readonly FormFunctionType _funcType = FormFunctionType.MasterMaintenance;
     
-    public FormController(IFormService formService)
+    public FormController(IFormService formService, IFormDeleteGuardService formDeleteGuardService)
     {
         _formService = formService;
+        _formDeleteGuardService = formDeleteGuardService;
     }
     
     /// <summary>
@@ -77,6 +79,49 @@ public class FormController : ControllerBase
         return Ok(vm);
     }
 
+    /// <summary>
+    /// 驗證刪除守門規則，若任一規則不允許刪除則立即回傳阻擋資訊。
+    /// </summary>
+    /// <param name="request">刪除守門驗證請求</param>
+    /// <param name="ct">取消權杖</param>
+    /// <returns>刪除驗證結果</returns>
+    [HttpPost("validate")]
+    [ProducesResponseType(typeof(DeleteGuardValidateDataViewModel), StatusCodes.Status200OK)]
+    [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status400BadRequest)]
+    public async Task<IActionResult> ValidateDeleteGuard(
+        [FromBody] DeleteGuardValidateRequestViewModel? request,
+        CancellationToken ct)
+    {
+        if (request == null)
+        {
+            return BadRequest("請提供刪除驗證請求內容。");
+        }
+
+        if (request.FormFieldMasterId == Guid.Empty)
+        {
+            return BadRequest("FormFieldMasterId 不可為空。");
+        }
+
+        if (request.Parameters.Count == 0)
+        {
+            return BadRequest("Parameters 不可為空。");
+        }
+
+        var result = await _formDeleteGuardService.ValidateDeleteGuardAsync(request, ct);
+        if (!result.IsValid)
+        {
+            return BadRequest(result.ErrorMessage ?? "Guard SQL 驗證失敗。");
+        }
+
+        var response = new DeleteGuardValidateDataViewModel
+        {
+            CanDelete = result.CanDelete,
+            BlockedByRule = result.BlockedByRule
+        };
+
+        return Ok(response);
+    }
+    
     /// <summary>
     /// 物理刪除資料（依 BaseId + Pk）
     /// </summary>

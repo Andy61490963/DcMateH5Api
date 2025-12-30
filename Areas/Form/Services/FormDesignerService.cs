@@ -112,7 +112,6 @@ public class FormDesignerService : IFormDesignerService
         var list = await _sqlHelper.SelectWhereAsync(where, ct);
         return list
             .OrderBy(x => x.RULE_ORDER ?? int.MaxValue)
-            .ThenBy(x => x.SEQNO)
             .ToList();
     }
 
