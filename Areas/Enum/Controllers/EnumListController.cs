@@ -59,5 +59,6 @@ public class EnumListController : ControllerBase
             ["formControlType"]      = typeof(FormControlType),
             ["queryConditionType"]   = typeof(QueryComponentType),
             ["validationType"]       = typeof(ValidationType),
+            ["conditionType"]       = typeof(ConditionType),
         };
 }
