@@ -80,7 +80,7 @@ public class FormController : ControllerBase
     }
 
     /// <summary>
-    /// 驗證刪除守門規則，若任一規則不允許刪除則立即回傳阻擋資訊。
+    /// 驗證刪除守門規則，若任一規則不允許刪除則立即回傳阻擋資訊 (會擋 ; )
     /// </summary>
     /// <param name="request">刪除守門驗證請求</param>
     /// <param name="ct">取消權杖</param>
