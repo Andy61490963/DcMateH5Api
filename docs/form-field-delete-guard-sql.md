@@ -6,6 +6,46 @@
 
 `FORM_FIELD_DELETE_GUARD_SQL` 用於定義表單刪除時的防呆 SQL。當 SQL 回傳筆數 > 0 時，前端可視為「不可刪除」的規則依據。
 
+## 刪除驗證 API（FormDeleteGuardController）
+
+| 動作 | 方法 | 路由 | 說明 |
+| --- | --- | --- | --- |
+| 刪除前驗證 | POST | `/form/delete-guard/validate` | 依 Guard SQL 逐筆驗證是否可刪除 |
+
+### 請求範例
+
+```json
+{
+  "formFieldMasterId": "guid",
+  "key": "EQP_NO",
+  "value": "123"
+}
+```
+
+### 回應範例
+
+```json
+{
+  "success": true,
+  "data": {
+    "canDelete": false,
+    "blockedByRule": "設備狀態限制"
+  }
+}
+```
+
+### 驗證流程重點
+
+1. 依 `FORM_FIELD_MASTER_ID` 查詢規則（`IS_ENABLED = 1` 且 `IS_DELETE = 0`），並依 `RULE_ORDER` 排序。
+2. 逐筆檢查 Guard SQL：
+   - 必須以 `SELECT` 開頭。
+   - 不可包含 `;`。
+   - 禁止關鍵字：`INSERT / UPDATE / DELETE / DROP / ALTER / CREATE / EXEC / WAITFOR`。
+   - 使用 Regex `@\w+` 擷取參數名稱並確認前端 `Key` 存在。
+3. 以 Dapper 參數化執行 Guard SQL，取得 `CanDelete`。
+4. 若 `CanDelete = false`，立即回傳該規則的 `NAME` 作為阻擋原因。
+5. 全部規則通過則回傳 `CanDelete = true`。
+
 ## API 端點（FormDesignerController）
 
 | 動作 | 方法 | 路由 | 說明 |
