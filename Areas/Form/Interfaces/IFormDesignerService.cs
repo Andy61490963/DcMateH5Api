@@ -104,4 +104,55 @@ public interface IFormDesignerService
         Guid detailTableId,
         Guid viewTableId,
         Guid? excludeId = null);
+
+    /// <summary>
+    /// 取得刪除防呆 SQL 規則清單。
+    /// </summary>
+    /// <param name="formFieldMasterId">表單主檔 ID（可空）</param>
+    /// <param name="ct">取消權杖</param>
+    /// <returns>規則清單</returns>
+    Task<List<FormFieldDeleteGuardSqlDto>> GetDeleteGuardSqls(Guid? formFieldMasterId, CancellationToken ct = default);
+
+    /// <summary>
+    /// 取得單筆刪除防呆 SQL 規則。
+    /// </summary>
+    /// <param name="id">規則 ID</param>
+    /// <param name="ct">取消權杖</param>
+    /// <returns>規則明細</returns>
+    Task<FormFieldDeleteGuardSqlDto?> GetDeleteGuardSql(Guid id, CancellationToken ct = default);
+
+    /// <summary>
+    /// 新增刪除防呆 SQL 規則。
+    /// </summary>
+    /// <param name="model">新增內容</param>
+    /// <param name="currentUserId">目前登入使用者 ID</param>
+    /// <param name="ct">取消權杖</param>
+    /// <returns>新增後的規則資料</returns>
+    Task<FormFieldDeleteGuardSqlDto> CreateDeleteGuardSql(
+        FormFieldDeleteGuardSqlCreateViewModel model,
+        Guid? currentUserId,
+        CancellationToken ct = default);
+
+    /// <summary>
+    /// 更新刪除防呆 SQL 規則。
+    /// </summary>
+    /// <param name="id">規則 ID</param>
+    /// <param name="model">更新內容</param>
+    /// <param name="currentUserId">目前登入使用者 ID</param>
+    /// <param name="ct">取消權杖</param>
+    /// <returns>更新後的規則資料（找不到則回傳 null）</returns>
+    Task<FormFieldDeleteGuardSqlDto?> UpdateDeleteGuardSql(
+        Guid id,
+        FormFieldDeleteGuardSqlUpdateViewModel model,
+        Guid? currentUserId,
+        CancellationToken ct = default);
+
+    /// <summary>
+    /// 刪除刪除防呆 SQL 規則（軟刪除）。
+    /// </summary>
+    /// <param name="id">規則 ID</param>
+    /// <param name="currentUserId">目前登入使用者 ID</param>
+    /// <param name="ct">取消權杖</param>
+    /// <returns>是否刪除成功</returns>
+    Task<bool> DeleteDeleteGuardSql(Guid id, Guid? currentUserId, CancellationToken ct = default);
 }
