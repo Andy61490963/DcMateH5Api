@@ -594,8 +594,9 @@ ORDER BY TABLE_SCHEMA, TABLE_NAME;";
                 FORM_FIELD_MASTER_ID        = formMasterId ?? Guid.Empty,
                 TableName                   = tableName,
                 COLUMN_NAME                 = columnName,
+                DISPLAY_NAME                = cfg?.DISPLAY_NAME ?? columnName,
                 DATA_TYPE                   = dataType,
-                CONTROL_TYPE                = cfg?.CONTROL_TYPE, // 可能被 policy 改為 null
+                CONTROL_TYPE                = cfg?.CONTROL_TYPE, 
                 CONTROL_TYPE_WHITELIST      = FormFieldHelper.GetControlTypeWhitelist(dataType),
                 QUERY_COMPONENT_TYPE_WHITELIST = FormFieldHelper.GetQueryConditionTypeWhitelist(dataType),
                 IS_REQUIRED                 = cfg?.IS_REQUIRED ?? false, // bool 不可 null，用預設
@@ -913,6 +914,7 @@ ORDER BY TABLE_SCHEMA, TABLE_NAME;";
             FORM_FIELD_MASTER_ID = formMasterId,
             TABLE_NAME = model.TableName,
             model.COLUMN_NAME,
+            model.DISPLAY_NAME,
             model.DATA_TYPE,
             CONTROL_TYPE = controlType,
             IS_REQUIRED = isRequired,
@@ -2108,6 +2110,7 @@ AND target.IS_DELETE            = 0
 
 WHEN MATCHED THEN
     UPDATE SET
+        DISPLAY_NAME   = @DISPLAY_NAME,
         CONTROL_TYPE   = @CONTROL_TYPE,
         IS_REQUIRED     = @IS_REQUIRED,
         IS_EDITABLE    = @IS_EDITABLE,
@@ -2118,11 +2121,11 @@ WHEN MATCHED THEN
         EDIT_TIME      = GETDATE()
 WHEN NOT MATCHED THEN
     INSERT (
-        ID, FORM_FIELD_MASTER_ID, TABLE_NAME, COLUMN_NAME, DATA_TYPE,
+        ID, FORM_FIELD_MASTER_ID, TABLE_NAME, COLUMN_NAME, DISPLAY_NAME, DATA_TYPE,
         CONTROL_TYPE, IS_REQUIRED, IS_EDITABLE, QUERY_DEFAULT_VALUE, FIELD_ORDER, QUERY_COMPONENT, QUERY_CONDITION, CAN_QUERY, CREATE_TIME, IS_DELETE
     )
     VALUES (
-        @ID, @FORM_FIELD_MASTER_ID, @TABLE_NAME, @COLUMN_NAME, @DATA_TYPE,
+        @ID, @FORM_FIELD_MASTER_ID, @TABLE_NAME, @COLUMN_NAME, @DISPLAY_NAME, @DATA_TYPE,
         @CONTROL_TYPE, @IS_REQUIRED, @IS_EDITABLE, @QUERY_DEFAULT_VALUE, @FIELD_ORDER, @QUERY_COMPONENT, @QUERY_CONDITION, @CAN_QUERY, GETDATE(), 0
     );";
 

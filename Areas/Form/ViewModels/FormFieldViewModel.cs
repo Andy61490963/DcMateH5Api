@@ -18,17 +18,22 @@ public class FormFieldViewModel
     /// 這個欄位是否為Pk
     /// </summary>
     public bool IS_PK { get; set; }
-
+    
     /// <summary>
     /// 表名稱
     /// </summary>
     public string TableName { get; set; } = string.Empty;
-
+    
     /// <summary>
     /// 欄位名稱
     /// </summary>
     public string COLUMN_NAME { get; set; } = string.Empty;
-
+    
+    /// <summary>
+    /// 顯示名稱
+    /// </summary>
+    public string DISPLAY_NAME { get; set; } = string.Empty;
+    
     /// <summary>
     /// 欄位資料結構類型
     /// </summary>

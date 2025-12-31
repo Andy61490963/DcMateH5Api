@@ -218,6 +218,7 @@ public class FormService : IFormService
                     {
                         FieldConfigId = f.FieldConfigId,
                         Column = f.Column,
+                        DISPLAY_NAME = f.DISPLAY_NAME,
                         DATA_TYPE = f.DATA_TYPE,
                         CONTROL_TYPE = f.CONTROL_TYPE,
                         CAN_QUERY = f.CAN_QUERY,
@@ -423,7 +424,8 @@ public class FormService : IFormService
         {
             FieldConfigId = field.ID,
             Column = field.COLUMN_NAME,
-
+            DISPLAY_NAME = field.DISPLAY_NAME,
+            
             CONTROL_TYPE = field.CONTROL_TYPE,
             QUERY_COMPONENT = field.QUERY_COMPONENT,
             QUERY_CONDITION = field.QUERY_CONDITION,
