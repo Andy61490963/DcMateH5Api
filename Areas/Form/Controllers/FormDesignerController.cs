@@ -200,8 +200,53 @@ public class FormDesignerController : BaseController
     }
 
     /// <summary>
-    /// 移動欄位排序（Fractional Indexing）
+    /// 移動表單欄位的顯示順序（使用 分數索引排序 演算法）。
     /// </summary>
+    /// <remarks>
+    /// ### 使用方式
+    /// 
+    /// 此 API 用於「拖拉排序」或「指定位置移動」欄位，
+    /// **只會更新指定欄位的排序 Key，不會重排其他欄位**。
+    /// 
+    /// 排序邏輯說明：
+    /// - 系統使用 分數索引 產生排序 Key
+    /// - 排序值不保證連續（例如：1000、2500、3000）
+    ///   僅保證大小關係正確，可有效避免大量更新資料。
+    /// 
+    /// ### Request Body 說明
+    /// 
+    /// ```json
+    /// {
+    ///   "movingId": "要移動的欄位 ID",
+    ///   "prevId": "移動後前一個欄位 ID（放最前請傳 null）",
+    ///   "nextId": "移動後後一個欄位 ID（放最後請傳 null）"
+    /// }
+    /// ```
+    /// 
+    /// - **movingId**：
+    ///   必填，要移動的 `FORM_FIELD_CONFIG.ID`。
+    /// 
+    /// - **prevId / nextId**：
+    ///   - 代表「移動後」的位置，而非移動前。
+    ///   - `prevId = null` 表示移動至最前方。
+    ///   - `nextId = null` 表示移動至最後方。
+    /// 
+    /// ### 範例
+    /// 
+    /// 將欄位 C 移動至欄位 A 與 B 之間：
+    /// 
+    /// ```json
+    /// {
+    ///   "movingId": "C",
+    ///   "prevId": "A",
+    ///   "nextId": "B"
+    /// }
+    /// ```
+    /// 
+    /// </remarks>
+    /// <param name="req">欄位排序移動請求內容</param>
+    /// <param name="ct">取消權杖</param>
+    /// <returns>成功時回傳 HTTP 200</returns>
     [HttpPost("fields/move")]
     public async Task<IActionResult> MoveField([FromBody] MoveFormFieldRequest req, CancellationToken ct)
     {
