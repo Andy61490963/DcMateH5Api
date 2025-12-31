@@ -606,7 +606,8 @@ ORDER BY TABLE_SCHEMA, TABLE_NAME;";
                 SchemaType                  = schemaType,
                 QUERY_COMPONENT             = cfg?.QUERY_COMPONENT ?? QueryComponentType.None,
                 QUERY_CONDITION             = cfg?.QUERY_CONDITION,
-                CAN_QUERY                   = cfg?.CAN_QUERY ?? false
+                CAN_QUERY                   = cfg?.CAN_QUERY ?? false,
+                FIELD_ORDER                 = cfg?.FIELD_ORDER
             };
 
             // 4-2) 依 schemaType 做欄位「置空/預設化」策略
@@ -623,7 +624,7 @@ ORDER BY TABLE_SCHEMA, TABLE_NAME;";
 
         var result = new FormFieldListViewModel
         {
-            Fields = fields,
+            Fields = fields.OrderBy(f => f.FIELD_ORDER).ToList(),
         };
 
         return result;
@@ -654,7 +655,6 @@ ORDER BY TABLE_SCHEMA, TABLE_NAME;";
                 f.IS_EDITABLE = null;
                 f.IS_REQUIRED = null;
                 f.IS_VALIDATION_RULE = null;
-                f.FIELD_ORDER = null;
                 f.CONTROL_TYPE = null;
                 f.CONTROL_TYPE_WHITELIST = null;
                 break;
@@ -739,7 +739,7 @@ ORDER BY TABLE_SCHEMA, TABLE_NAME;";
 
             // 查詢相關設定
             QUERY_DEFAULT_VALUE = cfg.QUERY_DEFAULT_VALUE,
-            FIELD_ORDER = cfg.FIELD_ORDER,
+            // FIELD_ORDER = cfg.FIELD_ORDER,
             QUERY_COMPONENT = cfg.QUERY_COMPONENT,
             QUERY_CONDITION = cfg.QUERY_CONDITION,
             CAN_QUERY = cfg.CAN_QUERY,
@@ -864,7 +864,7 @@ ORDER BY TABLE_SCHEMA, TABLE_NAME;";
         {
             if (!configs.ContainsKey(col.COLUMN_NAME))
             {
-                order++;
+                order += 1000;
 
                 var vm = CreateDefaultFieldConfig(
                     col.COLUMN_NAME,
@@ -932,6 +932,152 @@ ORDER BY TABLE_SCHEMA, TABLE_NAME;";
         }
     }
 
+    /// <summary>
+    /// 移動欄位排序（Fractional Indexing）
+    /// </summary>
+    /// <remarks>
+    /// ### 使用說明
+    /// - 前端請送 movingId + (prevId/nextId) 代表移動後的位置。
+    /// - 本方法只更新 FIELD_ORDER，不會改其他欄位設定。
+    /// - 若 prev/next 的間距不足，會自動 rebalance 再重算一次。
+    /// </remarks>
+    public async Task MoveFieldAsync(MoveFormFieldRequest req, CancellationToken ct)
+    {
+        ct.ThrowIfCancellationRequested();
+
+        if (req.MovingId == Guid.Empty)
+            throw new ArgumentException("movingId 不可為空");
+
+        if (req.PrevId.HasValue && req.PrevId.Value == req.MovingId)
+            throw new ArgumentException("prevId 不可等於 movingId");
+
+        if (req.NextId.HasValue && req.NextId.Value == req.MovingId)
+            throw new ArgumentException("nextId 不可等於 movingId");
+
+        if (req.PrevId.HasValue && req.NextId.HasValue && req.PrevId.Value == req.NextId.Value)
+            throw new ArgumentException("prevId 不可等於 nextId");
+
+        const long Gap = 1000; // 初始間距，想更耐插可改 1_000_000
+
+        await _sqlHelper.TxAsync(async (conn, tx, ct) =>
+        {
+            // 1) 先鎖住 moving，取得群組（FormMasterId + TableName）
+            var group = await conn.QueryFirstOrDefaultAsync<(Guid FormMasterId, string TableName)>(
+                Sql.GetFieldGroup,
+                new { Id = req.MovingId },
+                tx);
+
+            if (group.FormMasterId == Guid.Empty || string.IsNullOrWhiteSpace(group.TableName))
+                throw new KeyNotFoundException("找不到 moving 欄位設定，或已刪除。");
+
+            // 2) 取 prev/next 的 key（若有），並強制同群組
+            long? prevKey = null;
+            long? nextKey = null;
+
+            if (req.PrevId.HasValue)
+            {
+                prevKey = await conn.QueryFirstOrDefaultAsync<long?>(
+                    Sql.GetOrderKeyById,
+                    new { Id = req.PrevId.Value, FormMasterId = group.FormMasterId, TableName = group.TableName },
+                    tx);
+
+                if (!prevKey.HasValue)
+                    throw new InvalidOperationException("prevId 不存在或不屬於同一群組。");
+            }
+
+            if (req.NextId.HasValue)
+            {
+                nextKey = await conn.QueryFirstOrDefaultAsync<long?>(
+                    Sql.GetOrderKeyById,
+                    new { Id = req.NextId.Value, FormMasterId = group.FormMasterId, TableName = group.TableName },
+                    tx);
+
+                if (!nextKey.HasValue)
+                    throw new InvalidOperationException("nextId 不存在或不屬於同一群組。");
+            }
+
+            // 3) 若 prev/next 都沒給：代表群組可能只有它一筆，或前端沒帶（不建議）
+            //    我們給它一個合理的 fallback：接到最後（max + Gap）
+            if (!prevKey.HasValue && !nextKey.HasValue)
+            {
+                var minMax = await conn.QueryFirstAsync<(long MinKey, long MaxKey)>(
+                    Sql.GetMinMaxOrderKey,
+                    new { FormMasterId = group.FormMasterId, TableName = group.TableName },
+                    tx);
+
+                var newKeyFallback = (minMax.MaxKey <= 0) ? Gap : minMax.MaxKey + Gap;
+
+                var affectedFallback = await conn.ExecuteAsync(
+                    Sql.UpdateOrderKey,
+                    new { Id = req.MovingId, OrderKey = newKeyFallback },
+                    tx);
+
+                if (affectedFallback <= 0)
+                    throw new InvalidOperationException("更新排序失敗。");
+
+                return;
+            }
+
+            // 4) 計算 newKey（Fractional Indexing）
+            long newKey;
+
+            if (!prevKey.HasValue)
+            {
+                // 放最前：nextKey - Gap（但如果 nextKey 太小或已無 gap，rebalance）
+                newKey = nextKey!.Value - Gap;
+            }
+            else if (!nextKey.HasValue)
+            {
+                // 放最後：prevKey + Gap
+                newKey = prevKey.Value + Gap;
+            }
+            else
+            {
+                // 放中間：取整數中點（避免溢位：prev + (next-prev)/2）
+                if (prevKey.Value >= nextKey.Value)
+                    throw new InvalidOperationException("prevKey 必須小於 nextKey，前端位置資料可能已過期。");
+
+                var diff = nextKey.Value - prevKey.Value;
+
+                // gap 不夠：先 rebalance，再重新計算一次（同交易內）
+                if (diff <= 1)
+                {
+                    await conn.ExecuteAsync(
+                        Sql.RebalanceOrderKey,
+                        new { FormMasterId = group.FormMasterId, TableName = group.TableName, Gap },
+                        tx);
+
+                    // rebalance 後重抓 prev/next key
+                    prevKey = req.PrevId.HasValue
+                        ? await conn.QueryFirstAsync<long>(Sql.GetOrderKeyById,
+                            new { Id = req.PrevId.Value, FormMasterId = group.FormMasterId, TableName = group.TableName }, tx)
+                        : (long?)null;
+
+                    nextKey = req.NextId.HasValue
+                        ? await conn.QueryFirstAsync<long>(Sql.GetOrderKeyById,
+                            new { Id = req.NextId.Value, FormMasterId = group.FormMasterId, TableName = group.TableName }, tx)
+                        : (long?)null;
+
+                    if (!prevKey.HasValue || !nextKey.HasValue || prevKey.Value >= nextKey.Value)
+                        throw new InvalidOperationException("Rebalance 後仍無法計算新排序，請重新整理後再試。");
+
+                    diff = nextKey.Value - prevKey.Value;
+                }
+
+                newKey = prevKey.Value + diff / 2;
+            }
+
+            // 5) 寫回 moving 的 key
+            var affected = await conn.ExecuteAsync(
+                Sql.UpdateOrderKey,
+                new { Id = req.MovingId, OrderKey = newKey },
+                tx);
+
+            if (affected <= 0)
+                throw new InvalidOperationException("更新排序失敗。");
+        }, ct: ct);
+    }
+    
     /// <summary>
     /// 批次設定欄位的必填狀態，僅對可編輯欄位生效。
     /// </summary>
@@ -1790,7 +1936,7 @@ ORDER BY TABLE_SCHEMA, TABLE_NAME;";
         return res;
     }
     
-    private FormFieldViewModel CreateDefaultFieldConfig(string columnName, string dataType, Guid masterId, string tableName, int index, TableSchemaQueryType schemaType)
+    private FormFieldViewModel CreateDefaultFieldConfig(string columnName, string dataType, Guid masterId, string tableName, long index, TableSchemaQueryType schemaType)
     {
         return new FormFieldViewModel
         {
@@ -1966,7 +2112,6 @@ WHEN MATCHED THEN
         IS_REQUIRED     = @IS_REQUIRED,
         IS_EDITABLE    = @IS_EDITABLE,
         QUERY_DEFAULT_VALUE  = @QUERY_DEFAULT_VALUE,
-        FIELD_ORDER    = @FIELD_ORDER,
         QUERY_COMPONENT = @QUERY_COMPONENT,
         QUERY_CONDITION = @QUERY_CONDITION,
         CAN_QUERY      = @CAN_QUERY,
@@ -2102,6 +2247,66 @@ DELETE FROM FORM_FIELD_CONFIG WHERE FORM_FIELD_MASTER_ID = @id;
 DELETE FROM FORM_FIELD_MASTER WHERE ID = @id;
 ";
 
+        /// <summary>
+        /// 取 Moving / Prev / Next 的群組欄位（確保同一個 FORM_FIELD_MASTER_ID + TABLE_NAME）
+        /// </summary>
+        public const string GetFieldGroup = @"/**/
+SELECT TOP(1)
+    FORM_FIELD_MASTER_ID,
+    TABLE_NAME
+FROM dbo.FORM_FIELD_CONFIG WITH (UPDLOCK, HOLDLOCK)
+WHERE ID = @Id AND IS_DELETE = 0;";
+
+        /// <summary>
+        /// 取單筆 FIELD_ORDER（同交易內，避免讀到飄移）
+        /// </summary>
+        public const string GetOrderKeyById = @"/**/
+SELECT TOP(1) FIELD_ORDER
+FROM dbo.FORM_FIELD_CONFIG WITH (UPDLOCK, HOLDLOCK)
+WHERE ID = @Id
+  AND FORM_FIELD_MASTER_ID = @FormMasterId
+  AND TABLE_NAME = @TableName
+  AND IS_DELETE = 0;";
+
+        /// <summary>
+        /// 取群組最小/最大 FIELD_ORDER（處理放最前/最後）
+        /// </summary>
+        public const string GetMinMaxOrderKey = @"/**/
+SELECT
+    MIN(FIELD_ORDER) AS MinKey,
+    MAX(FIELD_ORDER) AS MaxKey
+FROM dbo.FORM_FIELD_CONFIG WITH (UPDLOCK, HOLDLOCK)
+WHERE FORM_FIELD_MASTER_ID = @FormMasterId
+  AND TABLE_NAME = @TableName
+  AND IS_DELETE = 0;";
+
+        /// <summary>
+        /// 更新 moving 的 FIELD_ORDER
+        /// </summary>
+        public const string UpdateOrderKey = @"/**/
+UPDATE dbo.FORM_FIELD_CONFIG
+SET FIELD_ORDER = @OrderKey,
+    EDIT_TIME = GETDATE()
+WHERE ID = @Id AND IS_DELETE = 0;";
+
+        /// <summary>
+        /// Rebalance：把群組依目前 FIELD_ORDER 重排成 1000,2000,3000...
+        /// </summary>
+        public const string RebalanceOrderKey = @"/**/
+;WITH ordered AS (
+    SELECT
+        ID,
+        ROW_NUMBER() OVER (ORDER BY FIELD_ORDER, CREATE_TIME, ID) AS rn
+    FROM dbo.FORM_FIELD_CONFIG WITH (UPDLOCK, HOLDLOCK)
+    WHERE FORM_FIELD_MASTER_ID = @FormMasterId
+      AND TABLE_NAME = @TableName
+      AND IS_DELETE = 0
+)
+UPDATE c
+SET FIELD_ORDER = ordered.rn * @Gap,
+    EDIT_TIME = GETDATE()
+FROM dbo.FORM_FIELD_CONFIG c
+JOIN ordered ON ordered.ID = c.ID;";
     }
     #endregion
 }

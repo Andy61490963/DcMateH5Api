@@ -54,5 +54,5 @@ public class FormFieldConfigDto
     public bool IS_REQUIRED { get; set; }
 
     [Column("FIELD_ORDER")]
-    public int FIELD_ORDER { get; set; }
+    public long FIELD_ORDER { get; set; }
 }
