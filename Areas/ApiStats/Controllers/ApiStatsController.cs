@@ -62,7 +62,7 @@ namespace DcMateH5Api.Areas.ApiStats.Controllers
             {
                 await conn.OpenAsync(ct);
                 await using var cmd = conn.CreateCommand();
-                cmd.CommandText = "SELECT GETDATE()1"; // 故意錯
+                cmd.CommandText = "SELECT GETDATE()"; // 故意錯
                 await cmd.ExecuteScalarAsync(ct);
             }
 
