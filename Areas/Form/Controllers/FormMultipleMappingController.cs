@@ -226,37 +226,6 @@ public class FormMultipleMappingController : ControllerBase
     }
 
     /// <summary>
-    /// 依 MAPPING_TABLE_ID 取得關聯表所有資料列，並回傳欄位名稱與對應值。
-    /// </summary>
-    /// <remarks>
-    /// 業務邏輯：
-    /// 1. 透過 FormMasterId（對應 FORM_FIELD_MASTER.ID）取得 MAPPING_TABLE_NAME。
-    /// 2. 回傳查詢該表全部資料列
-    /// </remarks>
-    /// <param name="formMasterId">FORM_FIELD_MASTER.ID</param>
-    /// <param name="ct">取消權杖。</param>
-    [HttpGet("{formMasterId:guid}/mapping-table")]
-    [ProducesResponseType(typeof(MappingTableDataViewModel), StatusCodes.Status200OK)]
-    [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status400BadRequest)]
-    public async Task<IActionResult> GetMappingTableData(Guid formMasterId, CancellationToken ct)
-    {
-        if (formMasterId == Guid.Empty)
-        {
-            return BadRequest("FormMasterId 不可為空");
-        }
-
-        try
-        {
-            var result = await _service.GetMappingTableData(formMasterId, ct);
-            return Ok(result);
-        }
-        catch (InvalidOperationException ex)
-        {
-            return BadRequest(ex.Message);
-        }
-    }
-
-    /// <summary>
     /// 依指定的 MAPPING_TABLE_ID 取得關聯資料表的所有資料列，
     /// 並回傳「資料列識別值」及其對應的欄位名稱與欄位值。
     /// </summary>

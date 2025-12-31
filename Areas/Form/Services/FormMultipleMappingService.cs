@@ -78,21 +78,14 @@ SELECT ID AS Id,
         var header = GetMappingHeader(formMasterId);
 
         var (basePkName, _, basePkValue) = _schemaService.ResolvePk(header.BASE_TABLE_NAME!, baseId);
-        var (detailPkName, detailPkType, _) = _schemaService.ResolvePk(header.DETAIL_TABLE_NAME!, null);
+        var (detailPkName, _, _) = _schemaService.ResolvePk(header.DETAIL_TABLE_NAME!, null);
 
         EnsureRowExists(header.BASE_TABLE_NAME!, basePkName, basePkValue!);
 
-        // 這裡改成 scalar：先抓字串，再用既有 helper 轉成正確 PK 型別
-//         var linkedDetailIds = _con.Query<string>($@"/**/
-// SELECT CAST([{header.MAPPING_DETAIL_FK_COLUMN}] AS NVARCHAR(4000)) AS Id
-//   FROM [{header.MAPPING_TABLE_NAME}]
-//  WHERE [{header.MAPPING_BASE_FK_COLUMN}] = @BaseId",
-//                 new { BaseId = basePkValue })
-//             .Select(x => ConvertToColumnTypeHelper.ConvertPkType(x, detailPkType))
-//             .ToList();
+        var baseDisplayText = GetBaseDisplayText(header, basePkValue!);
 
         var linkedItems = LoadLinkedDetailRows(header, detailPkName, basePkValue!);
-        var unlinkedItems = LoadUnlinkedRows(header, detailPkName, basePkValue);
+        var unlinkedItems = LoadUnlinkedRows(header, detailPkName, basePkValue!, baseDisplayText);
 
         return new MultipleMappingListViewModel
         {
@@ -190,8 +183,7 @@ SELECT ID AS Id,
             }
         });
     }
-
-
+    
     /// <inheritdoc />
     public void RemoveMappings(Guid formMasterId, MultipleMappingUpsertViewModel request, CancellationToken ct = default)
     {
@@ -270,90 +262,12 @@ UPDATE m
         });
     }
 
-    /// <summary>
-    /// 依據 MAPPING_TABLE_ID 查詢關聯表所有資料列，並將欄位名稱與值以模型封裝返回。
-    /// </summary>
-    /// <param name="formMasterId">FORM_FIELD_MASTER 的 MAPPING_TABLE_ID。</param>
-    /// <param name="ct">取消權杖。</param>
-    /// <returns>包含關聯表名稱與完整資料列集合的模型。</returns>
-    public async Task<MappingTableDataViewModel> GetMappingTableData(Guid formMasterId, CancellationToken ct = default)
+    private static class DisplayAlias
     {
-        ct.ThrowIfCancellationRequested();
-
-        if (formMasterId == Guid.Empty)
-        {
-            throw new InvalidOperationException("FormMasterId 不可為空。");
-        }
-
-        var header = GetMappingHeader(formMasterId);
-        // var mappingTableName = await GetMappingTableNameAsync(formMasterId, ct);
-
-        var key = _schemaService.GetPrimaryKeyColumn(header.MAPPING_TABLE_NAME!);
-        if (string.IsNullOrWhiteSpace(key))
-        {
-            throw new InvalidOperationException($"關聯表缺少主鍵欄位：{header.MAPPING_TABLE_NAME!}");
-        }
-
-        var baseDisplayColumn = header.MAPPING_BASE_COLUMN_NAME;
-        var detailDisplayColumn = header.MAPPING_DETAIL_COLUMN_NAME;
-
-        if (string.IsNullOrWhiteSpace(baseDisplayColumn) || string.IsNullOrWhiteSpace(detailDisplayColumn))
-        {
-            throw new InvalidOperationException("多對多設定檔缺少顯示欄位（MAPPING_BASE_COLUMN_NAME / MAPPING_DETAIL_COLUMN_NAME）。");
-        }
-
-        const string BaseAlias = "__BaseDisplay";
-        const string DetailAlias = "__DetailDisplay";
-
-        var sql = $@"/**/
-    SELECT 
-        m.*,
-        b.[{baseDisplayColumn}]   AS [{BaseAlias}],
-        d.[{detailDisplayColumn}] AS [{DetailAlias}]
-    FROM [{header.MAPPING_TABLE_NAME!}] AS m
-    JOIN [{header.BASE_TABLE_NAME}] AS b
-      ON m.[{header.MAPPING_BASE_FK_COLUMN}] = b.[{header.MAPPING_BASE_FK_COLUMN}]
-    JOIN [{header.DETAIL_TABLE_NAME}] AS d
-      ON m.[{header.MAPPING_DETAIL_FK_COLUMN}] = d.[{header.MAPPING_DETAIL_FK_COLUMN}]
-    WHERE m.IS_DELETE = 0;";
-
-        var rawRows = (await _con.QueryAsync(sql))
-            .Cast<IDictionary<string, object?>>()
-            .ToList();
-
-        var rows = rawRows.Select(row =>
-        {
-            // 先複製，避免直接動到 row
-            var columns = new Dictionary<string, object?>(row, StringComparer.OrdinalIgnoreCase);
-
-            columns.TryGetValue(BaseAlias, out var baseTextObj);
-            columns.TryGetValue(DetailAlias, out var detailTextObj);
-
-            // 可選：不想讓 alias 混在 Columns，就移除
-            columns.Remove(BaseAlias);
-            columns.Remove(DetailAlias);
-
-            return new MappingTableRowViewModel
-            {
-                BaseDisplayText = baseTextObj?.ToString(),
-                DetailDisplayText = detailTextObj?.ToString(),
-                Columns = columns
-            };
-        }).ToList();
-
-        return new MappingTableDataViewModel
-        {
-            FormMasterId = formMasterId,
-            MappingTableName = header.MAPPING_TABLE_NAME!,
-            MappingTableKey = key,
-            MappingBaseColumnName = baseDisplayColumn,
-            MappingDetailColumnName = detailDisplayColumn,
-            Rows = rows
-        };
+        public const string Base  = "__BaseDisplay";
+        public const string Detail = "__DetailDisplay";
     }
-
-
-
+    
     /// <summary>
     /// 依 FormMasterId + MappingRowId 更新關聯表指定欄位資料。
     /// </summary>
@@ -499,6 +413,20 @@ UPDATE m
         return mappingTableName;
     }
 
+    private string? GetBaseDisplayText(FormFieldMasterDto header, object basePkValue)
+    {
+        var baseDisplayColumn = header.MAPPING_BASE_COLUMN_NAME;
+        if (string.IsNullOrWhiteSpace(baseDisplayColumn))
+            return null;
+
+        var sql = $@"/**/
+SELECT b.[{baseDisplayColumn}]
+FROM [{header.BASE_TABLE_NAME}] b
+WHERE b.[{header.MAPPING_BASE_FK_COLUMN}] = @BaseId;";
+
+        return _con.QueryFirstOrDefault<string?>(sql, new { BaseId = basePkValue });
+    }
+    
     private List<MultipleMappingItemViewModel> LoadLinkedDetailRows(
     FormFieldMasterDto header,
     string detailPkName,
@@ -508,7 +436,13 @@ UPDATE m
         const string MappingPrefix = "m__";
         const string DetailPrefix  = "d__";
 
-        // 1) 取得欄位清單：用 schema service 當白名單來源，避免任意注入表/欄位名
+        var baseDisplayColumn = header.MAPPING_BASE_COLUMN_NAME;
+        var detailDisplayColumn = header.MAPPING_DETAIL_COLUMN_NAME;
+
+        if (string.IsNullOrWhiteSpace(baseDisplayColumn) || string.IsNullOrWhiteSpace(detailDisplayColumn))
+            throw new InvalidOperationException("多對多設定檔缺少顯示欄位（MAPPING_BASE_COLUMN_NAME / MAPPING_DETAIL_COLUMN_NAME）。");
+
+        // 欄位清單（白名單）
         var mappingColumns = _schemaService.GetFormFieldMaster(header.MAPPING_TABLE_NAME!, tx)
             .Distinct(StringComparer.OrdinalIgnoreCase)
             .ToList();
@@ -517,85 +451,127 @@ UPDATE m
             .Distinct(StringComparer.OrdinalIgnoreCase)
             .ToList();
 
-        // 2) 防呆：detailPkName 必須存在於 detail 欄位清單
         if (!detailColumns.Contains(detailPkName, StringComparer.OrdinalIgnoreCase))
             throw new InvalidOperationException($"Detail PK column '{detailPkName}' not found in '{header.DETAIL_TABLE_NAME}'.");
 
-        // 3) 組 SELECT 欄位（避免 m.*, d.* 的同名覆蓋問題）
-        //    m.[COL] AS [m__COL]
-        //    d.[COL] AS [d__COL]
+        var hasSeq = mappingColumns.Contains("SEQ", StringComparer.OrdinalIgnoreCase);
+        var orderBySql = hasSeq ? "ORDER BY m.[SEQ]" : string.Empty;
+
         var mappingSelect = string.Join(",\n    ",
             mappingColumns.Select(c => $"m.[{c}] AS [{MappingPrefix}{c}]"));
 
         var detailSelect = string.Join(",\n    ",
             detailColumns.Select(c => $"d.[{c}] AS [{DetailPrefix}{c}]"));
 
-        // 4) 若 mapping 有 SEQ，就用它排序（但 SEQ 依然會在 MappingFields 裡，不用再另外 alias）
-        var hasSeq = mappingColumns.Contains("SEQ", StringComparer.OrdinalIgnoreCase);
-        var orderBySql = hasSeq ? $"ORDER BY m.[SEQ]" : string.Empty;
-
         var sql = $@"/**/
     SELECT
         {mappingSelect},
-        {detailSelect}
+        {detailSelect},
+        b.[{baseDisplayColumn}]   AS [{DisplayAlias.Base}],
+        d.[{detailDisplayColumn}] AS [{DisplayAlias.Detail}]
     FROM [{header.MAPPING_TABLE_NAME}] AS m
     JOIN [{header.DETAIL_TABLE_NAME}]  AS d
       ON m.[{header.MAPPING_DETAIL_FK_COLUMN}] = d.[{detailPkName}]
+    JOIN [{header.BASE_TABLE_NAME}]    AS b
+      ON m.[{header.MAPPING_BASE_FK_COLUMN}] = b.[{header.MAPPING_BASE_FK_COLUMN}]
     WHERE m.[{header.MAPPING_BASE_FK_COLUMN}] = @BaseId
       AND m.IS_DELETE = 0
     {orderBySql};";
 
-        // 5) Dapper 回來是 dynamic，這裡立刻轉 dictionary
         var rows = _con.Query(sql, new { BaseId = basePkValue }, transaction: tx)
             .Cast<IDictionary<string, object?>>()
             .ToList();
 
-        // 6) 拆 MappingFields / DetailFields
-        var result = rows.Select(row =>
+        return rows.Select(row =>
         {
+            row.TryGetValue(DisplayAlias.Base, out var baseTextObj);
+            row.TryGetValue(DisplayAlias.Detail, out var detailTextObj);
+
             var mappingFields = new Dictionary<string, object?>(StringComparer.OrdinalIgnoreCase);
             var detailFields  = new Dictionary<string, object?>(StringComparer.OrdinalIgnoreCase);
 
             foreach (var kv in row)
             {
                 if (kv.Key.StartsWith(MappingPrefix, StringComparison.OrdinalIgnoreCase))
-                {
                     mappingFields[kv.Key.Substring(MappingPrefix.Length)] = kv.Value;
-                }
+
                 else if (kv.Key.StartsWith(DetailPrefix, StringComparison.OrdinalIgnoreCase))
-                {
                     detailFields[kv.Key.Substring(DetailPrefix.Length)] = kv.Value;
-                }
             }
 
-            // 7) DetailPk 一律從 DetailFields 拿（避免 mapping/detail 同名時取錯）
             detailFields.TryGetValue(detailPkName, out var pkVal);
 
             return new MultipleMappingItemViewModel
             {
                 DetailPk = pkVal?.ToString() ?? string.Empty,
+                BaseDisplayText = baseTextObj?.ToString(),
+                DetailDisplayText = detailTextObj?.ToString(),
                 MappingFields = mappingFields,
                 DetailFields = detailFields
             };
         }).ToList();
-
-        return result;
     }
 
-    private List<MultipleMappingItemViewModel> LoadUnlinkedRows(FormFieldMasterDto header, string detailPkName, object? basePkValue)
+    private List<MultipleMappingItemViewModel> LoadUnlinkedRows(
+    FormFieldMasterDto header,
+    string detailPkName,
+    object basePkValue,
+    string? baseDisplayText,
+    SqlTransaction? tx = null)
     {
-        var rows = _con.Query($@"/**/
-SELECT * FROM [{header.DETAIL_TABLE_NAME}] d
-WHERE NOT EXISTS (
-    SELECT 1 FROM [{header.MAPPING_TABLE_NAME}] m
-    WHERE m.[{header.MAPPING_BASE_FK_COLUMN}] = @BaseId
-      AND m.[{header.MAPPING_DETAIL_FK_COLUMN}] = d.[{detailPkName}]
-)", new { BaseId = basePkValue })
+        const string DetailPrefix = "d__";
+
+        var detailDisplayColumn = header.MAPPING_DETAIL_COLUMN_NAME;
+        if (string.IsNullOrWhiteSpace(detailDisplayColumn))
+            throw new InvalidOperationException("多對多設定檔缺少顯示欄位（MAPPING_DETAIL_COLUMN_NAME）。");
+
+        var detailColumns = _schemaService.GetFormFieldMaster(header.DETAIL_TABLE_NAME!, tx)
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToList();
+
+        var detailSelect = string.Join(",\n    ",
+            detailColumns.Select(c => $"d.[{c}] AS [{DetailPrefix}{c}]"));
+
+        var sql = $@"/**/
+    SELECT
+        {detailSelect},
+        d.[{detailDisplayColumn}] AS [{DisplayAlias.Detail}]
+    FROM [{header.DETAIL_TABLE_NAME}] d
+    WHERE d.IS_DELETE = 0
+      AND NOT EXISTS (
+          SELECT 1
+          FROM [{header.MAPPING_TABLE_NAME}] m
+          WHERE m.IS_DELETE = 0
+            AND m.[{header.MAPPING_BASE_FK_COLUMN}] = @BaseId
+            AND m.[{header.MAPPING_DETAIL_FK_COLUMN}] = d.[{detailPkName}]
+      );";
+
+        var rows = _con.Query(sql, new { BaseId = basePkValue }, transaction: tx)
             .Cast<IDictionary<string, object?>>()
             .ToList();
 
-        return rows.Select(row => ToItem(detailPkName, row))
-            .ToList();
+        return rows.Select(row =>
+        {
+            row.TryGetValue(DisplayAlias.Detail, out var detailTextObj);
+
+            var detailFields = new Dictionary<string, object?>(StringComparer.OrdinalIgnoreCase);
+            foreach (var kv in row)
+            {
+                if (kv.Key.StartsWith(DetailPrefix, StringComparison.OrdinalIgnoreCase))
+                    detailFields[kv.Key.Substring(DetailPrefix.Length)] = kv.Value;
+            }
+
+            detailFields.TryGetValue(detailPkName, out var pkVal);
+
+            return new MultipleMappingItemViewModel
+            {
+                DetailPk = pkVal?.ToString() ?? string.Empty,
+                BaseDisplayText = baseDisplayText,
+                DetailDisplayText = detailTextObj?.ToString(),
+                MappingFields = new Dictionary<string, object?>(StringComparer.OrdinalIgnoreCase), // unlinked 沒 mapping
+                DetailFields = detailFields
+            };
+        }).ToList();
     }
 
     private static MultipleMappingItemViewModel ToItem(string pkName, IDictionary<string, object?> row)

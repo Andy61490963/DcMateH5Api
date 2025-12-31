@@ -65,6 +65,16 @@ public class MultipleMappingItemViewModel
     public string DetailPk { get; set; } = string.Empty;
 
     /// <summary>
+    /// Base 表顯示文字（由 Join 取得）
+    /// </summary>
+    public string? BaseDisplayText { get; init; }
+
+    /// <summary>
+    /// Detail 表顯示文字（由 Join 取得）
+    /// </summary>
+    public string? DetailDisplayText { get; init; }
+    
+    /// <summary>
     /// 關聯表的資料欄位（key value）
     /// </summary>
     public Dictionary<string, object?> MappingFields { get; set; } = new();
