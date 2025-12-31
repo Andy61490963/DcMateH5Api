@@ -199,6 +199,16 @@ public class FormDesignerController : BaseController
         }
     }
 
+    /// <summary>
+    /// 移動欄位排序（Fractional Indexing）
+    /// </summary>
+    [HttpPost("fields/move")]
+    public async Task<IActionResult> MoveField([FromBody] MoveFormFieldRequest req, CancellationToken ct)
+    {
+        await _formDesignerService.MoveFieldAsync(req, ct);
+        return Ok();
+    }
+
     // ────────── 批次設定 ──────────
 
     /// <summary>

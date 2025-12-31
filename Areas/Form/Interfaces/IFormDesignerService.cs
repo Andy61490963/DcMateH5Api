@@ -31,6 +31,14 @@ public interface IFormDesignerService
     void UpsertField(FormFieldViewModel model, Guid formMasterId);
 
     /// <summary>
+    /// 排序
+    /// </summary>
+    /// <param name="req"></param>
+    /// <param name="ct"></param>
+    /// <returns></returns>
+    Task MoveFieldAsync(MoveFormFieldRequest req, CancellationToken ct);
+    
+    /// <summary>
     /// 批次設定欄位的可編輯狀態。
     /// </summary>
     Task<string> SetAllEditable( Guid formMasterId, bool isEditable, CancellationToken ct );
