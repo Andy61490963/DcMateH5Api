@@ -32,9 +32,6 @@ public class FormFieldMasterDto
     [Column("DETAIL_TABLE_NAME")]
     public string? DETAIL_TABLE_NAME { get; set; }
     
-    [Column("VIEW_DETAIL_TABLE_NAME")]
-    public string? VIEW_DETAIL_TABLE_NAME { get; set; }
-    
     [Column("VIEW_TABLE_NAME")]
     public string? VIEW_TABLE_NAME { get; set; }
     
@@ -47,9 +44,6 @@ public class FormFieldMasterDto
     
     [Column("DETAIL_TABLE_ID")]
     public Guid? DETAIL_TABLE_ID { get; set; }
-    
-    [Column("VIEW_DETAIL_TABLE_ID")]
-    public Guid? VIEW_DETAIL_TABLE_ID { get; set; }
     
     [Column("VIEW_TABLE_ID")]
     public Guid? VIEW_TABLE_ID { get; set; }
