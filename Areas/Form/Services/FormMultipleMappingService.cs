@@ -500,61 +500,86 @@ UPDATE m
     }
 
     private List<MultipleMappingItemViewModel> LoadLinkedDetailRows(
-        FormFieldMasterDto header,
-        string detailPkName,
-        object basePkValue,
-        SqlTransaction? tx = null)
+    FormFieldMasterDto header,
+    string detailPkName,
+    object basePkValue,
+    SqlTransaction? tx = null)
     {
-        // 1) 先判斷 mapping 表是否存在 SEQ 欄位（避免直接 SELECT m.SEQ 爆炸）
+        const string MappingPrefix = "m__";
+        const string DetailPrefix  = "d__";
+
+        // 1) 取得欄位清單：用 schema service 當白名單來源，避免任意注入表/欄位名
         var mappingColumns = _schemaService.GetFormFieldMaster(header.MAPPING_TABLE_NAME!, tx)
-            .ToHashSet(StringComparer.OrdinalIgnoreCase);
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToList();
 
-        var hasSeq = mappingColumns.Contains("SEQ");
+        var detailColumns = _schemaService.GetFormFieldMaster(header.DETAIL_TABLE_NAME!, tx)
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToList();
 
-        // 2) 動態決定 SQL 片段
-        const string SeqAlias = "__SEQ";
+        // 2) 防呆：detailPkName 必須存在於 detail 欄位清單
+        if (!detailColumns.Contains(detailPkName, StringComparer.OrdinalIgnoreCase))
+            throw new InvalidOperationException($"Detail PK column '{detailPkName}' not found in '{header.DETAIL_TABLE_NAME}'.");
 
-        var selectSeqSql = hasSeq ? $", m.[SEQ] AS [{SeqAlias}]" : string.Empty;
-        var orderBySql   = hasSeq ? "ORDER BY m.[SEQ]" : string.Empty;
+        // 3) 組 SELECT 欄位（避免 m.*, d.* 的同名覆蓋問題）
+        //    m.[COL] AS [m__COL]
+        //    d.[COL] AS [d__COL]
+        var mappingSelect = string.Join(",\n    ",
+            mappingColumns.Select(c => $"m.[{c}] AS [{MappingPrefix}{c}]"));
+
+        var detailSelect = string.Join(",\n    ",
+            detailColumns.Select(c => $"d.[{c}] AS [{DetailPrefix}{c}]"));
+
+        // 4) 若 mapping 有 SEQ，就用它排序（但 SEQ 依然會在 MappingFields 裡，不用再另外 alias）
+        var hasSeq = mappingColumns.Contains("SEQ", StringComparer.OrdinalIgnoreCase);
+        var orderBySql = hasSeq ? $"ORDER BY m.[SEQ]" : string.Empty;
 
         var sql = $@"/**/
-SELECT 
-    d.*{selectSeqSql}
-FROM [{header.MAPPING_TABLE_NAME}] AS m
-JOIN [{header.DETAIL_TABLE_NAME}]  AS d
-  ON m.[{header.MAPPING_DETAIL_FK_COLUMN}] = d.[{detailPkName}]
-WHERE m.[{header.MAPPING_BASE_FK_COLUMN}] = @BaseId
-  AND m.IS_DELETE = 0
-{orderBySql};";
+    SELECT
+        {mappingSelect},
+        {detailSelect}
+    FROM [{header.MAPPING_TABLE_NAME}] AS m
+    JOIN [{header.DETAIL_TABLE_NAME}]  AS d
+      ON m.[{header.MAPPING_DETAIL_FK_COLUMN}] = d.[{detailPkName}]
+    WHERE m.[{header.MAPPING_BASE_FK_COLUMN}] = @BaseId
+      AND m.IS_DELETE = 0
+    {orderBySql};";
 
+        // 5) Dapper 回來是 dynamic，這裡立刻轉 dictionary
         var rows = _con.Query(sql, new { BaseId = basePkValue }, transaction: tx)
             .Cast<IDictionary<string, object?>>()
             .ToList();
 
-        return rows.Select(row =>
+        // 6) 拆 MappingFields / DetailFields
+        var result = rows.Select(row =>
         {
-            // 3) 取 DetailPk
-            row.TryGetValue(detailPkName, out var pkVal);
+            var mappingFields = new Dictionary<string, object?>(StringComparer.OrdinalIgnoreCase);
+            var detailFields  = new Dictionary<string, object?>(StringComparer.OrdinalIgnoreCase);
 
-            // 4) 取 Seq（不存在就 null）
-            int? seq = null;
-            if (hasSeq && row.TryGetValue(SeqAlias, out var seqObj) && seqObj != null)
+            foreach (var kv in row)
             {
-                // 防 DB 是 decimal / long / int
-                seq = Convert.ToInt32(Convert.ToDecimal(seqObj));
+                if (kv.Key.StartsWith(MappingPrefix, StringComparison.OrdinalIgnoreCase))
+                {
+                    mappingFields[kv.Key.Substring(MappingPrefix.Length)] = kv.Value;
+                }
+                else if (kv.Key.StartsWith(DetailPrefix, StringComparison.OrdinalIgnoreCase))
+                {
+                    detailFields[kv.Key.Substring(DetailPrefix.Length)] = kv.Value;
+                }
             }
 
-            // 5) Fields：移除 alias，保持乾淨
-            var fields = row.ToDictionary(k => k.Key, v => v.Value);
-            if (hasSeq) fields.Remove(SeqAlias);
+            // 7) DetailPk 一律從 DetailFields 拿（避免 mapping/detail 同名時取錯）
+            detailFields.TryGetValue(detailPkName, out var pkVal);
 
             return new MultipleMappingItemViewModel
             {
                 DetailPk = pkVal?.ToString() ?? string.Empty,
-                Seq = seq,
-                Fields = fields
+                MappingFields = mappingFields,
+                DetailFields = detailFields
             };
-        }).OrderBy(x => x.Seq).ToList();
+        }).ToList();
+
+        return result;
     }
 
     private List<MultipleMappingItemViewModel> LoadUnlinkedRows(FormFieldMasterDto header, string detailPkName, object? basePkValue)
@@ -570,7 +595,6 @@ WHERE NOT EXISTS (
             .ToList();
 
         return rows.Select(row => ToItem(detailPkName, row))
-            .OrderBy(x => x.Seq)
             .ToList();
     }
 
@@ -580,7 +604,7 @@ WHERE NOT EXISTS (
         return new MultipleMappingItemViewModel
         {
             DetailPk = pkVal?.ToString() ?? string.Empty,
-            Fields = row.ToDictionary(k => k.Key, v => v.Value)
+            DetailFields = row.ToDictionary(k => k.Key, v => v.Value)
         };
     }
 
