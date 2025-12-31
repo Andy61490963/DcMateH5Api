@@ -140,7 +140,61 @@ public class FormDesignerMultipleMappingController : ControllerBase
         return Ok( result );
     }
     
-  
+    /// <summary>
+    /// 新增或更新單一欄位設定（ID 有值為更新，無值為新增）
+    /// </summary>
+    /// <param name="model">GetField( Guid fieldId ) 取得的欄位 Json </param>
+    /// <returns></returns>
+    [HttpPost("fields")]
+    [ProducesResponseType(typeof(List<FormFieldViewModel>), StatusCodes.Status200OK)]
+    [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status409Conflict)]
+    [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status400BadRequest)]
+    [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status500InternalServerError)]
+    public async Task<IActionResult> UpsertField( [FromBody] FormFieldViewModel model )
+    {
+        try
+        {
+            if ( model.SchemaType == TableSchemaQueryType.OnlyTable &&
+                ( model.QUERY_COMPONENT != QueryComponentType.None ||
+                 model.CAN_QUERY == true ) )
+                return Conflict( "無法往主表寫入查詢條件" );
+            
+            if ( model.SchemaType == TableSchemaQueryType.OnlyTable &&
+                ( model.QUERY_DEFAULT_VALUE != null ||
+                 model.CAN_QUERY == true ) )
+                return Conflict( "無法往主表寫入查詢預設值" );
+            
+            if ( model.SchemaType == TableSchemaQueryType.OnlyView &&
+                ( model.CAN_QUERY == false && model.QUERY_COMPONENT != QueryComponentType.None ) )
+                return Conflict( "無法更改未開放查詢條件的查詢元件" );
+            
+            if ( model.ID != Guid.Empty &&
+                _formDesignerService.HasValidationRules( model.ID ) &&
+                _formDesignerService.GetControlTypeByFieldId( model.ID ) != model.CONTROL_TYPE )
+                return Conflict( "已有驗證規則，無法變更控制元件類型" );
+
+            var master = new FormFieldMasterDto { ID = model.FORM_FIELD_MASTER_ID };
+            var formMasterId = _formDesignerService.GetOrCreateFormMasterId( master );
+
+            _formDesignerService.UpsertField( model, formMasterId );
+            var fields = await _formDesignerService.GetFieldsByTableName( model.TableName, formMasterId, model.SchemaType );
+            return Ok( fields );
+        }
+        catch ( HttpStatusCodeException ex )
+        {
+            return StatusCode( (int)ex.StatusCode, ex.Message );
+        }
+    }
+
+    /// <summary>
+    /// 移動欄位排序（Fractional Indexing）
+    /// </summary>
+    [HttpPost("fields/move")]
+    public async Task<IActionResult> MoveField([FromBody] MoveFormFieldRequest req, CancellationToken ct)
+    {
+        await _formDesignerService.MoveFieldAsync(req, ct);
+        return Ok();
+    }
     
     // ────────── Form Header ──────────
     

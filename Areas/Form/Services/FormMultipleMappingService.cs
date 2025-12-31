@@ -83,13 +83,13 @@ SELECT ID AS Id,
         EnsureRowExists(header.BASE_TABLE_NAME!, basePkName, basePkValue!);
 
         // 這裡改成 scalar：先抓字串，再用既有 helper 轉成正確 PK 型別
-        var linkedDetailIds = _con.Query<string>($@"/**/
-SELECT CAST([{header.MAPPING_DETAIL_FK_COLUMN}] AS NVARCHAR(4000)) AS Id
-  FROM [{header.MAPPING_TABLE_NAME}]
- WHERE [{header.MAPPING_BASE_FK_COLUMN}] = @BaseId",
-                new { BaseId = basePkValue })
-            .Select(x => ConvertToColumnTypeHelper.ConvertPkType(x, detailPkType))
-            .ToList();
+//         var linkedDetailIds = _con.Query<string>($@"/**/
+// SELECT CAST([{header.MAPPING_DETAIL_FK_COLUMN}] AS NVARCHAR(4000)) AS Id
+//   FROM [{header.MAPPING_TABLE_NAME}]
+//  WHERE [{header.MAPPING_BASE_FK_COLUMN}] = @BaseId",
+//                 new { BaseId = basePkValue })
+//             .Select(x => ConvertToColumnTypeHelper.ConvertPkType(x, detailPkType))
+//             .ToList();
 
         var linkedItems = LoadLinkedDetailRows(header, detailPkName, basePkValue!);
         var unlinkedItems = LoadUnlinkedRows(header, detailPkName, basePkValue);
@@ -554,7 +554,7 @@ WHERE m.[{header.MAPPING_BASE_FK_COLUMN}] = @BaseId
                 Seq = seq,
                 Fields = fields
             };
-        }).ToList();
+        }).OrderBy(x => x.Seq).ToList();
     }
 
     private List<MultipleMappingItemViewModel> LoadUnlinkedRows(FormFieldMasterDto header, string detailPkName, object? basePkValue)
@@ -569,7 +569,9 @@ WHERE NOT EXISTS (
             .Cast<IDictionary<string, object?>>()
             .ToList();
 
-        return rows.Select(row => ToItem(detailPkName, row)).ToList();
+        return rows.Select(row => ToItem(detailPkName, row))
+            .OrderBy(x => x.Seq)
+            .ToList();
     }
 
     private static MultipleMappingItemViewModel ToItem(string pkName, IDictionary<string, object?> row)
