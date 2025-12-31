@@ -7,6 +7,8 @@ public class FormFieldInputViewModel
 {
     public Guid FieldConfigId { get; set; }
     public string Column { get; set; } = string.Empty;
+    
+    public string? DISPLAY_NAME { get; set; } = string.Empty;
     public string DATA_TYPE { get; set; }
     public FormControlType CONTROL_TYPE { get; set; }
     public string? DefaultValue { get; set; }
