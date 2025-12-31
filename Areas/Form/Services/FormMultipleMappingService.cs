@@ -91,7 +91,7 @@ SELECT CAST([{header.MAPPING_DETAIL_FK_COLUMN}] AS NVARCHAR(4000)) AS Id
             .Select(x => ConvertToColumnTypeHelper.ConvertPkType(x, detailPkType))
             .ToList();
 
-        var linkedItems = LoadDetailRows(header.DETAIL_TABLE_NAME!, detailPkName, linkedDetailIds);
+        var linkedItems = LoadLinkedDetailRows(header, detailPkName, basePkValue!);
         var unlinkedItems = LoadUnlinkedRows(header, detailPkName, basePkValue);
 
         return new MultipleMappingListViewModel
@@ -499,16 +499,62 @@ UPDATE m
         return mappingTableName;
     }
 
-    private List<MultipleMappingItemViewModel> LoadDetailRows(string detailTableName, string detailPkName, IEnumerable<object> detailIds)
+    private List<MultipleMappingItemViewModel> LoadLinkedDetailRows(
+        FormFieldMasterDto header,
+        string detailPkName,
+        object basePkValue,
+        SqlTransaction? tx = null)
     {
-        if (!detailIds.Any()) return new();
+        // 1) 先判斷 mapping 表是否存在 SEQ 欄位（避免直接 SELECT m.SEQ 爆炸）
+        var mappingColumns = _schemaService.GetFormFieldMaster(header.MAPPING_TABLE_NAME!, tx)
+            .ToHashSet(StringComparer.OrdinalIgnoreCase);
 
-        var rows = _con.Query($"SELECT * FROM [{detailTableName}] WHERE [{detailPkName}] IN @Ids",
-                new { Ids = detailIds })
+        var hasSeq = mappingColumns.Contains("SEQ");
+
+        // 2) 動態決定 SQL 片段
+        const string SeqAlias = "__SEQ";
+
+        var selectSeqSql = hasSeq ? $", m.[SEQ] AS [{SeqAlias}]" : string.Empty;
+        var orderBySql   = hasSeq ? "ORDER BY m.[SEQ]" : string.Empty;
+
+        var sql = $@"/**/
+SELECT 
+    d.*{selectSeqSql}
+FROM [{header.MAPPING_TABLE_NAME}] AS m
+JOIN [{header.DETAIL_TABLE_NAME}]  AS d
+  ON m.[{header.MAPPING_DETAIL_FK_COLUMN}] = d.[{detailPkName}]
+WHERE m.[{header.MAPPING_BASE_FK_COLUMN}] = @BaseId
+  AND m.IS_DELETE = 0
+{orderBySql};";
+
+        var rows = _con.Query(sql, new { BaseId = basePkValue }, transaction: tx)
             .Cast<IDictionary<string, object?>>()
             .ToList();
 
-        return rows.Select(row => ToItem(detailPkName, row)).ToList();
+        return rows.Select(row =>
+        {
+            // 3) 取 DetailPk
+            row.TryGetValue(detailPkName, out var pkVal);
+
+            // 4) 取 Seq（不存在就 null）
+            int? seq = null;
+            if (hasSeq && row.TryGetValue(SeqAlias, out var seqObj) && seqObj != null)
+            {
+                // 防 DB 是 decimal / long / int
+                seq = Convert.ToInt32(Convert.ToDecimal(seqObj));
+            }
+
+            // 5) Fields：移除 alias，保持乾淨
+            var fields = row.ToDictionary(k => k.Key, v => v.Value);
+            if (hasSeq) fields.Remove(SeqAlias);
+
+            return new MultipleMappingItemViewModel
+            {
+                DetailPk = pkVal?.ToString() ?? string.Empty,
+                Seq = seq,
+                Fields = fields
+            };
+        }).ToList();
     }
 
     private List<MultipleMappingItemViewModel> LoadUnlinkedRows(FormFieldMasterDto header, string detailPkName, object? basePkValue)

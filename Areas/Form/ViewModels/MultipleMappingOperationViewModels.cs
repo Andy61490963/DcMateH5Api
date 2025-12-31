@@ -65,6 +65,11 @@ public class MultipleMappingItemViewModel
     public string DetailPk { get; set; } = string.Empty;
 
     /// <summary>
+    /// 關聯表的順序（僅 Linked 項目有值，Unlinked 為 null）
+    /// </summary>
+    public int? Seq { get; set; }
+    
+    /// <summary>
     /// 明細資料的欄位與目前值。
     /// </summary>
     public Dictionary<string, object?> Fields { get; set; } = new();
