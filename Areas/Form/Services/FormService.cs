@@ -42,34 +42,65 @@ public class FormService : IFormService
     private readonly List<string> _excludeColumnsId;
     
     /// <summary>
-    /// 取得所有表單的資料清單（含對應欄位值），
-    /// 並自動轉換下拉選單欄位的選項 ID 為顯示文字（OptionText）。
+    /// 取得表單列表頁所需的資料清單（含各欄位實際值），
+    /// 並將 Dropdown 欄位的選項值（OptionId）轉換為顯示文字（OptionText）。
     /// </summary>
     /// <remarks>
-    /// 【設計說明】
+    /// 【整體角色】
     ///
-    /// 此方法為「表單列表頁」的核心組裝邏輯，
-    /// 負責整合以下幾件事：
+    /// 此方法是「表單列表頁」的核心資料組裝流程，
+    /// 負責將「表單設定（Schema / 欄位定義）」
+    /// 與「實際資料列（Base 或 View）」
+    /// 組合成前端可直接使用的 ViewModel。
     ///
-    /// 1. 依功能類型取得表單主設定（FORM_FIELD_Master + 欄位設定）
-    /// 2. 透過 VIEW_TABLE 讀取實際資料列（避免直接查 BASE_TABLE）
-    /// 3. 自動處理 Dropdown 欄位：
-    ///    - 將資料表中的 OptionId
-    ///    - 轉換為前端顯示用的 OptionText
-    /// 4. 將「欄位模板（設定）」與「實際資料值」組合成 ViewModel
+    /// 【主要流程】
     ///
-    /// 【為什麼用 VIEW 查資料？】
-    /// - VIEW 已封裝 Join / 欄位對應邏輯
-    /// - 可避免在此方法中處理複雜 SQL
-    /// - 與動態表單「設定驅動」的設計理念一致
+    /// 1. 依功能類型（funcType）取得可用的表單主設定（FORM_FIELD_Master）與欄位設定。
+    /// 2. 依需求條件（FormMasterId / 查詢條件 / 分頁）過濾表單與資料列。
+    /// 3. 依 funcType 決定「資料來源模式」：
+    ///    - 一般模式：
+    ///      - 從 VIEW_TABLE 讀取資料列（用於列表 / 查詢 / 顯示）
+    ///      - 欄位模板來自 View Schema
+    ///    - 多對多維護模式（MultipleMappingMaintenance）：
+    ///      - 從 BASE_TABLE 直接讀取資料列（前端需要實際主表資料）
+    ///      - 欄位模板來自 Base Schema
+    ///    ※ 上述判斷已集中於 BuildModeSpec()，
+    ///       避免在主流程中散落 if / 三元運算。
+    /// 4. 一律使用 BASE_TABLE 的主鍵欄位作為 RowId，
+    ///    以確保 Dropdown 對應與資料一致性。
+    /// 5. 若資料列包含 Dropdown 欄位，
+    ///    會額外查詢 Dropdown Answer 並將 OptionId 轉換為顯示文字。
+    /// 6. 依欄位模板與實際資料列組裝 FormListDataViewModel，
+    ///    並套用 SID 欄位隱藏規則（避免前端顯示重複的 FK 欄位）。
     ///
-    /// 【注意事項】
-    /// - VIEW 必須包含 BASE_TABLE 的 PK 欄位，否則無法正確組 RowId
-    /// - Dropdown 相關轉換會依賴 rowIds，若 PK 遺失會直接丟 Exception
+    /// 【為什麼優先使用 View 讀取資料？】
+    /// - View 已封裝 Join / 欄位對應邏輯，
+    ///   可避免在此層處理複雜 SQL。
+    /// - 與動態表單「設定驅動（Schema-driven）」的設計方向一致。
+    /// - 對列表 / 查詢 / 顯示場景更友善。
+    ///
+    /// 【多對多模式的特例說明】
+    /// - 多對多維護時，前端需要直接操作 Base Table 的資料列，
+    ///   因此資料來源與欄位模板改用 Base Schema。
+    /// - 此差異屬於「資料來源選擇規則」，
+    ///   並非行為或流程差異，故僅以 BuildModeSpec 集中處理，
+    ///   未引入完整 Strategy / DI 架構，以避免過度設計。
+    ///
+    /// 【重要前提與防呆】
+    /// - BASE_TABLE 必須存在且具備主鍵欄位，
+    ///   否則無法正確產生 RowId 與 Dropdown 對應。
+    /// - View / Base Schema 設定若缺失，
+    ///   會在 BuildModeSpec 階段即丟出可讀例外，
+    ///   以利設定維護與除錯。
+    /// - Dropdown 轉換流程依賴 RowId，
+    ///   若資料來源缺失 PK，將直接拋出例外以避免產生不一致資料。
+    /// 
     /// </remarks>
-    /// <param name="funcType">功能類型（決定可用的表單集合）</param>
+    /// <param name="funcType">表單功能類型（影響資料來源模式與可用表單集合）</param>
     /// <param name="request">查詢條件與分頁資訊（可選）</param>
-    /// <returns>轉換過欄位顯示內容的表單清單資料</returns>
+    /// <returns>
+    /// 表單列表頁所需的資料清單，每一筆代表一筆資料列及其對應欄位值。
+    /// </returns>
     public List<FormListDataViewModel> GetFormList(FormFunctionType funcType, FormSearchRequest? request = null)
     {
         // ------------------------------------------------------------
@@ -108,31 +139,17 @@ public class FormService : IFormService
         foreach (var (master, fieldConfigs) in metas)
         {
             // --------------------------------------------------------
-            // 0. 判斷是否為「多對多維護模式」
+            // 1. 因為多對多前端要 BASE TABLE資料，走策略模式
             // --------------------------------------------------------
-            var isMultipleMappingMaintenance =
-                funcType == FormFunctionType.MultipleMappingMaintenance;
+            var spec = BuildModeSpec(funcType, master);
+
+            var dataTableName = spec.DataTableName;
+            var schemaTableId = spec.SchemaTableId;
+            var schemaQueryType = spec.SchemaQueryType;
+            var sidColumnsToHide = spec.SidColumnsToHide;
 
             // --------------------------------------------------------
-            // 1. 決定資料來源表（查資料用）
-            // --------------------------------------------------------
-            var dataTableName = isMultipleMappingMaintenance
-                ? master.BASE_TABLE_NAME!     // 直接查主表
-                : master.VIEW_TABLE_NAME!;    // 一般模式查 VIEW
-
-            // --------------------------------------------------------
-            // 2. 決定 Schema 來源（欄位模板用）
-            // --------------------------------------------------------
-            var schemaTableId = isMultipleMappingMaintenance
-                ? master.BASE_TABLE_ID        // 主表 schema
-                : master.VIEW_TABLE_ID;       // 檢視表 schema
-
-            var schemaQueryType = isMultipleMappingMaintenance
-                ? TableSchemaQueryType.OnlyTable   // 對應 BASE_TABLE
-                : TableSchemaQueryType.OnlyView;   // 原本邏輯
-
-            // --------------------------------------------------------
-            // 3. 讀取實際資料列
+            // 2. 讀取實際資料列
             // --------------------------------------------------------
             var rawRows = _formDataService.GetRows(
                 dataTableName,
@@ -142,7 +159,7 @@ public class FormService : IFormService
             );
 
             // --------------------------------------------------------
-            // 4. 一律用 BASE_TABLE 的 PK 當 RowId
+            // 3. 一律用 BASE_TABLE 的 PK 當 RowId
             // --------------------------------------------------------
             var pk = _schemaService.GetPrimaryKeyColumn(master.BASE_TABLE_NAME!);
             if (pk == null)
@@ -159,7 +176,7 @@ public class FormService : IFormService
             );
 
             // --------------------------------------------------------
-            // 5. Dropdown 處理
+            // 4. Dropdown 處理
             // --------------------------------------------------------
             if (rowIds.Any())
             {
@@ -175,7 +192,7 @@ public class FormService : IFormService
             }
 
             // --------------------------------------------------------
-            // 6. 取得欄位模板（依 schemaQueryType）
+            // 5. 取得欄位模板（依 schemaQueryType）
             // --------------------------------------------------------
             var fieldTemplates = GetFields(
                 schemaTableId,
@@ -184,14 +201,7 @@ public class FormService : IFormService
             );
 
             // --------------------------------------------------------
-            // 7. SID 欄位隱藏規則
-            // --------------------------------------------------------
-            var sidColumnsToHide = isMultipleMappingMaintenance
-                ? new HashSet<string>(StringComparer.OrdinalIgnoreCase) // BASE 模式不需要隱藏
-                : GetCommonSidColumnsToHide(master.VIEW_TABLE_NAME!, master.BASE_TABLE_NAME!);
-
-            // --------------------------------------------------------
-            // 8. 組 ViewModel
+            // 6. 組 ViewModel
             // --------------------------------------------------------
             foreach (var row in rows)
             {
@@ -243,6 +253,47 @@ public class FormService : IFormService
         return results;
     }
     
+    private sealed class FormListModeSpec
+    {
+        public string DataTableName { get; init; } = default!;
+        public Guid? SchemaTableId { get; init; }
+        public TableSchemaQueryType SchemaQueryType { get; init; }
+        public HashSet<string> SidColumnsToHide { get; init; } = new(StringComparer.OrdinalIgnoreCase);
+    }
+    
+    private FormListModeSpec BuildModeSpec(FormFunctionType funcType, FormFieldMasterDto master)
+    {
+        var isMultiple = funcType == FormFunctionType.MultipleMappingMaintenance;
+
+        if (isMultiple)
+        {
+            if (string.IsNullOrWhiteSpace(master.BASE_TABLE_NAME))
+                throw new InvalidOperationException("BASE_TABLE_NAME missing");
+
+            return new FormListModeSpec
+            {
+                DataTableName = master.BASE_TABLE_NAME,
+                SchemaTableId = master.BASE_TABLE_ID,
+                SchemaQueryType = TableSchemaQueryType.OnlyTable,
+                SidColumnsToHide = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
+            };
+        }
+
+        // default / view mode
+        if (string.IsNullOrWhiteSpace(master.VIEW_TABLE_NAME))
+            throw new InvalidOperationException("VIEW_TABLE_NAME missing");
+        if (master.VIEW_TABLE_ID is null)
+            throw new InvalidOperationException("VIEW_TABLE_ID missing");
+
+        return new FormListModeSpec
+        {
+            DataTableName = master.VIEW_TABLE_NAME,
+            SchemaTableId = master.VIEW_TABLE_ID,
+            SchemaQueryType = TableSchemaQueryType.OnlyView,
+            SidColumnsToHide = GetCommonSidColumnsToHide(master.VIEW_TABLE_NAME, master.BASE_TABLE_NAME!)
+        };
+    }
+
     /// <summary>
     /// 根據表單設定抓取主表欄位與現有資料（編輯時用）
     /// 只對主表進行欄位組裝，Dropdown 顯示選項答案
