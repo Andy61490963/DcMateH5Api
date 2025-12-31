@@ -335,148 +335,142 @@ public class FormDesignerService : IFormDesignerService
     /// 根據 functionType 取得 Form Designer 首頁所需資料（用於前端建立樹狀結構/左側欄位樹）。
     ///
     /// 核心目的：
-    /// 依「表單功能類型」回傳對應的資料集（Base/Detail/Mapping/View），讓前端可以：
+    /// 依「表單功能類型」回傳對應的資料集（Base/Detail/Mapping/View/ViewDetail），讓前端可以：
     /// - 建立欄位樹狀結構
     /// - 顯示不同表（主檔/明細/關聯/檢視）的欄位清單
+    /// </summary>
+    /// <remarks>
+    /// ### 功能類型對應資料來源（以目前實作為準）
     ///
-    /// 功能類型對應資料來源：
     /// - 主檔維護（MasterMaintenance）
     ///   - 必要：Base + View
-    ///   - 回傳：BaseFields、ViewFields（Detail/Mapping 會是 null）
+    ///   - 回傳：BaseFields、ViewFields
+    ///   - DetailFields / MappingFields / ViewDetailFields：不使用（建議回傳空集合）
     ///
     /// - 一對多維護（MasterDetailMaintenance）
     ///   - 必要：Base + Detail + View
-    ///   - 回傳：BaseFields、DetailFields、ViewFields（Mapping 會是 null）
+    ///   - 回傳：BaseFields、DetailFields、ViewFields
+    ///   - MappingFields / ViewDetailFields：不使用（建議回傳空集合）
     ///
     /// - 多對多維護（MultipleMappingMaintenance）
-    ///   - 必要：Base + Detail + Mapping
-    ///   - View：可選（有設定才回傳）
-    ///  - 回傳：BaseFields、DetailFields、MappingFields（ViewFields 視情況回傳）
+    ///   - 必要：Base + Detail + Mapping + ViewDetail + View
+    ///   - 回傳：BaseFields、DetailFields、MappingFields、ViewDetailFields、ViewFields
     ///
-    /// 重要防呆：
-    /// - 若主檔的 FUNCTION_TYPE 與呼叫者傳入的 functionType 不一致，代表前端進錯模組
-    ///   → 直接丟可讀的 Domain 例外（避免錯頁面操作到錯結構）
-    /// - 若必要的表設定缺失（Base/Detail/Mapping/View），代表設定不完整
-    ///   → 直接丟可讀例外，讓維護者知道缺哪個設定欄位
-    /// </summary>
+    /// ### 重要防呆
+    /// 1. 若主檔的 FUNCTION_TYPE 與呼叫者傳入的 functionType 不一致，代表前端進錯模組：
+    ///    → 直接丟出可讀的例外，避免錯頁面操作到錯的表結構。
+    /// 2. 若必要的表設定缺失（Base/Detail/Mapping/View/ViewDetail），代表設定不完整：
+    ///    → 直接丟出可讀例外，讓維護者知道缺哪個設定欄位。
+    ///
+    /// ### 回傳值慣例（建議）
+    /// 為避免前端/呼叫端 NullReferenceException，未使用的 Fields 屬性建議回傳空集合而非 null。
+    /// </remarks>
+    /// <param name="functionType">功能類型（決定需要的表設定與欄位集合）</param>
+    /// <param name="id">表單主檔 ID</param>
+    /// <param name="ct">CancellationToken</param>
+    /// <returns>Form Designer 首頁所需資料集合</returns>
     public async Task<FormDesignerIndexViewModel> GetFormDesignerIndexViewModel(
-        FormFunctionType functionType, 
-        Guid? id, 
+        FormFunctionType functionType,
+        Guid? id,
         CancellationToken ct)
     {
-        // 1) 取得表單主檔設定（FormHeader）
-        // - 這是整個 Designer 組裝的根資料
-        // - 後續 Base/Detail/Mapping/View 的表名與表 SID 都從這裡拿
-        var master = await GetFormMasterAsync(id, ct) ?? throw new Exception("查無主檔。");
+        ct.ThrowIfCancellationRequested();
 
-        // 2) 防呆：避免「進錯功能模組」卻載入別的表單設定
-        // - 例如：表單實際是 MasterDetail，但你用 MasterMaintenance 模組打開
-        // - 會導致前端樹狀結構/CRUD 行為全部錯
-        if (master.FUNCTION_TYPE.HasValue && master.FUNCTION_TYPE != functionType)
-            throw new Exception("表單功能模組與表單型態不一致，請使用對應的維護模組。");
+        var master = await GetFormMasterAsync(id, ct)
+            ?? throw new KeyNotFoundException("查無主檔（FormMaster）。");
         
-        // 3) 防呆：Base 表為所有功能類型的必備資料來源
-        // - 無 Base 就沒有主資料可維護/欄位可設計
-        if (string.IsNullOrWhiteSpace(master.BASE_TABLE_NAME) || master.BASE_TABLE_ID is null)
-            throw new Exception("缺少主檔（Base）表設定：請檢查 BASE_TABLE_NAME / BASE_TABLE_ID。");
+        if (!master.FUNCTION_TYPE.HasValue)
+            throw new InvalidOperationException("主檔未設定 FUNCTION_TYPE，請先完成表單主檔設定。");
 
-        // 4) 準備回傳物件（先放 FormHeader，其餘欄位由 functionType 決定）
-        // - 這裡先給 null!，代表「稍後一定會被填值（或明確維持 null）」避免 nullable 雜訊
+        if (master.FUNCTION_TYPE.Value != functionType)
+            throw new InvalidOperationException("表單功能模組與表單型態不一致，請使用對應的維護模組。");
+
+        if (string.IsNullOrWhiteSpace(master.BASE_TABLE_NAME) || master.BASE_TABLE_ID is null)
+            throw new InvalidOperationException("缺少主檔（Base）表設定：請檢查 BASE_TABLE_NAME / BASE_TABLE_ID。");
+
         var result = new FormDesignerIndexViewModel
         {
             FormHeader = master,
-            BaseFields = null!,
-            DetailFields = null!,
-            ViewFields = null!,
-            MappingFields = null!
+            BaseFields = new FormFieldListViewModel(),
+            DetailFields = new FormFieldListViewModel(),
+            ViewDetailFields = new FormFieldListViewModel(),
+            ViewFields = new FormFieldListViewModel(),
+            MappingFields = new FormFieldListViewModel()
         };
 
-        // 5) BaseFields：所有 functionType 都需要
-        // - TableSchemaQueryType.OnlyTable 表示抓「實體表欄位」（主檔維護來源）
         result.BaseFields = await GetFieldsByTableName(
             master.BASE_TABLE_NAME,
             master.BASE_TABLE_ID.Value,
             TableSchemaQueryType.OnlyTable);
 
-        // 6) 依不同功能類型，組裝不同的欄位集合
-        FormFieldListViewModel? viewFields;
         switch (functionType)
         {
             case FormFunctionType.MasterMaintenance:
-                // 主檔維護：必須有 View（列表/查詢通常來自 View）
                 if (string.IsNullOrWhiteSpace(master.VIEW_TABLE_NAME) || master.VIEW_TABLE_ID is null)
-                    throw new Exception("缺少檢視表（View）表設定：請檢查 VIEW_TABLE_NAME / VIEW_TABLE_ID。");
+                    throw new InvalidOperationException("缺少檢視表（View）表設定：請檢查 VIEW_TABLE_NAME / VIEW_TABLE_ID。");
 
-                // 主檔維護不需要 Detail / Mapping
-                result.DetailFields = null!;
-                result.MappingFields = null!;
-
-                // ViewFields：抓檢視表欄位（通常含 join 欄位、顯示用欄位）
                 result.ViewFields = await GetFieldsByTableName(
                     master.VIEW_TABLE_NAME,
                     master.VIEW_TABLE_ID.Value,
                     TableSchemaQueryType.OnlyView);
-                
                 break;
-            
+
             case FormFunctionType.MasterDetailMaintenance:
-                // 一對多：必須有 Detail + View
                 if (string.IsNullOrWhiteSpace(master.DETAIL_TABLE_NAME) || master.DETAIL_TABLE_ID is null)
-                    throw new Exception("缺少明細表設定：請檢查 DETAIL_TABLE_NAME / DETAIL_TABLE_ID。");
-                
+                    throw new InvalidOperationException("缺少明細表設定：請檢查 DETAIL_TABLE_NAME / DETAIL_TABLE_ID。");
+
                 if (string.IsNullOrWhiteSpace(master.VIEW_TABLE_NAME) || master.VIEW_TABLE_ID is null)
-                    throw new Exception("缺少檢視表（View）表設定：請檢查 VIEW_TABLE_NAME / VIEW_TABLE_ID。");
+                    throw new InvalidOperationException("缺少檢視表（View）表設定：請檢查 VIEW_TABLE_NAME / VIEW_TABLE_ID。");
 
-                // 一對多不需要 Mapping
-                result.MappingFields = null!;
-
-                // DetailFields：抓明細表欄位
                 result.DetailFields = await GetFieldsByTableName(
                     master.DETAIL_TABLE_NAME,
                     master.DETAIL_TABLE_ID.Value,
                     TableSchemaQueryType.OnlyDetail);
-                
-                // ViewFields：抓檢視表欄位（列表/查詢/顯示通常用 View）
+
                 result.ViewFields = await GetFieldsByTableName(
                     master.VIEW_TABLE_NAME,
                     master.VIEW_TABLE_ID.Value,
                     TableSchemaQueryType.OnlyView);
-                
                 break;
-            
-            case FormFunctionType.MultipleMappingMaintenance:
-                // 多對多：必須有 Detail + Mapping；View 可選
-                if (string.IsNullOrWhiteSpace(master.DETAIL_TABLE_NAME) || master.DETAIL_TABLE_ID is null)
-                    throw new Exception("缺少對應的明細表設定：請檢查 DETAIL_TABLE_NAME / DETAIL_TABLE_ID。");
-                if (string.IsNullOrWhiteSpace(master.MAPPING_TABLE_NAME) || master.MAPPING_TABLE_ID is null)
-                    throw new Exception("缺少關聯表設定：請檢查 MAPPING_TABLE_NAME / MAPPING_TABLE_ID。");
 
-                // DetailFields：多對多通常會有一個「被關聯的明細資料」來源
+            case FormFunctionType.MultipleMappingMaintenance:
+                if (string.IsNullOrWhiteSpace(master.DETAIL_TABLE_NAME) || master.DETAIL_TABLE_ID is null)
+                    throw new InvalidOperationException("缺少對應的明細表設定：請檢查 DETAIL_TABLE_NAME / DETAIL_TABLE_ID。");
+
+                if (string.IsNullOrWhiteSpace(master.MAPPING_TABLE_NAME) || master.MAPPING_TABLE_ID is null)
+                    throw new InvalidOperationException("缺少關聯表設定：請檢查 MAPPING_TABLE_NAME / MAPPING_TABLE_ID。");
+
+                if (string.IsNullOrWhiteSpace(master.VIEW_DETAIL_TABLE_NAME) || master.VIEW_DETAIL_TABLE_ID is null)
+                    throw new InvalidOperationException("缺少明細檢視表設定：請檢查 VIEW_DETAIL_TABLE_NAME / VIEW_DETAIL_TABLE_ID。");
+
+                if (string.IsNullOrWhiteSpace(master.VIEW_TABLE_NAME) || master.VIEW_TABLE_ID is null)
+                    throw new InvalidOperationException("缺少檢視表（View）表設定：請檢查 VIEW_TABLE_NAME / VIEW_TABLE_ID。");
+
                 result.DetailFields = await GetFieldsByTableName(
                     master.DETAIL_TABLE_NAME,
                     master.DETAIL_TABLE_ID.Value,
                     TableSchemaQueryType.OnlyDetail);
 
-                // MappingFields：中介表（關聯表）欄位
                 result.MappingFields = await GetFieldsByTableName(
                     master.MAPPING_TABLE_NAME,
                     master.MAPPING_TABLE_ID.Value,
                     TableSchemaQueryType.OnlyMapping);
 
-                // ViewFields（可選）：若有設定 view，則額外提供給前端顯示用
-                // - 不強制，因為多對多不一定需要 view
-                if (!string.IsNullOrWhiteSpace(master.VIEW_TABLE_NAME) && master.VIEW_TABLE_ID is not null)
-                {
-                    result.ViewFields = await GetFieldsByTableName(
-                        master.VIEW_TABLE_NAME,
-                        master.VIEW_TABLE_ID.Value,
-                        TableSchemaQueryType.OnlyView);
-                }
+                result.ViewDetailFields = await GetFieldsByTableName(
+                    master.VIEW_DETAIL_TABLE_NAME,
+                    master.VIEW_DETAIL_TABLE_ID.Value,
+                    TableSchemaQueryType.DetailView);
+
+                result.ViewFields = await GetFieldsByTableName(
+                    master.VIEW_TABLE_NAME,
+                    master.VIEW_TABLE_ID.Value,
+                    TableSchemaQueryType.OnlyView);
                 break;
-            
+
             default:
                 throw new InvalidOperationException("不支援的功能模組型態。");
         }
+
         return result;
     }
     

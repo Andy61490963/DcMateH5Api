@@ -15,10 +15,15 @@ public class FormDesignerIndexViewModel
     public FormFieldListViewModel BaseFields { get; set; } = new();
     
     /// <summary>
-    /// 主檔欄位設定清單
+    /// 明細設定清單
     /// </summary>
     public FormFieldListViewModel DetailFields { get; set; } = new();
 
+    /// <summary>
+    /// 明細檢視清單
+    /// </summary>
+    public FormFieldListViewModel ViewDetailFields { get; set; } = new();
+    
     /// <summary>
     /// 檢視表欄位設定清單
     /// </summary>
