@@ -5,7 +5,7 @@ using System.Threading.Tasks;
 namespace DcMateH5Api.Services.Cache 
 {
     /// <summary>定義快取服務介面</summary> // 所有快取操作必須遵循的介面
-    public interface ICacheService 
+    public interface ICacheService
     {
         Task<T?> GetAsync<T>(string key, CancellationToken ct = default); // 非同步取得快取資料
         Task SetAsync<T>(string key, T value, TimeSpan? ttl = null, CancellationToken ct = default); // 非同步寫入快取資料並可設定存活時間

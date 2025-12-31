@@ -14,12 +14,14 @@ namespace DcMateH5Api.Services.Cache
         private readonly IDistributedCache _cache; // 注入的分散式快取介面
         private readonly ILogger<RedisCacheService> _logger; // 注入的日誌記錄器
         private readonly TimeSpan _defaultTtl; // 預設快取存活時間
+        private readonly bool _enabled; // 是否開啟 Redis 快取
 
         public RedisCacheService(IDistributedCache cache, IOptions<CacheOptions> options, ILogger<RedisCacheService> logger) 
         {
             _cache = cache; 
             _logger = logger; 
             _defaultTtl = TimeSpan.FromMinutes(options.Value.DefaultTtlMinutes); 
+            _enabled = options.Value.Enabled;
         }
 
         /// <summary>
@@ -29,11 +31,23 @@ namespace DcMateH5Api.Services.Cache
         /// <param name="ct"></param>
         /// <typeparam name="T"></typeparam>
         /// <returns></returns>
-        public async Task<T?> GetAsync<T>(string key, CancellationToken ct = default) 
+        public async Task<T?> GetAsync<T>(string key, CancellationToken ct = default)
         {
-            var data = await _cache.GetAsync(key, ct); // 從 Redis 以鍵取得原始位元資料
-            if (data == null) return default; // 若無資料則回傳預設值
-            return JsonSerializer.Deserialize<T>(data); // 反序列化 JSON 成為物件
+            if (!_enabled) return default;
+
+            try
+            {
+                var data = await _cache.GetAsync(key, ct);
+                if (data == null || data.Length == 0) return default;
+
+                return JsonSerializer.Deserialize<T>(data);
+            }
+            catch (Exception ex)
+            {
+                // 最簡策略：快取失敗 → 當作沒有快取
+                _logger.LogWarning(ex, "Cache Get failed. Key={Key}", key);
+                return default;
+            }
         }
 
         /// <summary>
@@ -46,12 +60,22 @@ namespace DcMateH5Api.Services.Cache
         /// <typeparam name="T"></typeparam>
         public async Task SetAsync<T>(string key, T value, TimeSpan? ttl = null, CancellationToken ct = default)
         {
-            var options = new DistributedCacheEntryOptions // 建立快取設定物件
+            if (!_enabled) return;
+
+            try
             {
-                AbsoluteExpirationRelativeToNow = ttl ?? _defaultTtl // 設定相對到期時間，使用自訂 TTL 或預設值
-            };
-            var bytes = JsonSerializer.SerializeToUtf8Bytes(value); // 將物件序列化為 JSON 位元陣列
-            await _cache.SetAsync(key, bytes, options, ct); // 寫入 Redis 並套用設定
+                var entryOptions = new DistributedCacheEntryOptions
+                {
+                    AbsoluteExpirationRelativeToNow = ttl ?? _defaultTtl
+                };
+
+                var bytes = JsonSerializer.SerializeToUtf8Bytes(value);
+                await _cache.SetAsync(key, bytes, entryOptions, ct);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning(ex, "Cache Set failed. Key={Key}", key);
+            }
         }
 
         /// <summary>
@@ -60,9 +84,18 @@ namespace DcMateH5Api.Services.Cache
         /// <param name="key"></param>
         /// <param name="ct"></param>
         /// <returns></returns>
-        public Task RemoveAsync(string key, CancellationToken ct = default) 
+        public async Task RemoveAsync(string key, CancellationToken ct = default)
         {
-            return _cache.RemoveAsync(key, ct); // 直接呼叫 Redis 的移除方法
+            if (!_enabled) return;
+
+            try
+            {
+                await _cache.RemoveAsync(key, ct);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning(ex, "Cache Remove failed. Key={Key}", key);
+            }
         }
     } 
 }
