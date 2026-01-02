@@ -1,4 +1,34 @@
 ﻿name: DcMateH5Api
+
+# =========================
+# 共同設定（避免重複）
+# =========================
+x-webapi-common: &webapi-common
+  build:
+    context: ../..
+    dockerfile: Deploy/Docker/Dockerfile
+  environment:
+    ASPNETCORE_ENVIRONMENT: Development
+    ASPNETCORE_URLS: http://+:5000
+
+    # ---- JWT ----
+    JwtSettings__Issuer: ${JWT_ISSUER}
+    JwtSettings__Audience: ${JWT_AUDIENCE}
+    JwtSettings__SecretKey: ${JWT_SECRET}
+
+    # ---- 外部 DB ----
+    ConnectionStrings__Connection: ${DB_CONN}
+
+    # ---- Redis ----
+    Redis__Connection: ${REDIS_CONN}
+    Caching__UseRedis: ${USE_REDIS}
+  depends_on:
+    redis:
+      condition: service_started
+  networks:
+    - back-net
+  restart: unless-stopped
+
 services:
   nginx:
     image: nginx:1.27-alpine
@@ -11,59 +41,21 @@ services:
       - webapi1
       - webapi2
       - webapi3
-    networks: [back-net]
+    networks:
+      - back-net
     restart: unless-stopped
 
   webapi1:
-    build: { context: ../.., dockerfile: Deploy/Docker/Dockerfile }
-    environment:
-      - ASPNETCORE_ENVIRONMENT=Development
-      - ASPNETCORE_URLS=http://+:5000
-      - JwtSettings__Issuer=${JWT_ISSUER}
-      - JwtSettings__Audience=${JWT_AUDIENCE}
-      - JwtSettings__SecretKey=${JWT_SECRET}
-      - ConnectionStrings__Connection=${DB_CONN}
-      - Redis__Connection=${REDIS_CONN}
-      - Caching__UseRedis=${USE_REDIS}   # ← Feature flag
-    depends_on:
-      sqlserver: { condition: service_healthy }
-      redis: { condition: service_started }
-    networks: [back-net]
-    restart: unless-stopped
+    <<: *webapi-common
+    container_name: DcMateH5ApiWebApi1
 
   webapi2:
-    build: { context: ../.., dockerfile: Deploy/Docker/Dockerfile }
-    environment:
-      - ASPNETCORE_ENVIRONMENT=Development
-      - ASPNETCORE_URLS=http://+:5000
-      - JwtSettings__Issuer=${JWT_ISSUER}
-      - JwtSettings__Audience=${JWT_AUDIENCE}
-      - JwtSettings__SecretKey=${JWT_SECRET}
-      - ConnectionStrings__Connection=${DB_CONN}
-      - Redis__Connection=${REDIS_CONN}
-      - Caching__UseRedis=${USE_REDIS}
-    depends_on:
-      sqlserver: { condition: service_healthy }
-      redis: { condition: service_started }
-    networks: [back-net]
-    restart: unless-stopped
+    <<: *webapi-common
+    container_name: DcMateH5ApiWebApi2
 
   webapi3:
-    build: { context: ../.., dockerfile: Deploy/Docker/Dockerfile }
-    environment:
-      - ASPNETCORE_ENVIRONMENT=Development
-      - ASPNETCORE_URLS=http://+:5000
-      - JwtSettings__Issuer=${JWT_ISSUER}
-      - JwtSettings__Audience=${JWT_AUDIENCE}
-      - JwtSettings__SecretKey=${JWT_SECRET}
-      - ConnectionStrings__Connection=${DB_CONN}
-      - Redis__Connection=${REDIS_CONN}
-      - Caching__UseRedis=${USE_REDIS}
-    depends_on:
-      sqlserver: { condition: service_healthy }
-      redis: { condition: service_started }
-    networks: [back-net]
-    restart: unless-stopped
+    <<: *webapi-common
+    container_name: DcMateH5ApiWebApi3
 
   redis:
     image: redis:7-alpine
@@ -73,31 +65,13 @@ services:
       - "16379:6379"
     volumes:
       - redis_data:/data
-    networks: [back-net]
-    restart: unless-stopped
-
-  sqlserver:
-    image: mcr.microsoft.com/mssql/server:2022-latest
-    container_name: DcMateH5ApiSqlserver
-    environment:
-      SA_PASSWORD: "${SA_PASSWORD}"
-      ACCEPT_EULA: "Y"
-      MSSQL_PID: "Express"
-    ports:
-      - "14331:1433"
-    healthcheck:
-      test: ["CMD-SHELL", "/opt/mssql-tools18/bin/sqlcmd -S localhost -C -No -U sa -P \"$SA_PASSWORD\" -Q \"SELECT 1\" || exit 1"]
-      interval: 10s
-      timeout: 5s
-      retries: 10
-    volumes:
-      - sql_data:/var/opt/mssql
-    networks: [back-net]
+    networks:
+      - back-net
     restart: unless-stopped
 
 networks:
   back-net:
+    driver: bridge
 
 volumes:
-  sql_data:
   redis_data:
