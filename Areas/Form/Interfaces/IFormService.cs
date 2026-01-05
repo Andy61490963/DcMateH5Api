@@ -13,7 +13,7 @@ public interface IFormService
     /// <param name="funcType">功能類型</param>
     /// <param name="request">查詢條件與分頁設定。</param>
     /// <returns>每個表單對應的欄位與資料列集合。</returns>
-    List<FormListDataViewModel> GetFormList(FormFunctionType funcType, FormSearchRequest? request = null);
+    List<FormListDataViewModel> GetFormList(FormFunctionType funcType, FormSearchRequest? request = null, bool returnBaseTableWhenMultipleMapping = false);
     
     /// <summary>
     /// 取得 單一
