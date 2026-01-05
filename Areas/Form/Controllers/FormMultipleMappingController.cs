@@ -28,7 +28,7 @@ public class FormMultipleMappingController : ControllerBase
     }
 
     /// <summary>
-    /// 取得多對多維護的資料列表 (暫時用不到)
+    /// 取得多對多維護的資料列表，回傳 baseTable內容
     /// </summary>
     /// <remarks>
     /// ### 範例輸入

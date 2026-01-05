@@ -31,12 +31,12 @@ public interface IFormService
     /// <summary>
     /// 儲存或更新表單資料
     /// </summary>
-    void SubmitForm(FormSubmissionInputModel input);
+    object SubmitForm(FormSubmissionInputModel input);
 
     /// <summary>
     /// 儲存或更新表單資料，允許呼叫端提供交易物件以便進行複合交易控制。
     /// </summary>
     /// <param name="input">前端送出的表單資料</param>
     /// <param name="tx">資料庫交易物件</param>
-    void SubmitForm(FormSubmissionInputModel input, SqlTransaction tx);
+    object SubmitForm(FormSubmissionInputModel input, SqlTransaction tx);
 }
