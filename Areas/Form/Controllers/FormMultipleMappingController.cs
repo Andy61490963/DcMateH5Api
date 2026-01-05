@@ -60,7 +60,7 @@ public class FormMultipleMappingController : ControllerBase
             });
         }
         
-        var vm = _formService.GetFormList( _funcType, request );
+        var vm = _formService.GetFormList( _funcType, request, true );
         return Ok(vm);
     }
     

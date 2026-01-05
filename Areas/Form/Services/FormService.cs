@@ -101,7 +101,7 @@ public class FormService : IFormService
     /// <returns>
     /// 表單列表頁所需的資料清單，每一筆代表一筆資料列及其對應欄位值。
     /// </returns>
-    public List<FormListDataViewModel> GetFormList(FormFunctionType funcType, FormSearchRequest? request = null)
+    public List<FormListDataViewModel> GetFormList(FormFunctionType funcType, FormSearchRequest? request = null, bool returnBaseTableWhenMultipleMapping = false)
     {
         // ------------------------------------------------------------
         // 1. 取得表單主設定（含欄位設定）
@@ -141,7 +141,18 @@ public class FormService : IFormService
             // --------------------------------------------------------
             // 1. 因為多對多前端要 BASE TABLE資料，走策略模式
             // --------------------------------------------------------
-            var spec = BuildModeSpec(funcType, master);
+            FormListModeSpec spec;
+
+            if (returnBaseTableWhenMultipleMapping && funcType == FormFunctionType.MultipleMappingMaintenance)
+            {
+                // 僅在這裡使用 BuildModeSpec
+                spec = BuildModeSpec(funcType, master);
+            }
+            else
+            {
+                // 原本行為（View → View）
+                spec = BuildDefaultSpec(master);
+            }
 
             var dataTableName = spec.DataTableName;
             var schemaTableId = spec.SchemaTableId;
@@ -295,6 +306,27 @@ public class FormService : IFormService
         };
     }
 
+    /// <summary>
+    /// Default / View 模式：回傳 ViewTable + View Schema（維持你一般模式的設計）
+    /// </summary>
+    private FormListModeSpec BuildDefaultSpec(FormFieldMasterDto master)
+    {
+        if (string.IsNullOrWhiteSpace(master.VIEW_TABLE_NAME))
+            throw new InvalidOperationException("VIEW_TABLE_NAME missing");
+        if (master.VIEW_TABLE_ID is null)
+            throw new InvalidOperationException("VIEW_TABLE_ID missing");
+        if (string.IsNullOrWhiteSpace(master.BASE_TABLE_NAME))
+            throw new InvalidOperationException("BASE_TABLE_NAME missing");
+
+        return new FormListModeSpec
+        {
+            DataTableName = master.VIEW_TABLE_NAME,
+            SchemaTableId = master.VIEW_TABLE_ID,
+            SchemaQueryType = TableSchemaQueryType.OnlyView,
+            SidColumnsToHide = GetCommonSidColumnsToHide(master.VIEW_TABLE_NAME, master.BASE_TABLE_NAME)
+        };
+    }
+    
     /// <summary>
     /// 根據表單設定抓取主表欄位與現有資料（編輯時用）
     /// 只對主表進行欄位組裝，Dropdown 顯示選項答案
