@@ -614,24 +614,24 @@ FROM (
     /// </summary>
     /// <param name="input">前端送出的表單資料</param>
     /// <param name="tx">交易物件</param>
-    public void SubmitForm(FormSubmissionInputModel input, SqlTransaction tx)
+    public object SubmitForm(FormSubmissionInputModel input, SqlTransaction tx)
     {
-        SubmitFormCore(input, tx);
+        return SubmitFormCore(input, tx);
     }
 
     /// <summary>
     /// 儲存或更新表單資料（含下拉選項答案），由本服務自行開啟交易。
     /// </summary>
     /// <param name="input">前端送出的表單資料</param>
-    public void SubmitForm(FormSubmissionInputModel input)
+    public object SubmitForm(FormSubmissionInputModel input)
     {
-        _txService.WithTransaction(tx => SubmitFormCore(input, tx));
+        return _txService.WithTransaction(tx => SubmitFormCore(input, tx));
     }
 
     /// <summary>
     /// 實際執行資料存取的核心邏輯，所有資料庫操作均以同一個交易物件進行。
     /// </summary>
-    private void SubmitFormCore(FormSubmissionInputModel input, SqlTransaction tx)
+    private object SubmitFormCore(FormSubmissionInputModel input, SqlTransaction tx)
     {
         // 查表單主設定
         var master = _formFieldMasterService.GetFormFieldMasterFromId(input.BaseId, tx);
@@ -663,6 +663,8 @@ FROM (
         {
             _con.Execute(Sql.UpsertDropdownAnswer, new { configId, RowId = realRowId, optionId }, transaction: tx);
         }
+
+        return realRowId;
     }
     
     private (List<(string Column, object? Value)> NormalFields,

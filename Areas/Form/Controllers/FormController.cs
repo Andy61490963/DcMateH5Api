@@ -149,12 +149,16 @@ public class FormController : ControllerBase
     /// <param name="input"></param>
     /// <returns></returns>
     [HttpPost]
-    [ProducesResponseType(StatusCodes.Status204NoContent)]
+    [ProducesResponseType(StatusCodes.Status200OK)]
     [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status400BadRequest)]
     public IActionResult SubmitForm([FromBody] FormSubmissionInputModel input)
     {
-        _formService.SubmitForm(input);
-        return NoContent();
+        var rowId = _formService.SubmitForm(input);
+        return Ok(new SubmitFormResponse
+        {
+            RowId = rowId.ToString()!, 
+            IsInsert = string.IsNullOrEmpty(input.Pk)
+        });
     }
     
 }
