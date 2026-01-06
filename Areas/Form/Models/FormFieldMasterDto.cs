@@ -63,16 +63,24 @@ public class FormFieldMasterDto
     [Column("MAPPING_BASE_COLUMN_NAME")]
     public string? MAPPING_BASE_COLUMN_NAME { get; set; }
 
+    /// <summary>
+    /// 注意，他有共用兩種功能
+    /// </summary>
     [Column("MAPPING_DETAIL_COLUMN_NAME")]
     public string? MAPPING_DETAIL_COLUMN_NAME { get; set; }
-
     
     
-    [Column("SOURCE_DETAIL_COLUMN")]
-    public string? SOURCE_DETAIL_COLUMN { get; set; }
     
-    [Column("TARGET_MAPPING_COLUMN")]
-    public string? TARGET_MAPPING_COLUMN { get; set; }
+    [Column("TARGET_MAPPING_COLUMN_NAME")]
+    public string? TARGET_MAPPING_COLUMN_NAME { get; set; }
+    
+    
+    
+    [Column("SOURCE_DETAIL_COLUMN_CODE")]
+    public string? SOURCE_DETAIL_COLUMN_CODE { get; set; }
+    
+    [Column("TARGET_MAPPING_COLUMN_CODE")]
+    public string? TARGET_MAPPING_COLUMN_CODE { get; set; }
     
     
     

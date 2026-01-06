@@ -54,7 +54,7 @@ public class MultipleMappingFormHeaderViewModel
     /// 關聯表指向目標表（Detail）的外鍵欄位名稱。
     /// </summary>
     public string MAPPING_DETAIL_FK_COLUMN { get; set; } = string.Empty;
-
+    
     /// <summary>
     /// 關聯表指向主表（Base）的顯示欄位名稱。
     /// </summary>
@@ -68,10 +68,15 @@ public class MultipleMappingFormHeaderViewModel
     /// <summary>
     /// 明細表更新關聯表用的欄位
     /// </summary>
-    public string? SOURCE_DETAIL_COLUMN { get; set; }
+    public string TARGET_MAPPING_COLUMN_NAME { get; set; }
     
     /// <summary>
     /// 明細表更新關聯表用的欄位
     /// </summary>
-    public string? TARGET_MAPPING_COLUMN { get; set; }
+    public string? SOURCE_DETAIL_COLUMN_CODE { get; set; }
+    
+    /// <summary>
+    /// 明細表更新關聯表用的欄位
+    /// </summary>
+    public string? TARGET_MAPPING_COLUMN_CODE { get; set; }
 }
