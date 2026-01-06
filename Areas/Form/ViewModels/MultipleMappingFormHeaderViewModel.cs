@@ -64,4 +64,14 @@ public class MultipleMappingFormHeaderViewModel
     /// 關聯表指向目標表（Detail）的顯示欄位名稱。
     /// </summary>
     public string MAPPING_DETAIL_COLUMN_NAME { get; set; }
+    
+    /// <summary>
+    /// 明細表更新關聯表用的欄位
+    /// </summary>
+    public string? SOURCE_DETAIL_COLUMN { get; set; }
+    
+    /// <summary>
+    /// 明細表更新關聯表用的欄位
+    /// </summary>
+    public string? TARGET_MAPPING_COLUMN { get; set; }
 }
