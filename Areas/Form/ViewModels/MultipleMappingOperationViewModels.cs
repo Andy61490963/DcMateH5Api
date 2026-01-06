@@ -131,9 +131,12 @@ public class MultipleMappingListViewModel
     public string? MappingDetailColumnName { get; set; }
 
     
-    public string? SourceDetailColumnName { get; set; }
-
     public string? TargetMappingColumnName { get; set; }
+    
+    public string? SourceDetailColumnCode { get; set; }
+
+    public string? TargetMappingColumnCode { get; set; }
+    
     
     /// <summary>
     /// 已建立對應關係的明細資料清單（左側）。

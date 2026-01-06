@@ -97,8 +97,9 @@ SELECT ID AS Id,
             MappingDetailFkColumn = header.MAPPING_DETAIL_FK_COLUMN!,
             MappingBaseColumnName = header.MAPPING_BASE_COLUMN_NAME,
             MappingDetailColumnName = header.MAPPING_DETAIL_COLUMN_NAME,
-            SourceDetailColumnName = header.SOURCE_DETAIL_COLUMN,
-            TargetMappingColumnName = header.TARGET_MAPPING_COLUMN,
+            TargetMappingColumnName = header.TARGET_MAPPING_COLUMN_NAME,
+            SourceDetailColumnCode = header.SOURCE_DETAIL_COLUMN_CODE,
+            TargetMappingColumnCode = header.TARGET_MAPPING_COLUMN_CODE,
             Linked = linkedItems,
             Unlinked = unlinkedItems
         };
