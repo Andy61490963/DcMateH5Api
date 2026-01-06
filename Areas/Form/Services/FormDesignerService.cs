@@ -482,9 +482,9 @@ public class FormDesignerService : IFormDesignerService
     /// 依名稱關鍵字查詢資料表或檢視表清單。
     /// </summary>
     /// <param name="tableName">表名稱關鍵字或樣式</param>
-    /// <param name="schemaType">搜尋目標類型（主表或檢視表）</param>
+    /// <param name="queryType">搜尋目標類型</param>
     /// <returns>符合條件的表名稱集合</returns>
-    public List<string> SearchTables(string? tableName, TableSchemaQueryType schemaType)
+    public List<string> SearchTables(string? tableName, TableQueryType queryType)
     {
         // 1) 輸入驗證（防 SQL Injection / 非預期字元）
         // - 僅允許英數、底線與點
@@ -495,26 +495,56 @@ public class FormDesignerService : IFormDesignerService
             throw new ArgumentException("tableName 含非法字元");
         }
 
-        // 2) 解析可能的 schema.name 輸入
-        // - 若有「.」，視為 schema + table name
-        // - 若無「.」，僅當作 table name 關鍵字
-        string? schema = null, name = null;
+        // 2) 解析 schema / table
+        string? schema = null;
+        string? name = null;
+
         if (!string.IsNullOrWhiteSpace(tableName))
         {
             var parts = tableName.Split('.', 2, StringSplitOptions.RemoveEmptyEntries);
-            if (parts.Length == 2) { schema = parts[0]; name = parts[1]; }
-            else { name = parts[0]; }
+            if (parts.Length == 2)
+            {
+                schema = parts[0];
+                name = parts[1];
+            }
+            else
+            {
+                name = parts[0];
+            }
         }
 
-        // 決定 VIEW 或 BASE TABLE
-        var tableType = schemaType == TableSchemaQueryType.OnlyView ? "VIEW" : "BASE TABLE";
+        // 3) 依 enum 決定 TABLE_TYPE 條件
+        // - All           → 不加 TABLE_TYPE 條件
+        // - QueryTable    → BASE TABLE
+        // - OnlyViewTable → VIEW
+        string? tableType = queryType switch
+        {
+            TableQueryType.All => null,
+            TableQueryType.QueryTable => "BASE TABLE",
+            TableQueryType.OnlyViewTable => "VIEW",
+            _ => throw new ArgumentOutOfRangeException(nameof(queryType))
+        };
 
-        const string sql = @"/**/
-SELECT TABLE_SCHEMA + '.' + TABLE_NAME
+        const string sql = @"
+/**/
+SELECT
+    TABLE_SCHEMA + '.' + TABLE_NAME AS FullName
 FROM INFORMATION_SCHEMA.TABLES
-ORDER BY TABLE_SCHEMA, TABLE_NAME;";
+WHERE (@tableType IS NULL OR TABLE_TYPE = @tableType)
+  AND (@schema    IS NULL OR TABLE_SCHEMA = @schema)
+  AND (@name      IS NULL OR TABLE_NAME LIKE '%' + @name + '%')
+ORDER BY
+    TABLE_SCHEMA,
+    TABLE_NAME;
+";
 
-        var param = new { tableType, schema, name };
+        var param = new
+        {
+            tableType,
+            schema,
+            name
+        };
+
         return _con.Query<string>(sql, param).ToList();
     }
     

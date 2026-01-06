@@ -55,6 +55,7 @@ public class EnumListController : ControllerBase
         {
             ["actionType"]           = typeof(ActionType),
             ["tableSchemaQueryType"] = typeof(TableSchemaQueryType),
+            ["tableQueryType"]       = typeof(TableQueryType),
             ["tableStatusType"]      = typeof(TableStatusType),
             ["formControlType"]      = typeof(FormControlType),
             ["queryConditionType"]   = typeof(QueryComponentType),

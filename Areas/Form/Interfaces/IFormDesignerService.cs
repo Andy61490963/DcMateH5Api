@@ -14,7 +14,7 @@ public interface IFormDesignerService
     
     Task<FormDesignerIndexViewModel> GetFormDesignerIndexViewModel( FormFunctionType functionType, Guid? id, CancellationToken ct );
     
-    List<string> SearchTables( string? tableName, TableSchemaQueryType schemaType );
+    List<string> SearchTables( string? tableName, TableQueryType queryType );
     
     Guid GetOrCreateFormMasterId( FormFieldMasterDto model );
     
