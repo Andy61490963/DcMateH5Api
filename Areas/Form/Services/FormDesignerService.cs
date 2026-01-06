@@ -1725,6 +1725,16 @@ ORDER BY
             ValidateColumnName(model.MAPPING_DETAIL_COLUMN_NAME);
         }
 
+        if (!string.IsNullOrWhiteSpace(model.SOURCE_DETAIL_COLUMN))
+        {
+            ValidateColumnName(model.SOURCE_DETAIL_COLUMN);
+        }
+
+        if (!string.IsNullOrWhiteSpace(model.TARGET_MAPPING_COLUMN))
+        {
+            ValidateColumnName(model.TARGET_MAPPING_COLUMN);
+        }
+        
         var whereBase = new WhereBuilder<FormFieldMasterDto>()
             .AndEq(x => x.ID, model.BASE_TABLE_ID)
             .AndNotDeleted();
@@ -1750,7 +1760,7 @@ ORDER BY
         var baseTableName = baseMaster.BASE_TABLE_NAME;
         var detailTableName = detailMaster.DETAIL_TABLE_NAME;
         var mappingTableName = mappingMaster.MAPPING_TABLE_NAME;
-        var viewTableName = viewMaster?.VIEW_TABLE_NAME;
+        var viewTableName = viewMaster.VIEW_TABLE_NAME;
 
         if (string.IsNullOrWhiteSpace(baseTableName))
             throw new InvalidOperationException("主表名稱查無設定");
@@ -1807,6 +1817,9 @@ ORDER BY
             model.MAPPING_DETAIL_FK_COLUMN,
             model.MAPPING_BASE_COLUMN_NAME,
             model.MAPPING_DETAIL_COLUMN_NAME,
+            
+            model.SOURCE_DETAIL_COLUMN,
+            model.TARGET_MAPPING_COLUMN,
             
             STATUS = (int)TableStatusType.Active,
             SCHEMA_TYPE = TableSchemaQueryType.All,
@@ -2090,6 +2103,8 @@ WHEN MATCHED THEN
         MAPPING_DETAIL_FK_COLUMN= @MAPPING_DETAIL_FK_COLUMN,
         MAPPING_BASE_COLUMN_NAME= @MAPPING_BASE_COLUMN_NAME,
         MAPPING_DETAIL_COLUMN_NAME=@MAPPING_DETAIL_COLUMN_NAME,
+        SOURCE_DETAIL_COLUMN    = @SOURCE_DETAIL_COLUMN,
+        TARGET_MAPPING_COLUMN   = @TARGET_MAPPING_COLUMN,
         STATUS                  = @STATUS,
         SCHEMA_TYPE             = @SCHEMA_TYPE,
         FUNCTION_TYPE           = @FUNCTION_TYPE,
@@ -2099,6 +2114,7 @@ WHEN NOT MATCHED THEN
         ID, FORM_NAME, FORM_CODE, FORM_DESCRIPTION,
         BASE_TABLE_NAME, DETAIL_TABLE_NAME, MAPPING_TABLE_NAME, VIEW_TABLE_NAME,
         BASE_TABLE_ID, DETAIL_TABLE_ID, MAPPING_TABLE_ID, VIEW_TABLE_ID,
+        SOURCE_DETAIL_COLUMN, TARGET_MAPPING_COLUMN,
         STATUS, SCHEMA_TYPE, FUNCTION_TYPE, IS_DELETE,
         MAPPING_BASE_FK_COLUMN, MAPPING_DETAIL_FK_COLUMN, MAPPING_BASE_COLUMN_NAME, MAPPING_DETAIL_COLUMN_NAME,
         CREATE_TIME, EDIT_TIME
@@ -2107,6 +2123,7 @@ WHEN NOT MATCHED THEN
         @ID, @FORM_NAME, @FORM_CODE, @FORM_DESCRIPTION,
         @MASTER_TABLE_NAME, @DETAIL_TABLE_NAME, @MAPPING_TABLE_NAME, @VIEW_TABLE_NAME,
         @BASE_TABLE_ID, @DETAIL_TABLE_ID, @MAPPING_TABLE_ID, @VIEW_TABLE_ID,
+        @SOURCE_DETAIL_COLUMN, @TARGET_MAPPING_COLUMN,
         @STATUS, @SCHEMA_TYPE, @FUNCTION_TYPE, 0,
         @MAPPING_BASE_FK_COLUMN, @MAPPING_DETAIL_FK_COLUMN, @MAPPING_BASE_COLUMN_NAME, @MAPPING_DETAIL_COLUMN_NAME,
         GETDATE(), GETDATE()
