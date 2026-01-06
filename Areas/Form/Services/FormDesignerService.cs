@@ -101,6 +101,18 @@ public class FormDesignerService : IFormDesignerService
         Guid? formFieldMasterId,
         CancellationToken ct = default)
     {
+        if (formFieldMasterId == Guid.Empty)
+        {
+            return new List<FormFieldDeleteGuardSqlDto>
+            {
+                new FormFieldDeleteGuardSqlDto
+                {
+                    // Id 不要亂塞 Guid.Empty 當成真資料 Key（除非前端就是靠它判斷新資料）
+                    // 建議讓 Id nullable，或另用 IsNew/IsPlaceholder
+                }
+            };
+        }
+        
         var where = new WhereBuilder<FormFieldDeleteGuardSqlDto>()
             .AndNotDeleted();
 
