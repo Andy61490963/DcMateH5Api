@@ -24,9 +24,14 @@ public interface IFormService
     FormSubmissionViewModel GetFormSubmission(Guid? id, string? pk = null);
 
     /// <summary>
-    /// 依 BaseTableId（BASE_TABLE_ID）+ Pk 物理刪除資料
+    /// 驗證規則 + 刪除
     /// </summary>
-    void PhysicalDeleteByBaseTableId(Guid baseTableId, string pk);
+    /// <param name="request"></param>
+    /// <param name="ct"></param>
+    /// <returns></returns>
+    Task<DeleteWithGuardResultViewModel> DeleteWithGuardAsync(
+        DeleteWithGuardRequestViewModel request,
+        CancellationToken ct);
     
     /// <summary>
     /// 儲存或更新表單資料

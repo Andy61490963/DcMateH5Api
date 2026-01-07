@@ -80,66 +80,61 @@ public class FormController : ControllerBase
     }
 
     /// <summary>
-    /// 驗證刪除守門規則，若任一規則不允許刪除則立即回傳阻擋資訊 (會擋 ; )
+    /// 刪除資料（先驗證 Guard 規則，通過才會進行物理刪除）
     /// </summary>
-    /// <param name="request">刪除守門驗證請求</param>
+    /// <remarks>
+    /// - 先依 FormFieldMasterId 撈 Guard 規則並逐條驗證
+    /// - 任一規則不允許刪除 → 回 409 Conflict + BlockedByRule
+    /// - 通過後才會刪除 Base Table 資料列，並同步清除 FORM_FIELD_DROPDOWN_ANSWER
+    /// </remarks>
+    /// <param name="request">Guard 驗證參數</param>
     /// <param name="ct">取消權杖</param>
-    /// <returns>刪除驗證結果</returns>
-    [HttpPost("validate")]
-    [ProducesResponseType(typeof(DeleteGuardValidateDataViewModel), StatusCodes.Status200OK)]
+    [HttpPost("delete")]
+    [ProducesResponseType(StatusCodes.Status204NoContent)]
     [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status400BadRequest)]
-    public async Task<IActionResult> ValidateDeleteGuard(
-        [FromBody] DeleteGuardValidateRequestViewModel? request,
+    [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status409Conflict)]
+    [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status404NotFound)]
+    public async Task<IActionResult> DeleteWithGuard(
+        [FromBody] DeleteWithGuardRequestViewModel? request,
         CancellationToken ct)
     {
         if (request == null)
         {
-            return BadRequest("請提供刪除驗證請求內容。");
+            return BadRequest(new { Detail = "請提供刪除驗證請求內容。" });
+        }
+
+        if (string.IsNullOrWhiteSpace(request.pk))
+        {
+            return BadRequest(new { Detail = "pk 不可為空。" });
         }
 
         if (request.FormFieldMasterId == Guid.Empty)
         {
-            return BadRequest("FormFieldMasterId 不可為空。");
+            return BadRequest(new { Detail = "FormFieldMasterId 不可為空。" });
         }
 
         if (request.Parameters.Count == 0)
         {
-            return BadRequest("Parameters 不可為空。");
+            return BadRequest(new { Detail = "Parameters 不可為空。" });
         }
 
-        var result = await _formDeleteGuardService.ValidateDeleteGuardAsync(request, ct);
+        var result = await _formService.DeleteWithGuardAsync(request, ct);
+
         if (!result.IsValid)
         {
-            return BadRequest(result.ErrorMessage ?? "Guard SQL 驗證失敗。");
+            return BadRequest(new { Detail = result.ErrorMessage ?? "Guard SQL 驗證失敗。" });
         }
 
-        var response = new DeleteGuardValidateDataViewModel
+        if (!result.CanDelete)
         {
-            CanDelete = result.CanDelete,
-            BlockedByRule = result.BlockedByRule
-        };
+            return Conflict(new { Detail = $"此筆資料不允許刪除，規則：{result.BlockedByRule}" });
+        }
 
-        return Ok(response);
-    }
-    
-    /// <summary>
-    /// 物理刪除資料（依 BaseId + Pk）
-    /// </summary>
-    /// <remarks>
-    /// - BaseId（formId）為上一支 search 回傳的 BaseId（BASE_TABLE_ID）
-    /// - pk 為上一支 search 回傳的 Pk
-    /// - 會刪除實際 Base Table 的資料列
-    /// - 會同步清除 FORM_FIELD_DROPDOWN_ANSWER
-    /// </remarks>
-    /// <param name="formId">上隻 Api 取得的 BaseId（BASE_TABLE_ID）</param>
-    /// <param name="pk">上隻 Api 取得的 Pk</param>
-    /// <returns></returns>
-    [HttpDelete("{formId}/{pk}")]
-    [ProducesResponseType(StatusCodes.Status204NoContent)]
-    [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status400BadRequest)]
-    public IActionResult PhysicalDelete(Guid formId, string pk)
-    {
-        _formService.PhysicalDeleteByBaseTableId(formId, pk);
+        if (!result.Deleted)
+        {
+            return NotFound(new { Detail = "找不到要刪除的資料。" });
+        }
+
         return NoContent();
     }
     
