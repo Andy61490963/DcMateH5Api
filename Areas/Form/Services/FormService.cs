@@ -21,9 +21,10 @@ public class FormService : IFormService
     private readonly IFormDataService _formDataService;
     private readonly IDropdownService _dropdownService;
     private readonly IDropdownSqlSyncService _dropdownSqlSyncService;
+    private readonly IFormDeleteGuardService _formDeleteGuardService;
     private readonly IConfiguration _configuration;
     
-    public FormService(SqlConnection connection, ITransactionService txService, IFormFieldMasterService formFieldMasterService, ISchemaService schemaService, IFormFieldConfigService formFieldConfigService, IDropdownService dropdownService, IFormDataService formDataService, IConfiguration configuration, IDropdownSqlSyncService dropdownSqlSyncService)
+    public FormService(SqlConnection connection, ITransactionService txService, IFormFieldMasterService formFieldMasterService, ISchemaService schemaService, IFormFieldConfigService formFieldConfigService, IDropdownService dropdownService, IFormDataService formDataService, IConfiguration configuration, IDropdownSqlSyncService dropdownSqlSyncService, IFormDeleteGuardService formDeleteGuardService)
     {
         _con = connection;
         _txService = txService;
@@ -33,6 +34,7 @@ public class FormService : IFormService
         _formDataService = formDataService;
         _dropdownService = dropdownService;
         _dropdownSqlSyncService = dropdownSqlSyncService;
+        _formDeleteGuardService = formDeleteGuardService;
         _configuration = configuration;
         _excludeColumns = _configuration.GetSection("FormDesignerSettings:RequiredColumns").Get<List<string>>() ?? new();
         _excludeColumnsId = _configuration.GetSection("DropdownSqlSettings:ExcludeColumns").Get<List<string>>() ?? new();
@@ -818,14 +820,6 @@ FROM (
 
         _con.Execute(sql, paramDict, transaction: tx);
     }
-    
-    public void PhysicalDeleteByBaseTableId(Guid baseTableId, string pk)
-    {
-        if (baseTableId == Guid.Empty) throw new ArgumentException("BaseId 不可為空", nameof(baseTableId));
-        if (string.IsNullOrWhiteSpace(pk)) throw new ArgumentException("Pk 不可為空", nameof(pk));
-
-        _txService.WithTransaction(tx => PhysicalDeleteByBaseTableIdCore(baseTableId, pk, tx));
-    }
 
     /// <summary>
     /// 物理性刪除資料
@@ -860,6 +854,78 @@ WHERE [{pkName}] = @RowId;";
 
         if (affected == 0)
             throw new InvalidOperationException($"找不到要刪除的資料：{tableName}.{pkName} = {pk}");
+    }
+
+    public async Task<DeleteWithGuardResultViewModel> DeleteWithGuardAsync(
+        DeleteWithGuardRequestViewModel request,
+        CancellationToken ct)
+    {
+        if (request == null) throw new ArgumentNullException(nameof(request));
+        if (request.FormFieldMasterId == Guid.Empty)
+            throw new ArgumentException("FormFieldMasterId 不可為空", nameof(request.FormFieldMasterId));
+
+        // 這個才應該是 BaseTableId（BASE_TABLE_ID）
+        var baseTableId = request.FormFieldMasterId;
+        var pk = request.pk;
+        
+        if (baseTableId == Guid.Empty)
+            throw new ArgumentException("BaseTableId 不可為空", nameof(request.FormFieldMasterId));
+
+        if (string.IsNullOrWhiteSpace(pk))
+            throw new ArgumentException("Pk 不可為空", nameof(pk));
+
+        return await _txService.WithTransactionAsync(async (tx, innerCt) =>
+        {
+            // 1) 找實際表名 + PK 型別
+            var tableName = _schemaService.GetTableNameByTableId(baseTableId, tx);
+            var (pkName, _, typedPk) = _schemaService.ResolvePk(tableName, pk, tx);
+
+            // 2) 防 identifier 注入（表名/欄位名不能參數化）
+            ValidateSqlIdentifier(tableName);
+            ValidateSqlIdentifier(pkName);
+
+            // 3) Guard 驗證（同一個 tx 內）
+            var validateResult = await _formDeleteGuardService.ValidateDeleteGuardInternalAsync(
+                request.FormFieldMasterId,
+                request.Parameters,
+                tx,
+                innerCt);
+
+            if (!validateResult.IsValid || !validateResult.CanDelete)
+            {
+                return new DeleteWithGuardResultViewModel
+                {
+                    IsValid = validateResult.IsValid,
+                    ErrorMessage = validateResult.ErrorMessage,
+                    CanDelete = validateResult.CanDelete,
+                    BlockedByRule = validateResult.BlockedByRule,
+                    Deleted = false
+                };
+            }
+
+            // 4) 先刪 dropdown answer（限定 baseTableId 範圍避免撞號誤刪）
+            await _con.ExecuteAsync(
+                Sql.DeleteDropdownAnswersByBaseTableIdAndRowId,
+                new { BaseTableId = baseTableId, RowId = typedPk },
+                transaction: tx);
+
+            // 5) 再刪 Base Table row
+            var deleteSql = $@"
+    DELETE FROM [{tableName}]
+    WHERE [{pkName}] = @RowId;";
+
+            var affected = await _con.ExecuteAsync(
+                deleteSql,
+                new { RowId = typedPk },
+                transaction: tx);
+
+            return new DeleteWithGuardResultViewModel
+            {
+                IsValid = true,
+                CanDelete = true,
+                Deleted = affected > 0
+            };
+        }, ct);
     }
 
     private static void ValidateSqlIdentifier(string identifier)
