@@ -41,13 +41,14 @@ public sealed class FormDeleteGuardService : IFormDeleteGuardService
     {
         var rules = await GetGuardRulesAsync(formFieldMasterId, tx, ct);
 
+        // 未設定刪除守門規則（Guard Rules），不允許刪除
         if (rules.Count == 0)
         {
             return new DeleteGuardValidateResultViewModel
             {
                 IsValid = false,
                 CanDelete = false,
-                ErrorMessage = "未設定刪除守門規則（Guard Rules），不允許刪除。"
+                ErrorMessage = null
             };
         }
         
