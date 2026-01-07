@@ -122,12 +122,12 @@ public class FormController : ControllerBase
 
         if (!result.IsValid)
         {
-            return BadRequest(new { Detail = result.ErrorMessage ?? "Guard SQL 驗證失敗。" });
+            return BadRequest(new { Detail = result.ErrorMessage });
         }
 
         if (!result.CanDelete)
         {
-            return Conflict(new { Detail = $"此筆資料不允許刪除，規則：{result.BlockedByRule}" });
+            return Conflict(new { Detail = result.BlockedByRule });
         }
 
         if (!result.Deleted)

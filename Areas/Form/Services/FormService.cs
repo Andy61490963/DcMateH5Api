@@ -821,41 +821,6 @@ FROM (
         _con.Execute(sql, paramDict, transaction: tx);
     }
 
-    /// <summary>
-    /// 物理性刪除資料
-    /// </summary>
-    /// <param name="baseTableId"></param>
-    /// <param name="pk"></param>
-    /// <param name="tx"></param>
-    /// <exception cref="InvalidOperationException"></exception>
-    private void PhysicalDeleteByBaseTableIdCore(Guid baseTableId, string pk, SqlTransaction tx)
-    {
-        // 1) 由 BaseTableId 找到實際資料表名（最關鍵）
-        var tableName = _schemaService.GetTableNameByTableId(baseTableId, tx);
-
-        // 2) 解析該表 PK（型別要對，避免你拿字串去比 int）
-        var (pkName, _, typedPk) = _schemaService.ResolvePk(tableName, pk, tx);
-
-        // 3) 防 identifier 注入（表名/欄位名不是參數化能救的）
-        ValidateSqlIdentifier(tableName);
-        ValidateSqlIdentifier(pkName);
-
-        // 4) 先刪 dropdown answer（限定 baseTableId 範圍，避免撞號誤刪）
-        _con.Execute(Sql.DeleteDropdownAnswersByBaseTableIdAndRowId,
-            new { BaseTableId = baseTableId, RowId = typedPk },
-            transaction: tx);
-
-        // 5) 再刪實際資料表
-        var deleteSql = $@"
-DELETE FROM [{tableName}]
-WHERE [{pkName}] = @RowId;";
-
-        var affected = _con.Execute(deleteSql, new { RowId = typedPk }, transaction: tx);
-
-        if (affected == 0)
-            throw new InvalidOperationException($"找不到要刪除的資料：{tableName}.{pkName} = {pk}");
-    }
-
     public async Task<DeleteWithGuardResultViewModel> DeleteWithGuardAsync(
         DeleteWithGuardRequestViewModel request,
         CancellationToken ct)
