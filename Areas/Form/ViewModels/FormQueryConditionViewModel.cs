@@ -38,3 +38,13 @@ public class FormQueryConditionViewModel
     /// <summary>欄位的 SQL 資料型別，用於轉型。</summary>
     public string DataType { get; set; } = string.Empty;
 }
+
+public class MappingListQuery
+{
+    public string BaseId { get; set; } = string.Empty;
+    
+    public bool? mode { get; set; }
+    
+    public Dictionary<string, string> Filters { get; set; }
+        = new(StringComparer.OrdinalIgnoreCase);
+}

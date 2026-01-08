@@ -4,6 +4,7 @@ using DcMateH5Api.Areas.Form.Models;
 using DcMateH5Api.Areas.Form.ViewModels;
 using DcMateH5Api.Helper;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.Extensions.Primitives;
 
 namespace DcMateH5Api.Areas.Form.Controllers;
 
@@ -97,25 +98,34 @@ public class FormMultipleMappingController : ControllerBase
         var vm = _service.GetForms(request, ct);
         return Ok(vm);
     }
-    
+
     /// <summary>
-    /// 依設定檔與主表主鍵取得清單（已關聯 / 未關聯）。
+    /// 依設定檔與主表主鍵取得清單（已關聯 / 未關聯），查詢欄位前端動態解析。
     /// </summary>
     /// <param name="formMasterId">多對多設定檔識別碼。</param>
-    /// <param name="baseId">主表主鍵值。</param>
-    [HttpGet("{formMasterId:guid}/items")]
+    /// <param name="query">查詢條件，key value</param>
+    /// <param name="ct"></param>
+    /// <returns></returns>
+    [HttpPost("{formMasterId:guid}/items/query")]
     [ProducesResponseType(typeof(MultipleMappingListViewModel), StatusCodes.Status200OK)]
     [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status400BadRequest)]
-    public IActionResult GetMappingList(Guid formMasterId, [FromQuery] string baseId, CancellationToken ct)
+    public IActionResult GetMappingList(
+        Guid formMasterId,
+        [FromQuery] MappingListQuery query,
+        CancellationToken ct)
     {
-        if (string.IsNullOrWhiteSpace(baseId))
-        {
+        if (string.IsNullOrWhiteSpace(query.BaseId))
             return BadRequest("BaseId 不可為空");
-        }
 
         try
         {
-            var result = _service.GetMappingList(formMasterId, baseId, ct);
+            var result = _service.GetMappingList(
+                formMasterId,
+                query.BaseId,
+                query.Filters,
+                query.mode,
+                ct);
+
             return Ok(result);
         }
         catch (InvalidOperationException ex)
