@@ -74,6 +74,9 @@ public class MultipleMappingItemViewModel
     /// </summary>
     public string? DetailDisplayText { get; init; }
     
+    public IReadOnlyDictionary<string, string> DetailToRelationDefaultColumn { get; set; }
+        = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+    
     /// <summary>
     /// 關聯表的資料欄位（key value）
     /// </summary>

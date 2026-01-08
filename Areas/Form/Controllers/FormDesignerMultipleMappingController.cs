@@ -155,7 +155,7 @@ public class FormDesignerMultipleMappingController : ControllerBase
         try
         {
             if ( model.SchemaType == TableSchemaQueryType.OnlyTable &&
-                ( model.QUERY_COMPONENT != QueryComponentType.None ||
+                ( model.QUERY_COMPONENT != null ||
                  model.CAN_QUERY == true ) )
                 return Conflict( "無法往主表寫入查詢條件" );
             

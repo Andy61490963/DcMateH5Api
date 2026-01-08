@@ -19,6 +19,7 @@ public class FormMultipleMappingService : IFormMultipleMappingService
 {
     private readonly SqlConnection _con;
     private readonly IFormFieldMasterService _formFieldMasterService;
+    private readonly IFormFieldConfigService _formFieldConfigService;
     private readonly ISchemaService _schemaService;
     private readonly ITransactionService _txService;
     private readonly IFormService _formService;
@@ -27,6 +28,7 @@ public class FormMultipleMappingService : IFormMultipleMappingService
     public FormMultipleMappingService(
         SqlConnection connection,
         IFormFieldMasterService formFieldMasterService,
+        IFormFieldConfigService formFieldConfigService,
         ISchemaService schemaService,
         ITransactionService txService,
         IFormService formService,
@@ -34,6 +36,7 @@ public class FormMultipleMappingService : IFormMultipleMappingService
     {
         _con = connection;
         _formFieldMasterService = formFieldMasterService;
+        _formFieldConfigService = formFieldConfigService;
         _schemaService = schemaService;
         _txService = txService;
         _formService = formService;
@@ -431,10 +434,10 @@ WHERE b.[{header.MAPPING_BASE_FK_COLUMN}] = @BaseId;";
     }
     
     private List<MultipleMappingItemViewModel> LoadLinkedDetailRows(
-    FormFieldMasterDto header,
-    string detailPkName,
-    object basePkValue,
-    SqlTransaction? tx = null)
+        FormFieldMasterDto header,
+        string detailPkName,
+        object basePkValue,
+        SqlTransaction? tx = null)
     {
         const string MappingPrefix = "m__";
         const string DetailPrefix  = "d__";
@@ -444,7 +447,7 @@ WHERE b.[{header.MAPPING_BASE_FK_COLUMN}] = @BaseId;";
 
         if (string.IsNullOrWhiteSpace(baseDisplayColumn) || string.IsNullOrWhiteSpace(detailDisplayColumn))
             throw new InvalidOperationException("多對多設定檔缺少顯示欄位（MAPPING_BASE_COLUMN_NAME / MAPPING_DETAIL_COLUMN_NAME）。");
-
+        
         // 欄位清單（白名單）
         var mappingColumns = _schemaService.GetFormFieldMaster(header.MAPPING_TABLE_NAME!, tx)
             .Distinct(StringComparer.OrdinalIgnoreCase)
@@ -457,6 +460,53 @@ WHERE b.[{header.MAPPING_BASE_FK_COLUMN}] = @BaseId;";
         if (!detailColumns.Contains(detailPkName, StringComparer.OrdinalIgnoreCase))
             throw new InvalidOperationException($"Detail PK column '{detailPkName}' not found in '{header.DETAIL_TABLE_NAME}'.");
 
+        #region detail 因為要從 detail 表塞值到 mapping表 ，需要設定那個要塞的mapping表的欄位
+        var configRows = _formFieldConfigService.GetFormFieldConfig(header.DETAIL_TABLE_ID);
+
+        // Key = Detail COLUMN_NAME，Value = DETAIL_TO_RELATION_DEFAULT_COLUMN（例如 CODE）
+        var detailToRelationDefaultColumnMap = configRows
+            .Where(r => !string.IsNullOrWhiteSpace(r.COLUMN_NAME))
+            .GroupBy(r => r.COLUMN_NAME.Trim(), StringComparer.OrdinalIgnoreCase)
+            .Select(g =>
+            {
+                // 同一個 COLUMN_NAME 多筆時，確保 DETAIL_TO_RELATION_DEFAULT_COLUMN 不會出現衝突
+                var values = g.Select(x => x.DETAIL_TO_RELATION_DEFAULT_COLUMN?.Trim())
+                    .Where(v => !string.IsNullOrWhiteSpace(v))
+                    .Distinct(StringComparer.OrdinalIgnoreCase)
+                    .ToList();
+
+                if (values.Count > 1)
+                {
+                    throw new InvalidOperationException(
+                        $"FORM_FIELD_CONFIG 欄位 '{g.Key}' 的 DETAIL_TO_RELATION_DEFAULT_COLUMN 設定不唯一：{string.Join(", ", values)}，請先清理資料。");
+                }
+
+                // 沒設定就不回傳給前端（避免前端收到一堆 null/空字串）
+                return new
+                {
+                    DetailColumnName = g.Key,
+                    MappingColumnName = values.Count == 1 ? values[0]! : null
+                };
+            })
+            .Where(x => x.MappingColumnName != null)
+            .ToDictionary(
+                x => x.DetailColumnName,
+                x => x.MappingColumnName!,
+                StringComparer.OrdinalIgnoreCase
+            );
+
+        // 防呆：確保每個 value（例如 CODE）真的存在於 mapping 表欄位白名單
+        foreach (var kv in detailToRelationDefaultColumnMap)
+        {
+            if (!mappingColumns.Contains(kv.Value, StringComparer.OrdinalIgnoreCase))
+            {
+                throw new InvalidOperationException(
+                    $"FORM_FIELD_CONFIG 設定：Detail欄位 '{kv.Key}' 的 DETAIL_TO_RELATION_DEFAULT_COLUMN='{kv.Value}'，" +
+                    $"但 Mapping 表 '{header.MAPPING_TABLE_NAME}' 不存在該欄位，請修正設定或資料表欄位。");
+            }
+        }
+        #endregion
+        
         var hasSeq = mappingColumns.Contains("SEQ", StringComparer.OrdinalIgnoreCase);
         var orderBySql = hasSeq ? "ORDER BY m.[SEQ]" : string.Empty;
 
@@ -509,6 +559,7 @@ WHERE b.[{header.MAPPING_BASE_FK_COLUMN}] = @BaseId;";
                 DetailPk = pkVal?.ToString() ?? string.Empty,
                 BaseDisplayText = baseTextObj?.ToString(),
                 DetailDisplayText = detailTextObj?.ToString(),
+                DetailToRelationDefaultColumn = detailToRelationDefaultColumnMap,
                 MappingFields = mappingFields,
                 DetailFields = detailFields
             };
@@ -532,6 +583,61 @@ WHERE b.[{header.MAPPING_BASE_FK_COLUMN}] = @BaseId;";
             .Distinct(StringComparer.OrdinalIgnoreCase)
             .ToList();
 
+        if (!detailColumns.Contains(detailPkName, StringComparer.OrdinalIgnoreCase))
+            throw new InvalidOperationException($"Detail PK column '{detailPkName}' not found in '{header.DETAIL_TABLE_NAME}'.");
+
+        // 取得 mapping 欄位白名單（用來驗證 CODE 這種設定值真的存在）
+        var mappingColumns = _schemaService.GetFormFieldMaster(header.MAPPING_TABLE_NAME!, tx)
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToList();
+        
+        #region detail 因為要從 detail 表塞值到 mapping表 ，需要設定那個要塞的mapping表的欄位
+        var configRows = _formFieldConfigService.GetFormFieldConfig(header.DETAIL_TABLE_ID);
+
+        // Key = Detail COLUMN_NAME，Value = DETAIL_TO_RELATION_DEFAULT_COLUMN（例如 CODE）
+        var detailToRelationDefaultColumnMap = configRows
+            .Where(r => !string.IsNullOrWhiteSpace(r.COLUMN_NAME))
+            .GroupBy(r => r.COLUMN_NAME.Trim(), StringComparer.OrdinalIgnoreCase)
+            .Select(g =>
+            {
+                // 同一個 COLUMN_NAME 多筆時，確保 DETAIL_TO_RELATION_DEFAULT_COLUMN 不會出現衝突
+                var values = g.Select(x => x.DETAIL_TO_RELATION_DEFAULT_COLUMN?.Trim())
+                    .Where(v => !string.IsNullOrWhiteSpace(v))
+                    .Distinct(StringComparer.OrdinalIgnoreCase)
+                    .ToList();
+
+                if (values.Count > 1)
+                {
+                    throw new InvalidOperationException(
+                        $"FORM_FIELD_CONFIG 欄位 '{g.Key}' 的 DETAIL_TO_RELATION_DEFAULT_COLUMN 設定不唯一：{string.Join(", ", values)}，請先清理資料。");
+                }
+
+                // 沒設定就不回傳給前端（避免前端收到一堆 null/空字串）
+                return new
+                {
+                    DetailColumnName = g.Key,
+                    MappingColumnName = values.Count == 1 ? values[0]! : null
+                };
+            })
+            .Where(x => x.MappingColumnName != null)
+            .ToDictionary(
+                x => x.DetailColumnName,
+                x => x.MappingColumnName!,
+                StringComparer.OrdinalIgnoreCase
+            );
+
+        // 防呆：確保每個 value（例如 CODE）真的存在於 mapping 表欄位白名單
+        foreach (var kv in detailToRelationDefaultColumnMap)
+        {
+            if (!mappingColumns.Contains(kv.Value, StringComparer.OrdinalIgnoreCase))
+            {
+                throw new InvalidOperationException(
+                    $"FORM_FIELD_CONFIG 設定：Detail欄位 '{kv.Key}' 的 DETAIL_TO_RELATION_DEFAULT_COLUMN='{kv.Value}'，" +
+                    $"但 Mapping 表 '{header.MAPPING_TABLE_NAME}' 不存在該欄位，請修正設定或資料表欄位。");
+            }
+        }
+        #endregion
+        
         var detailSelect = string.Join(",\n    ",
             detailColumns.Select(c => $"d.[{c}] AS [{DetailPrefix}{c}]"));
 
@@ -571,6 +677,7 @@ WHERE b.[{header.MAPPING_BASE_FK_COLUMN}] = @BaseId;";
                 DetailPk = pkVal?.ToString() ?? string.Empty,
                 BaseDisplayText = baseDisplayText,
                 DetailDisplayText = detailTextObj?.ToString(),
+                DetailToRelationDefaultColumn = detailToRelationDefaultColumnMap,
                 MappingFields = new Dictionary<string, object?>(StringComparer.OrdinalIgnoreCase), // unlinked 沒 mapping
                 DetailFields = detailFields
             };

@@ -35,4 +35,6 @@ public class FormFieldInputViewModel
     public TableSchemaQueryType? SOURCE_TABLE { get; set; }
 
     public object? CurrentValue { get; set; }
+    
+    public string? DETAIL_TO_RELATION_DEFAULT_COLUMN { get; set; }
 }
