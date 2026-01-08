@@ -9,6 +9,7 @@ using DcMateH5Api.Areas.Form.ViewModels;
 using DcMateH5Api.Helper;
 using DcMateH5Api.SqlHelper;
 using Microsoft.Data.SqlClient;
+using Microsoft.Extensions.Primitives;
 
 namespace DcMateH5Api.Areas.Form.Services;
 
@@ -74,7 +75,7 @@ SELECT ID AS Id,
     }
 
     /// <inheritdoc />
-    public MultipleMappingListViewModel GetMappingList(Guid formMasterId, string baseId, CancellationToken ct = default)
+    public MultipleMappingListViewModel GetMappingList(Guid formMasterId, string baseId, Dictionary<string, string>? filters, bool? mode, CancellationToken ct = default)
     {
         ct.ThrowIfCancellationRequested();
 
@@ -87,8 +88,25 @@ SELECT ID AS Id,
 
         var baseDisplayText = GetBaseDisplayText(header, basePkValue!);
 
-        var linkedItems = LoadLinkedDetailRows(header, detailPkName, basePkValue!);
-        var unlinkedItems = LoadUnlinkedRows(header, detailPkName, basePkValue!, baseDisplayText);
+        // 先宣告在外層，return 才用得到
+        List<MultipleMappingItemViewModel> linkedItems = new();
+        List<MultipleMappingItemViewModel> unlinkedItems = new();
+
+        if (mode == null)
+        {
+            linkedItems = LoadLinkedDetailRows(header, detailPkName, basePkValue!, null);
+            unlinkedItems = LoadUnlinkedRows(header, detailPkName, basePkValue!, baseDisplayText, null);
+        }
+        else if (mode == true)
+        {
+            // linked 套 mapping filters
+            linkedItems = LoadLinkedDetailRows(header, detailPkName, basePkValue!, filters);
+        }
+        else // mode == false
+        {
+            // unlinked 套 detail filters
+            unlinkedItems = LoadUnlinkedRows(header, detailPkName, basePkValue!, baseDisplayText, filters);
+        }
 
         return new MultipleMappingListViewModel
         {
@@ -108,6 +126,60 @@ SELECT ID AS Id,
         };
     }
 
+    private static (string WhereSql, DynamicParameters Params) BuildLikeWhere(
+        Dictionary<string, string>? filters,
+        IReadOnlyCollection<string> allowedColumns,
+        string tableAlias,
+        string paramPrefix)
+    {
+        var dp = new DynamicParameters();
+
+        if (filters == null || filters.Count == 0)
+            return (string.Empty, dp);
+
+        // 白名單：避免欄位名注入（欄位名無法參數化，只能靠白名單擋）
+        var whitelist = new HashSet<string>(allowedColumns, StringComparer.OrdinalIgnoreCase);
+
+        var andParts = new List<string>();
+        var pIndex = 0;
+
+        foreach (var (key, value) in filters)
+        {
+            var col = (key ?? string.Empty).Trim();
+            if (string.IsNullOrWhiteSpace(col))
+                continue;
+
+            if (!whitelist.Contains(col))
+                throw new InvalidOperationException($"不允許的查詢欄位：{col}");
+
+            var raw = (value ?? string.Empty).Trim();
+            if (string.IsNullOrWhiteSpace(raw))
+                continue;
+
+            // 參數名要可控，避免跟其他段參數撞名
+            var paramName = $"{paramPrefix}{pIndex++}";
+
+            // 預設 contains：%keyword%（你要更快可改成 keyword%）
+            dp.Add(paramName, $"%{EscapeLike(raw)}%");
+
+            andParts.Add($"{tableAlias}.[{col}] LIKE @{paramName} ESCAPE '\\'");
+        }
+
+        if (andParts.Count == 0)
+            return (string.Empty, dp);
+
+        return ($" AND {string.Join(" AND ", andParts)}", dp);
+    }
+    
+    private static string EscapeLike(string input)
+    {
+        return input
+            .Replace(@"\", @"\\")
+            .Replace("%",  @"\%")
+            .Replace("_",  @"\_")
+            .Replace("[",  @"\[");
+    }
+    
     /// <inheritdoc />
     public void AddMappings(
         Guid formMasterId,
@@ -437,6 +509,7 @@ WHERE b.[{header.MAPPING_BASE_FK_COLUMN}] = @BaseId;";
         FormFieldMasterDto header,
         string detailPkName,
         object basePkValue,
+        Dictionary<string, string>? filters,
         SqlTransaction? tx = null)
     {
         const string MappingPrefix = "m__";
@@ -516,6 +589,13 @@ WHERE b.[{header.MAPPING_BASE_FK_COLUMN}] = @BaseId;";
         var detailSelect = string.Join(",\n    ",
             detailColumns.Select(c => $"d.[{c}] AS [{DetailPrefix}{c}]"));
 
+        var (filterSql, filterParams) = BuildLikeWhere(
+            filters,
+            allowedColumns: mappingColumns, // 只允許查 detail 的欄位（最簡單）
+            tableAlias: "m",
+            paramPrefix: "mLike"
+        );
+        
         var sql = $@"/**/
     SELECT
         {mappingSelect},
@@ -529,9 +609,12 @@ WHERE b.[{header.MAPPING_BASE_FK_COLUMN}] = @BaseId;";
       ON m.[{header.MAPPING_BASE_FK_COLUMN}] = b.[{header.MAPPING_BASE_FK_COLUMN}]
     WHERE m.[{header.MAPPING_BASE_FK_COLUMN}] = @BaseId
       AND m.IS_DELETE = 0
+    {filterSql}
     {orderBySql};";
 
-        var rows = _con.Query(sql, new { BaseId = basePkValue }, transaction: tx)
+        filterParams.Add("BaseId", basePkValue);
+        
+        var rows = _con.Query(sql, filterParams, transaction: tx)
             .Cast<IDictionary<string, object?>>()
             .ToList();
 
@@ -571,6 +654,7 @@ WHERE b.[{header.MAPPING_BASE_FK_COLUMN}] = @BaseId;";
         string detailPkName,
         object basePkValue,
         string? baseDisplayText,
+        Dictionary<string, string>? filters,
         SqlTransaction? tx = null)
     {
         const string DetailPrefix = "d__";
@@ -641,12 +725,20 @@ WHERE b.[{header.MAPPING_BASE_FK_COLUMN}] = @BaseId;";
         var detailSelect = string.Join(",\n    ",
             detailColumns.Select(c => $"d.[{c}] AS [{DetailPrefix}{c}]"));
 
+        var (filterSql, filterParams) = BuildLikeWhere(
+            filters,
+            allowedColumns: detailColumns,
+            tableAlias: "d",
+            paramPrefix: "dLike"
+        );
+        
         var sql = $@"/**/
     SELECT
         {detailSelect},
         d.[{detailDisplayColumn}] AS [{DisplayAlias.Detail}]
     FROM [{header.DETAIL_TABLE_NAME}] d
     WHERE d.IS_DELETE = 0
+    {filterSql}
       AND NOT EXISTS (
           SELECT 1
           FROM [{header.MAPPING_TABLE_NAME}] m
@@ -655,7 +747,8 @@ WHERE b.[{header.MAPPING_BASE_FK_COLUMN}] = @BaseId;";
             AND m.[{header.MAPPING_DETAIL_FK_COLUMN}] = d.[{detailPkName}]
       );";
 
-        var rows = _con.Query(sql, new { BaseId = basePkValue }, transaction: tx)
+        filterParams.Add("BaseId", basePkValue);
+        var rows = _con.Query(sql, filterParams, transaction: tx)
             .Cast<IDictionary<string, object?>>()
             .ToList();
 
