@@ -49,8 +49,8 @@ public static class FormFieldHelper
         { SqlDataType.Decimal,  new() { FormControlType.Number, FormControlType.Text } },
 
         // 字串型欄位，通常最彈性
-        { SqlDataType.NVarChar, new() { FormControlType.Number, FormControlType.Text, FormControlType.Dropdown } },
-        { SqlDataType.VarChar,  new() { FormControlType.Number, FormControlType.Text, FormControlType.Dropdown } },
+        { SqlDataType.NVarChar, new() { FormControlType.Number, FormControlType.Text, FormControlType.Dropdown, FormControlType.Checkbox } },
+        { SqlDataType.VarChar,  new() { FormControlType.Number, FormControlType.Text, FormControlType.Dropdown, FormControlType.Checkbox } },
 
         // 長文字欄位
         { SqlDataType.Text,     new() { FormControlType.Textarea, FormControlType.Text } },
