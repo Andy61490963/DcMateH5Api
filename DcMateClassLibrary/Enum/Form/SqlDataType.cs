@@ -29,4 +29,7 @@ public enum SqlDataType
 
     /// <summary>文字（text）</summary>
     Text,
+    
+    /// <summary>文字（char）</summary>
+    Char,
 }

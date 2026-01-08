@@ -51,6 +51,7 @@ public static class FormFieldHelper
         // 字串型欄位，通常最彈性
         { SqlDataType.NVarChar, new() { FormControlType.Number, FormControlType.Text, FormControlType.Dropdown, FormControlType.Checkbox } },
         { SqlDataType.VarChar,  new() { FormControlType.Number, FormControlType.Text, FormControlType.Dropdown, FormControlType.Checkbox } },
+        { SqlDataType.Char,  new() { FormControlType.Number, FormControlType.Text, FormControlType.Dropdown, FormControlType.Checkbox } },
 
         // 長文字欄位
         { SqlDataType.Text,     new() { FormControlType.Textarea, FormControlType.Text } },
