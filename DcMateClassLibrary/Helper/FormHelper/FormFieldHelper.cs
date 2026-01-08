@@ -101,9 +101,10 @@ public static class FormFieldHelper
     {
         var sqlType = ParseSqlDataType(dataType);
 
-        return ControlTypeWhitelistMap.TryGetValue(sqlType, out var list)
+        var res = ControlTypeWhitelistMap.TryGetValue(sqlType, out var list)
             ? list
             : ControlTypeWhitelistMap[SqlDataType.Unknown];
+        return res;
     }
 
     /// <summary>
@@ -158,6 +159,7 @@ public static class FormFieldHelper
             "bit" => SqlDataType.Bit,
             "nvarchar" => SqlDataType.NVarChar,
             "varchar" => SqlDataType.VarChar,
+            "char" => SqlDataType.Char,
             "datetime" => SqlDataType.DateTime,
             "text" => SqlDataType.Text,
             _ => SqlDataType.Unknown

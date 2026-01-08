@@ -36,5 +36,5 @@ public class FormFieldInputViewModel
 
     public object? CurrentValue { get; set; }
     
-    public string? DETAIL_TO_RELATION_DEFAULT_COLNUM { get; set; }
+    public string? DETAIL_TO_RELATION_DEFAULT_COLUMN { get; set; }
 }

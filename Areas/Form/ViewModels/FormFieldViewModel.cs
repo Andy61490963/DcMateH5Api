@@ -82,7 +82,7 @@ public class FormFieldViewModel
     /// <summary>
     /// 把明細表的值順便填寫道對應表裡面的欄位的值
     /// </summary>
-    public string? DETAIL_TO_RELATION_DEFAULT_COLNUM { get; set; }
+    public string? DETAIL_TO_RELATION_DEFAULT_COLUMN { get; set; }
     
     /// <summary>
     /// 預設值

@@ -248,7 +248,7 @@ public class FormService : IFormService
                         OptionList = f.OptionList,
                         SOURCE_TABLE = f.SOURCE_TABLE,
                         CurrentValue = row.GetValue(f.Column),
-                        DETAIL_TO_RELATION_DEFAULT_COLNUM = f.DETAIL_TO_RELATION_DEFAULT_COLNUM
+                        DETAIL_TO_RELATION_DEFAULT_COLUMN = f.DETAIL_TO_RELATION_DEFAULT_COLUMN
                     })
                     .ToList();
 
