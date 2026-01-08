@@ -247,7 +247,8 @@ public class FormService : IFormService
                         DROPDOWNSQL = f.DROPDOWNSQL,
                         OptionList = f.OptionList,
                         SOURCE_TABLE = f.SOURCE_TABLE,
-                        CurrentValue = row.GetValue(f.Column)
+                        CurrentValue = row.GetValue(f.Column),
+                        DETAIL_TO_RELATION_DEFAULT_COLNUM = f.DETAIL_TO_RELATION_DEFAULT_COLNUM
                     })
                     .ToList();
 
@@ -480,6 +481,7 @@ public class FormService : IFormService
             SOURCE_TABLE = schemaType,
             IS_PK = primaryKeys.Contains(field.COLUMN_NAME),
             IS_RELATION = false,
+            
         };
     }
 

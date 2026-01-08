@@ -58,4 +58,7 @@ public class FormFieldConfigDto
 
     [Column("FIELD_ORDER")]
     public long FIELD_ORDER { get; set; }
+    
+    [Column("DETAIL_TO_RELATION_DEFAULT_COLUMN")]
+    public string? DETAIL_TO_RELATION_DEFAULT_COLUMN { get; set; }
 }

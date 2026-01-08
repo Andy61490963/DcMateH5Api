@@ -18,7 +18,7 @@ public class FormFieldConfigService : IFormFieldConfigService
     public List<FormFieldConfigDto> GetFormFieldConfig(Guid? id)
     {
         return _con.Query<FormFieldConfigDto>(
-            "/**/SELECT ID, COLUMN_NAME, CONTROL_TYPE, QUERY_COMPONENT, QUERY_CONDITION, CAN_QUERY FROM FORM_FIELD_CONFIG WHERE FORM_FIELD_MASTER_ID = @id",
+            "/**/SELECT * FROM FORM_FIELD_CONFIG WHERE FORM_FIELD_MASTER_ID = @id",
             new { id }).ToList();
     }
     

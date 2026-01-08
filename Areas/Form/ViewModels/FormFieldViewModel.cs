@@ -80,6 +80,11 @@ public class FormFieldViewModel
     public bool? CAN_QUERY { get; set; }
     
     /// <summary>
+    /// 把明細表的值順便填寫道對應表裡面的欄位的值
+    /// </summary>
+    public string? DETAIL_TO_RELATION_DEFAULT_COLNUM { get; set; }
+    
+    /// <summary>
     /// 預設值
     /// </summary>
     public string? QUERY_DEFAULT_VALUE { get; set; }
