@@ -608,7 +608,6 @@ WHERE b.[{header.MAPPING_BASE_FK_COLUMN}] = @BaseId;";
     JOIN [{header.BASE_TABLE_NAME}]    AS b
       ON m.[{header.MAPPING_BASE_FK_COLUMN}] = b.[{header.MAPPING_BASE_FK_COLUMN}]
     WHERE m.[{header.MAPPING_BASE_FK_COLUMN}] = @BaseId
-      AND m.IS_DELETE = 0
     {filterSql}
     {orderBySql};";
 
@@ -737,7 +736,7 @@ WHERE b.[{header.MAPPING_BASE_FK_COLUMN}] = @BaseId;";
         {detailSelect},
         d.[{detailDisplayColumn}] AS [{DisplayAlias.Detail}]
     FROM [{header.DETAIL_TABLE_NAME}] d
-    WHERE d.IS_DELETE = 0
+    WHERE 1 = 1
     {filterSql}
       AND NOT EXISTS (
           SELECT 1
