@@ -1632,7 +1632,12 @@ ORDER BY
             
             STATUS = (int)TableStatusType.Active,
             SCHEMA_TYPE = TableSchemaQueryType.All,
-            FUNCTION_TYPE = FormFunctionType.MasterMaintenance
+            FUNCTION_TYPE = FormFunctionType.MasterMaintenance,
+            
+            CREATE_TIME = DateTime.Now,
+            EDIT_TIME = DateTime.Now,
+            CREATE_USER = "temp",
+            EDIT_USER = "temp"
         });
         return id;
     }
@@ -2037,6 +2042,7 @@ ORDER BY ORDINAL_POSITION";
 MERGE FORM_FIELD_MASTER AS target
 USING (SELECT @ID AS ID) AS src
 ON target.ID = src.ID
+
 WHEN MATCHED THEN
     UPDATE SET
         FORM_NAME          = @FORM_NAME,
@@ -2050,18 +2056,52 @@ WHEN MATCHED THEN
         MAPPING_TABLE_ID   = @MAPPING_TABLE_ID,
         STATUS             = @STATUS,
         SCHEMA_TYPE        = @SCHEMA_TYPE,
-        FUNCTION_TYPE      = @FUNCTION_TYPE
+        FUNCTION_TYPE      = @FUNCTION_TYPE,
+        EDIT_USER          = @EDIT_USER,
+        EDIT_TIME          = @EDIT_TIME
+
 WHEN NOT MATCHED THEN
     INSERT (
-        ID, FORM_NAME, FORM_CODE, FORM_DESCRIPTION,
-        BASE_TABLE_NAME, VIEW_TABLE_NAME, MAPPING_TABLE_NAME,
-        BASE_TABLE_ID, VIEW_TABLE_ID, MAPPING_TABLE_ID,
-        STATUS, SCHEMA_TYPE, FUNCTION_TYPE, IS_DELETE)
+        ID,
+        FORM_NAME,
+        FORM_CODE,
+        FORM_DESCRIPTION,
+        BASE_TABLE_NAME,
+        VIEW_TABLE_NAME,
+        MAPPING_TABLE_NAME,
+        BASE_TABLE_ID,
+        VIEW_TABLE_ID,
+        MAPPING_TABLE_ID,
+        STATUS,
+        SCHEMA_TYPE,
+        FUNCTION_TYPE,
+        IS_DELETE,
+        CREATE_USER,
+        CREATE_TIME,
+        EDIT_USER,
+        EDIT_TIME
+    )
     VALUES (
-        @ID, @FORM_NAME, @FORM_CODE, @FORM_DESCRIPTION,
-        @BASE_TABLE_NAME, @VIEW_TABLE_NAME, @MAPPING_TABLE_NAME,
-        @BASE_TABLE_ID, @VIEW_TABLE_ID, @MAPPING_TABLE_ID,
-        @STATUS, @SCHEMA_TYPE, @FUNCTION_TYPE, 0)
+        @ID,
+        @FORM_NAME,
+        @FORM_CODE,
+        @FORM_DESCRIPTION,
+        @BASE_TABLE_NAME,
+        @VIEW_TABLE_NAME,
+        @MAPPING_TABLE_NAME,
+        @BASE_TABLE_ID,
+        @VIEW_TABLE_ID,
+        @MAPPING_TABLE_ID,
+        @STATUS,
+        @SCHEMA_TYPE,
+        @FUNCTION_TYPE,
+        0,
+        @CREATE_USER,
+        @CREATE_TIME,
+        @EDIT_USER,
+        @EDIT_TIME
+    )
+
 OUTPUT INSERTED.ID;";
 
         public const string CheckFormMasterExists = @"/**/
