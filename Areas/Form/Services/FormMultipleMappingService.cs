@@ -741,8 +741,7 @@ WHERE b.[{header.MAPPING_BASE_FK_COLUMN}] = @BaseId;";
       AND NOT EXISTS (
           SELECT 1
           FROM [{header.MAPPING_TABLE_NAME}] m
-          WHERE m.IS_DELETE = 0
-            AND m.[{header.MAPPING_BASE_FK_COLUMN}] = @BaseId
+          WHERE m.[{header.MAPPING_BASE_FK_COLUMN}] = @BaseId
             AND m.[{header.MAPPING_DETAIL_FK_COLUMN}] = d.[{detailPkName}]
       );";
 
