@@ -99,4 +99,10 @@ public class FormFieldMasterDto
     // [Timestamp]
     // [Column("ROW_VERSION")]
     // public byte[] ROW_VERSION { get; set; } = default!;
+    
+    [Column("CREATE_TIME")]
+    public DateTime CREATE_TIME { get; set; }
+    
+    [Column("EDIT_TIME")]
+    public DateTime EDIT_TIME { get; set; }
 }
