@@ -1636,8 +1636,8 @@ ORDER BY
             
             CREATE_TIME = DateTime.Now,
             EDIT_TIME = DateTime.Now,
-            CREATE_USER = "temp",
-            EDIT_USER = "temp"
+            CREATE_USER = Guid.NewGuid(),
+            EDIT_USER = Guid.NewGuid()
         });
         return id;
     }
