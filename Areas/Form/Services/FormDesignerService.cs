@@ -1331,7 +1331,13 @@ ORDER BY
         }
     }
 
-    public Guid SaveDropdownOption(Guid? id, Guid dropdownId, string optionText, string optionValue, string? optionTable = null)
+    public Guid SaveDropdownOption(
+        Guid? id,
+        Guid dropdownId,
+        string optionText,
+        string optionValue,
+        string? optionTable = null,
+        SqlTransaction? tx = null)
     {
         var param = new
         {
@@ -1342,9 +1348,9 @@ ORDER BY
             OptionTable = optionTable
         };
 
-        // ExecuteScalar 直接拿回 OUTPUT 的 Guid
-        return _con.ExecuteScalar<Guid>(Sql.UpsertDropdownOption, param);
+        return _con.ExecuteScalar<Guid>(Sql.UpsertDropdownOption, param, transaction: tx);
     }
+
 
     public async Task<bool> DeleteDropdownOption( Guid optionId, CancellationToken ct = default )
     {
@@ -1714,6 +1720,8 @@ ORDER BY
             throw new InvalidOperationException("必須設定對應的關聯欄位名稱");
         }
 
+        ValidateColumnName(model.MAPPING_PK_COLUMN);
+        
         ValidateColumnName(model.MAPPING_BASE_FK_COLUMN);
         ValidateColumnName(model.MAPPING_DETAIL_FK_COLUMN);
 
@@ -1785,10 +1793,13 @@ ORDER BY
         if (!string.IsNullOrWhiteSpace(viewTableName) && GetTableSchema(viewTableName).Count == 0)
             throw new InvalidOperationException("檢視表名稱查無資料");
 
+        EnsureColumnExists(mappingTableName, model.MAPPING_PK_COLUMN, "關聯表缺少主鍵欄位");
+        
         EnsureColumnExists(mappingTableName, model.MAPPING_BASE_FK_COLUMN, "關聯表缺少指向主表的外鍵欄位");
         EnsureColumnExists(mappingTableName, model.MAPPING_DETAIL_FK_COLUMN, "關聯表缺少指向明細表的外鍵欄位");
         EnsureColumnExists(baseTableName, model.MAPPING_BASE_FK_COLUMN, "主表缺少對應的主鍵欄位");
         EnsureColumnExists(detailTableName, model.MAPPING_DETAIL_FK_COLUMN, "目標表缺少對應的主鍵欄位");
+        
         if (!string.IsNullOrWhiteSpace(model.MAPPING_BASE_COLUMN_NAME))
         {
             EnsureColumnExists(baseTableName, model.MAPPING_BASE_COLUMN_NAME, "主表缺少對應的顯示欄位");
@@ -1819,6 +1830,8 @@ ORDER BY
             DETAIL_TABLE_NAME = detailTableName,
             MAPPING_TABLE_NAME = mappingTableName,
             VIEW_TABLE_NAME = viewTableName,
+            
+            model.MAPPING_PK_COLUMN,
             
             model.MAPPING_BASE_FK_COLUMN,
             model.MAPPING_DETAIL_FK_COLUMN,
@@ -2108,6 +2121,7 @@ WHEN MATCHED THEN
         DETAIL_TABLE_ID         = @DETAIL_TABLE_ID,
         MAPPING_TABLE_ID        = @MAPPING_TABLE_ID,
         VIEW_TABLE_ID           = @VIEW_TABLE_ID,
+        MAPPING_PK_COLUMN       = @MAPPING_PK_COLUMN,
         MAPPING_BASE_FK_COLUMN  = @MAPPING_BASE_FK_COLUMN,
         MAPPING_DETAIL_FK_COLUMN= @MAPPING_DETAIL_FK_COLUMN,
         MAPPING_BASE_COLUMN_NAME= @MAPPING_BASE_COLUMN_NAME,
@@ -2124,6 +2138,7 @@ WHEN NOT MATCHED THEN
         ID, FORM_NAME, FORM_CODE, FORM_DESCRIPTION,
         BASE_TABLE_NAME, DETAIL_TABLE_NAME, MAPPING_TABLE_NAME, VIEW_TABLE_NAME,
         BASE_TABLE_ID, DETAIL_TABLE_ID, MAPPING_TABLE_ID, VIEW_TABLE_ID,
+        MAPPING_PK_COLUMN,
         TARGET_MAPPING_COLUMN_NAME, SOURCE_DETAIL_COLUMN_CODE, TARGET_MAPPING_COLUMN_CODE,
         STATUS, SCHEMA_TYPE, FUNCTION_TYPE, IS_DELETE,
         MAPPING_BASE_FK_COLUMN, MAPPING_DETAIL_FK_COLUMN, MAPPING_BASE_COLUMN_NAME, MAPPING_DETAIL_COLUMN_NAME,
@@ -2133,6 +2148,7 @@ WHEN NOT MATCHED THEN
         @ID, @FORM_NAME, @FORM_CODE, @FORM_DESCRIPTION,
         @MASTER_TABLE_NAME, @DETAIL_TABLE_NAME, @MAPPING_TABLE_NAME, @VIEW_TABLE_NAME,
         @BASE_TABLE_ID, @DETAIL_TABLE_ID, @MAPPING_TABLE_ID, @VIEW_TABLE_ID,
+        @MAPPING_PK_COLUMN,
         @TARGET_MAPPING_COLUMN_NAME, @SOURCE_DETAIL_COLUMN_CODE, @TARGET_MAPPING_COLUMN_CODE,
         @STATUS, @SCHEMA_TYPE, @FUNCTION_TYPE, 0,
         @MAPPING_BASE_FK_COLUMN, @MAPPING_DETAIL_FK_COLUMN, @MAPPING_BASE_COLUMN_NAME, @MAPPING_DETAIL_COLUMN_NAME,
