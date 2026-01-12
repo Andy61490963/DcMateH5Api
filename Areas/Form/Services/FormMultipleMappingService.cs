@@ -204,9 +204,18 @@ SELECT ID AS Id,
 
             var detailIds = ConvertDetailIds(request.DetailIds, detailPkType);
 
-            // ---------- Seq 起始值（只在 isSeq = true 時計算） ----------
-            int seq = 0;
+            var mappingPkColumn = header.MAPPING_PK_COLUMN
+                ?? throw new InvalidOperationException("設定檔缺少 MAPPING_PK_COLUMN");
 
+            ValidateColumnName(mappingPkColumn);
+            EnsureColumnExists(header.MAPPING_TABLE_NAME!, mappingPkColumn, "Mapping 表缺少主鍵欄位", tx);
+
+            var columnTypes = LoadColumnTypes(header.MAPPING_TABLE_NAME!, tx);
+            var mappingPkType = columnTypes[mappingPkColumn];
+            var isIdentityPk = _schemaService.IsIdentityColumn(header.MAPPING_TABLE_NAME!, mappingPkColumn, tx);
+
+            // ---------- SEQ 起始值 ----------
+            var seq = 0;
             if (isSeq)
             {
                 seq = _con.ExecuteScalar<int>($@"/**/
@@ -221,37 +230,69 @@ SELECT ID AS Id,
             {
                 EnsureRowExists(header.DETAIL_TABLE_NAME!, detailPkName, detailId!, tx);
 
-                _con.Execute($@"/**/
+                var insertColumns = new List<string>
+                {
+                    $"[{header.MAPPING_BASE_FK_COLUMN}]",
+                    $"[{header.MAPPING_DETAIL_FK_COLUMN}]"
+                };
+
+                var insertValues = new List<string>
+                {
+                    "@BaseId",
+                    "@DetailId"
+                };
+
+                object? pkValue = null;
+
+                if (!isIdentityPk)
+                {
+                    pkValue = GeneratePkValueHelper.GeneratePkValue(mappingPkType);
+                    insertColumns.Insert(0, $"[{mappingPkColumn}]");
+                    insertValues.Insert(0, "@Pk");
+                }
+
+                if (isSeq)
+                {
+                    insertColumns.Add("[SEQ]");
+                    insertValues.Add("@Seq");
+                }
+
+                insertColumns.Add("CREATE_TIME");
+                insertColumns.Add("EDIT_TIME");
+                insertValues.Add("@CreateTime");
+                insertValues.Add("@EditTime");
+                
+                
+                insertColumns.Add("CREATE_USER");
+                insertColumns.Add("EDIT_USER");
+                insertValues.Add("@CreateUser");
+                insertValues.Add("@EditUser");
+
+                var sql = $@"/**/
     IF NOT EXISTS (
-        SELECT 1 FROM [{header.MAPPING_TABLE_NAME}]
+        SELECT 1
+        FROM [{header.MAPPING_TABLE_NAME}]
         WHERE [{header.MAPPING_BASE_FK_COLUMN}] = @BaseId
           AND [{header.MAPPING_DETAIL_FK_COLUMN}] = @DetailId
     )
     BEGIN
         INSERT INTO [{header.MAPPING_TABLE_NAME}]
-            (SID,
-             [{header.MAPPING_BASE_FK_COLUMN}],
-             [{header.MAPPING_DETAIL_FK_COLUMN}],
-             {(isSeq ? "[SEQ]," : string.Empty)}
-             CREATE_TIME,
-             EDIT_TIME)
+            ({string.Join(", ", insertColumns)})
         VALUES
-            (@SID,
-             @BaseId,
-             @DetailId,
-             {(isSeq ? "@Seq," : string.Empty)}
-             @CreateTime,
-             @EditTime);
-    END",
+            ({string.Join(", ", insertValues)});
+    END";
+
+                _con.Execute(sql,
                     new
                     {
-                        SID = RandomHelper.GenerateRandomDecimal(),
+                        Pk = pkValue,
                         BaseId = basePkValue,
                         DetailId = detailId,
                         Seq = isSeq ? ++seq : (int?)null,
                         CreateTime = DateTime.Now,
                         EditTime = DateTime.Now,
-                        IsDelete = 0
+                        CreateUser = "temp",
+                        EditUser = "temp"
                     },
                     transaction: tx);
             }
@@ -286,9 +327,9 @@ WHERE [{header.MAPPING_BASE_FK_COLUMN}] = @BaseId
     }
 
     /// <summary>
-    /// 依指定的 SID 順序重新整理 Mapping 表的 SEQ 欄位，僅針對同一 Base 主鍵的資料列。
+    /// 依設定的 欄位 順序重新整理 Mapping 表的 SEQ 欄位，僅針對同一 Base 主鍵的資料列。
     /// </summary>
-    /// <param name="request">包含設定檔、排序後 SID 清單與 Base 主鍵值的請求模型。</param>
+    /// <param name="request">包含設定檔、排序後 欄位 SID 清單與 Base 主鍵值的請求模型。</param>
     /// <param name="ct">取消權杖。</param>
     /// <returns>實際更新的筆數。</returns>
     public int ReorderMappingSequence(MappingSequenceReorderRequest request, CancellationToken ct = default)
@@ -301,40 +342,82 @@ WHERE [{header.MAPPING_BASE_FK_COLUMN}] = @BaseId
             var header = GetMappingHeader(request.FormMasterId, tx);
             EnsureReorderColumns(header, tx);
 
-            var (basePkName, _, basePkValue) = _schemaService.ResolvePk(header.BASE_TABLE_NAME!, request.Scope.BasePkValue, tx);
+            var (basePkName, _, basePkValue) =
+                _schemaService.ResolvePk(header.BASE_TABLE_NAME!, request.Scope.BasePkValue, tx);
+
             EnsureRowExists(header.BASE_TABLE_NAME!, basePkName, basePkValue!, tx);
 
-            EnsureSidsBelongToBase(header, basePkValue!, request.OrderedSids, tx);
+            var pkColumn = header.MAPPING_PK_COLUMN!;
+            var columnTypes = LoadColumnTypes(header.MAPPING_TABLE_NAME!, tx);
+            var pkType = columnTypes[pkColumn];
+
+            // string → 正確 PK 型別
+            var orderedPks = request.OrderedIds
+                .Select(id => ConvertToColumnTypeHelper.ConvertPkType(id, pkType))
+                .ToList();
+
+            EnsureMappingPkBelongToBase(header, basePkValue!, orderedPks, tx);
 
             var parameters = new DynamicParameters();
             parameters.Add("BaseId", basePkValue);
 
-            var valueFragments = new List<string>();
-            for (var i = 0; i < request.OrderedSids.Count; i++)
+            var valueSql = new List<string>();
+            for (var i = 0; i < orderedPks.Count; i++)
             {
-                var sidParam = $"sid{i}";
-                var seqParam = $"seq{i}";
-                parameters.Add(sidParam, request.OrderedSids[i]);
-                parameters.Add(seqParam, i + 1);
-                valueFragments.Add($"(@{sidParam}, @{seqParam})");
+                parameters.Add($"pk{i}", orderedPks[i]);
+                parameters.Add($"seq{i}", i + 1);
+                valueSql.Add($"(@pk{i}, @seq{i})");
             }
 
-            var valuesSql = string.Join(", ", valueFragments);
-
             var sql = $@"/**/
-;WITH OrderedSids AS (
-    SELECT v.SID, v.Seq
-    FROM (VALUES {valuesSql}) AS v (SID, Seq)
+;WITH OrderedPk AS (
+    SELECT v.Pk, v.Seq
+    FROM (VALUES {string.Join(", ", valueSql)}) AS v (Pk, Seq)
 )
 UPDATE m
    SET m.[SEQ] = o.Seq
-  FROM [{header.MAPPING_TABLE_NAME}] AS m
-  JOIN OrderedSids AS o ON m.SID = o.SID
+  FROM [{header.MAPPING_TABLE_NAME}] m
+  JOIN OrderedPk o ON m.[{pkColumn}] = o.Pk
  WHERE m.[{header.MAPPING_BASE_FK_COLUMN}] = @BaseId;";
 
             return _con.Execute(sql, parameters, transaction: tx);
         });
     }
+
+    private void EnsureMappingPkBelongToBase(
+        FormFieldMasterDto header,
+        object basePkValue,
+        IReadOnlyCollection<object> pkValues,
+        SqlTransaction tx)
+    {
+        var totalSql = $@"/**/
+SELECT COUNT(1)
+FROM [{header.MAPPING_TABLE_NAME}]
+WHERE [{header.MAPPING_BASE_FK_COLUMN}] = @BaseId;";
+
+        var total = _con.ExecuteScalar<int>(
+            totalSql,
+            new { BaseId = basePkValue },
+            transaction: tx);
+
+        if (total != pkValues.Count)
+            throw new InvalidOperationException("排序數量與 Base 範圍資料筆數不一致");
+
+        var matchedSql = $@"/**/
+SELECT COUNT(1)
+FROM [{header.MAPPING_TABLE_NAME}]
+WHERE [{header.MAPPING_PK_COLUMN}] IN @Ids
+  AND [{header.MAPPING_BASE_FK_COLUMN}] = @BaseId;";
+
+        var matched = _con.ExecuteScalar<int>(
+            matchedSql,
+            new { Ids = pkValues, BaseId = basePkValue },
+            transaction: tx);
+
+        if (matched != pkValues.Count)
+            throw new InvalidOperationException("排序清單中包含不屬於該 Base 的資料");
+    }
+
 
     private static class DisplayAlias
     {
@@ -799,24 +882,20 @@ WHERE b.[{header.MAPPING_BASE_FK_COLUMN}] = @BaseId;";
     {
         if (request == null) throw new ArgumentNullException(nameof(request));
         if (request.FormMasterId == Guid.Empty)
-        {
             throw new InvalidOperationException("FormMasterId 不可為空");
-        }
 
         if (request.Scope == null || string.IsNullOrWhiteSpace(request.Scope.BasePkValue))
-        {
             throw new InvalidOperationException("BasePkValue 不可為空");
-        }
 
-        if (request.OrderedSids == null || request.OrderedSids.Count == 0)
-        {
-            throw new InvalidOperationException("orderedSids 不可為空");
-        }
+        if (request.OrderedIds == null || request.OrderedIds.Count == 0)
+            throw new InvalidOperationException("OrderedIds 不可為空");
 
-        if (request.OrderedSids.Count != request.OrderedSids.Distinct().Count())
-        {
-            throw new InvalidOperationException("orderedSids 不可重複");
-        }
+        var normalized = request.OrderedIds
+            .Select(x => x.Trim())
+            .ToList();
+
+        if (normalized.Count != normalized.Distinct(StringComparer.OrdinalIgnoreCase).Count())
+            throw new InvalidOperationException("OrderedIds 不可重複");
     }
 
     private static IEnumerable<object> ConvertDetailIds(IEnumerable<string> detailIds, string detailPkType)
@@ -902,21 +981,19 @@ WHERE b.[{header.MAPPING_BASE_FK_COLUMN}] = @BaseId;";
         var columns = _schemaService.GetFormFieldMaster(header.MAPPING_TABLE_NAME!, tx)
             .ToHashSet(StringComparer.OrdinalIgnoreCase);
 
-        if (!columns.Contains("SID"))
-        {
-            throw new InvalidOperationException("Mapping 表缺少 SID 欄位，無法執行排序。");
-        }
+        if (string.IsNullOrWhiteSpace(header.MAPPING_PK_COLUMN))
+            throw new InvalidOperationException("設定檔缺少 MAPPING_PK_COLUMN");
+
+        if (!columns.Contains(header.MAPPING_PK_COLUMN))
+            throw new InvalidOperationException($"Mapping 表缺少 {header.MAPPING_PK_COLUMN} 欄位");
 
         if (!columns.Contains("SEQ"))
-        {
-            throw new InvalidOperationException("Mapping 表缺少 SEQ 欄位，無法執行排序。");
-        }
+            throw new InvalidOperationException("Mapping 表缺少 SEQ 欄位");
 
         if (!columns.Contains(header.MAPPING_BASE_FK_COLUMN!))
-        {
-            throw new InvalidOperationException($"Mapping 表缺少 {header.MAPPING_BASE_FK_COLUMN} 欄位，無法依 Base 範圍排序。");
-        }
+            throw new InvalidOperationException($"Mapping 表缺少 {header.MAPPING_BASE_FK_COLUMN} 欄位");
     }
+
 
     private void EnsureSidsBelongToBase(FormFieldMasterDto header, object basePkValue, IReadOnlyCollection<decimal> sids, SqlTransaction tx)
     {
@@ -930,7 +1007,7 @@ WHERE b.[{header.MAPPING_BASE_FK_COLUMN}] = @BaseId;";
         }
 
         var matchedCount = _con.ExecuteScalar<int>(
-            $"/**/SELECT COUNT(1) FROM [{header.MAPPING_TABLE_NAME}] WHERE SID IN @Sids AND [{header.MAPPING_BASE_FK_COLUMN}] = @BaseId",
+            $"/**/SELECT COUNT(1) FROM [{header.MAPPING_TABLE_NAME}] WHERE [{header.MAPPING_PK_COLUMN}] IN @Sids AND [{header.MAPPING_BASE_FK_COLUMN}] = @BaseId",
             new { Sids = sids, BaseId = basePkValue }, transaction: tx);
 
         if (matchedCount != sids.Count)

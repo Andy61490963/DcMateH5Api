@@ -52,6 +52,9 @@ public class FormFieldMasterDto
     public Guid? MAPPING_TABLE_ID { get; set; }
 
     
+    [Column("MAPPING_PK_COLUMN")]
+    public string? MAPPING_PK_COLUMN { get; set; }
+    
     
     
     [Column("MAPPING_BASE_FK_COLUMN")]

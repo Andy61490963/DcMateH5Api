@@ -8,20 +8,13 @@ namespace DcMateH5Api.Areas.Form.ViewModels;
 /// </summary>
 public class MappingSequenceReorderRequest
 {
-    /// <summary>
-    /// FORM_FIELD_MASTER 的唯一識別碼。
-    /// </summary>
     public Guid FormMasterId { get; set; }
+    public MappingSequenceScope Scope { get; set; } = default!;
 
     /// <summary>
-    /// 依照最終順序排序好的 Mapping SID 清單，將被更新為 SEQ = 1..N。
+    /// 依照前端排序後的「Mapping PK」字串清單（對應 header.MAPPING_PK_COLUMN）
     /// </summary>
-    public List<decimal> OrderedSids { get; set; } = new();
-
-    /// <summary>
-    /// 作用範圍，包含主表主鍵值等上下文資訊。
-    /// </summary>
-    public MappingSequenceScope Scope { get; set; } = new();
+    public List<string> OrderedIds { get; set; } = new();
 }
 
 /// <summary>

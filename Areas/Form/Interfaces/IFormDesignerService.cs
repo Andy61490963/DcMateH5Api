@@ -1,6 +1,7 @@
 using DcMateH5Api.Areas.Form.Models;
 using ClassLibrary;
 using DcMateH5Api.Areas.Form.ViewModels;
+using Microsoft.Data.SqlClient;
 
 namespace DcMateH5Api.Areas.Form.Interfaces;
 
@@ -71,7 +72,13 @@ public interface IFormDesignerService
     Task<List<FormFieldDropdownOptionsDto>> GetDropdownOptions( Guid dropDownId, CancellationToken ct = default );
 
     Task SaveDropdownSql( Guid dropdownId, string sql, CancellationToken ct );
-    Guid SaveDropdownOption(Guid? id, Guid dropdownId, string optionText, string optionValue, string? optionTable = null);
+    Guid SaveDropdownOption(
+        Guid? id,
+        Guid dropdownId,
+        string optionText,
+        string optionValue,
+        string? optionTable = null,
+        SqlTransaction? tx = null);
 
     Task<bool> DeleteDropdownOption(Guid optionId, CancellationToken ct = default);
 
