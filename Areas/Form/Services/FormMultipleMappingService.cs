@@ -212,8 +212,7 @@ SELECT ID AS Id,
                 seq = _con.ExecuteScalar<int>($@"/**/
     SELECT ISNULL(MAX([SEQ]), 0)
     FROM [{header.MAPPING_TABLE_NAME}]
-    WHERE [{header.MAPPING_BASE_FK_COLUMN}] = @BaseId
-      AND IS_DELETE = 0;",
+    WHERE [{header.MAPPING_BASE_FK_COLUMN}] = @BaseId;",
                     new { BaseId = basePkValue },
                     transaction: tx);
             }
@@ -227,7 +226,6 @@ SELECT ID AS Id,
         SELECT 1 FROM [{header.MAPPING_TABLE_NAME}]
         WHERE [{header.MAPPING_BASE_FK_COLUMN}] = @BaseId
           AND [{header.MAPPING_DETAIL_FK_COLUMN}] = @DetailId
-          AND IS_DELETE = 0
     )
     BEGIN
         INSERT INTO [{header.MAPPING_TABLE_NAME}]
@@ -236,16 +234,14 @@ SELECT ID AS Id,
              [{header.MAPPING_DETAIL_FK_COLUMN}],
              {(isSeq ? "[SEQ]," : string.Empty)}
              CREATE_TIME,
-             EDIT_TIME,
-             IS_DELETE)
+             EDIT_TIME)
         VALUES
             (@SID,
              @BaseId,
              @DetailId,
              {(isSeq ? "@Seq," : string.Empty)}
              @CreateTime,
-             @EditTime,
-             @IsDelete);
+             @EditTime);
     END",
                     new
                     {
