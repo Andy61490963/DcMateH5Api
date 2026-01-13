@@ -51,6 +51,11 @@ public class FormFieldMasterDto
     [Column("MAPPING_TABLE_ID")]
     public Guid? MAPPING_TABLE_ID { get; set; }
 
+    [Column("FORM_FIELD_MASTER_BUTTON_LINK_ID")]
+    public Guid? FORM_FIELD_MASTER_BUTTON_LINK_ID { get; set; }
+    
+    [Column("FORM_FIELD_MASTER1_BUTTON_LINK_ID")]
+    public Guid? FORM_FIELD_MASTER1_BUTTON_LINK_ID { get; set; }
     
     [Column("MAPPING_PK_COLUMN")]
     public string? MAPPING_PK_COLUMN { get; set; }
