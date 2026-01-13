@@ -46,6 +46,16 @@ public class MultipleMappingFormHeaderViewModel
     public Guid VIEW_TABLE_ID { get; set; }
     
     /// <summary>
+    /// 超連結 FORM_FIELD_MASTER_ID
+    /// </summary>
+    public Guid FORM_FIELD_MASTER_BUTTON_LINK_ID { get; set; }
+    
+    /// <summary>
+    /// 超連結 FORM_FIELD_MASTER_ID 1
+    /// </summary>
+    public Guid FORM_FIELD_MASTER1_BUTTON_LINK_ID { get; set; }
+    
+    /// <summary>
     /// 對應表的主鍵欄位
     /// </summary>
     public string MAPPING_PK_COLUMN { get; set; }
