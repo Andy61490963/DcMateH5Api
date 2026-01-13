@@ -1,13 +1,13 @@
 using Microsoft.AspNetCore.Mvc;
-using System.Collections.Generic;
-using System.Linq;
-using DCMATEH5API.Areas.Menu.Models; // 引用你自己的 Models
+using DCMATEH5API.Areas.Menu.Models;
+using DcMateH5Api.Helper; // 引用你自己的 Models
 
 namespace DCMATEH5API.Areas.Menu.Controllers
 {
     [Area("Menu")]
     [Route("api/[area]/[controller]")]
     [ApiController] // 加入這個標籤，會自動處理模型驗證
+    [ApiExplorerSettings(GroupName = SwaggerGroups.Menu)]
     public class MenuController : ControllerBase // 改為繼承內建的 ControllerBase
     {
         [HttpGet]
