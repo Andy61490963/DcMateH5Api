@@ -140,7 +140,108 @@ public class FormDesignerMultipleMappingController : ControllerBase
         return Ok( result );
     }
     
-  
+    /// <summary>
+    /// 新增或更新單一欄位設定（ID 有值為更新，無值為新增）
+    /// </summary>
+    /// <param name="model">GetField( Guid fieldId ) 取得的欄位 Json </param>
+    /// <returns></returns>
+    [HttpPost("fields")]
+    [ProducesResponseType(typeof(List<FormFieldViewModel>), StatusCodes.Status200OK)]
+    [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status409Conflict)]
+    [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status400BadRequest)]
+    [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status500InternalServerError)]
+    public async Task<IActionResult> UpsertField( [FromBody] FormFieldViewModel model )
+    {
+        try
+        {
+            if ( model.SchemaType == TableSchemaQueryType.OnlyTable &&
+                ( model.QUERY_COMPONENT != QueryComponentType.None ||
+                 model.CAN_QUERY == true ) )
+                return Conflict( "無法往主表寫入查詢條件" );
+            
+            if ( model.SchemaType == TableSchemaQueryType.OnlyTable &&
+                ( model.QUERY_DEFAULT_VALUE != null ||
+                 model.CAN_QUERY == true ) )
+                return Conflict( "無法往主表寫入查詢預設值" );
+            
+            if ( model.SchemaType == TableSchemaQueryType.OnlyView &&
+                ( model.CAN_QUERY == false && model.QUERY_COMPONENT != QueryComponentType.None ) )
+                return Conflict( "無法更改未開放查詢條件的查詢元件" );
+            
+            if ( model.ID != Guid.Empty &&
+                _formDesignerService.HasValidationRules( model.ID ) &&
+                _formDesignerService.GetControlTypeByFieldId( model.ID ) != model.CONTROL_TYPE )
+                return Conflict( "已有驗證規則，無法變更控制元件類型" );
+
+            var master = new FormFieldMasterDto { ID = model.FORM_FIELD_MASTER_ID };
+            var formMasterId = _formDesignerService.GetOrCreateFormMasterId( master );
+
+            _formDesignerService.UpsertField( model, formMasterId );
+            var fields = await _formDesignerService.GetFieldsByTableName( model.TableName, formMasterId, model.SchemaType );
+            return Ok( fields );
+        }
+        catch ( HttpStatusCodeException ex )
+        {
+            return StatusCode( (int)ex.StatusCode, ex.Message );
+        }
+    }
+
+    /// <summary>
+    /// 移動表單欄位的顯示順序（使用 分數索引排序 演算法）。
+    /// </summary>
+    /// <remarks>
+    /// ### 使用方式
+    /// 
+    /// 此 API 用於「拖拉排序」或「指定位置移動」欄位，
+    /// **只會更新指定欄位的排序 Key，不會重排其他欄位**。
+    /// 
+    /// 排序邏輯說明：
+    /// - 系統使用 分數索引 產生排序 Key
+    /// - 排序值不保證連續（例如：1000、2500、3000）
+    ///   僅保證大小關係正確，可有效避免大量更新資料。
+    /// 
+    /// ### Request Body 說明
+    /// 
+    /// ```json
+    /// {
+    ///   "movingId": "要移動的欄位 ID",
+    ///   "prevId": "移動後前一個欄位 ID（放最前請傳 null）",
+    ///   "nextId": "移動後後一個欄位 ID（放最後請傳 null）"
+    /// }
+    /// ```
+    /// 
+    /// - **movingId**：
+    ///   必填，要移動的 `FORM_FIELD_CONFIG.ID`。
+    /// 
+    /// - **prevId / nextId**：
+    ///   - 代表「移動後」的位置，而非移動前。
+    ///   - `prevId = null` 表示移動至最前方。
+    ///   - `nextId = null` 表示移動至最後方。
+    /// 
+    /// ### 範例
+    /// 
+    /// 將欄位 C 移動至欄位 A 與 B 之間：
+    /// 
+    /// ```json
+    /// {
+    ///   "movingId": "C",
+    ///   "prevId": "A",
+    ///   "nextId": "B"
+    /// }
+    /// ```
+    /// 
+    /// </remarks>
+    /// <param name="req">欄位排序移動請求內容</param>
+    /// <param name="ct">取消權杖</param>
+    /// <returns>成功時回傳 HTTP 200</returns>
+    [HttpPost("fields/move")]
+    public async Task<IActionResult> MoveField(
+        [FromBody] MoveFormFieldRequest req,
+        CancellationToken ct)
+    {
+        await _formDesignerService.MoveFieldAsync(req, ct);
+        return Ok();
+    }
     
     // ────────── Form Header ──────────
     

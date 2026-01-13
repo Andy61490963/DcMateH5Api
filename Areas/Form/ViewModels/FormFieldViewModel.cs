@@ -52,7 +52,7 @@ public class FormFieldViewModel
     /// <summary>
     /// 排序
     /// </summary>
-    public int? FIELD_ORDER { get; set; }
+    public long? FIELD_ORDER { get; set; }
 
     /// <summary>
     /// 控制類別
