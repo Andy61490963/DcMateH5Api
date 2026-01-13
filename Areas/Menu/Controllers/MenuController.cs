@@ -1,74 +1,90 @@
+using DCMATEH5API.Areas.Menu.Models;
+using DCMATEH5API.Areas.Menu.Services;
 using Microsoft.AspNetCore.Mvc;
 using System.Collections.Generic;
 using System.Linq;
-using DCMATEH5API.Areas.Menu.Models; // 引用你自己的 Models
+using System.Threading.Tasks;
 
 namespace DCMATEH5API.Areas.Menu.Controllers
 {
     [Area("Menu")]
     [Route("api/[area]/[controller]")]
-    [ApiController] // 加入這個標籤，會自動處理模型驗證
-    public class MenuController : ControllerBase // 改為繼承內建的 ControllerBase
+    [ApiController]
+    public class MenuController : ControllerBase
     {
-        [HttpGet]
-        public IActionResult GetNavigation()
+        private readonly IMenuService _menuService;
+        public MenuController(IMenuService menuService) { _menuService = menuService; }
+
+        [HttpGet("GetMenuTree")]
+        public async Task<IActionResult> GetNavigation()
         {
-            // 1. 取得資料 (目前模擬)
-            var allItems = GetMockData(); 
+            string currentUserId = "SystemAdmin";
+            var tree = await _menuService.GetMenuTreeAsync(currentUserId);
 
-            // 2. 組裝成樹狀結構
-            var menuTree = BuildMenuTree(allItems);
+            var finalResult = new MenuResponse();
 
-            // 3. 使用你自己定義的回傳格式
-            var result = new MenuResult
+            // 預設首頁入口
+            finalResult.Pages["index.html"] = new PageFolderViewModel
             {
-                Success = true,
-                Message = "Success",
-                Data = menuTree
+                Title = "首頁",
+                Url = "index.html",
+                Tiles = tree.Select((node, index) => new TileViewModel
+                {
+                    Sid = node.Id,
+                    Title = node.Title,
+                    Url = CombineUrl(node.Url, node.Parameter),
+                    Property = node.SourceType == "PAGE" ? "Page" : "MENU",
+                    Lv = node.Lv,
+                    Seq = node.SortOrder,
+                    Pos = index + 1
+                }).ToList()
             };
 
-            return Ok(result);
+            // 遞迴將樹狀平鋪到 Dictionary 中
+            FillPagesDictionary(tree, finalResult.Pages);
+
+            return Ok(new MenuResult { Success = true, Data = finalResult, Message = "查詢成功" });
         }
 
-        // --- 以下為樹狀組裝邏輯 (保持不變) ---
-
-        private List<MenuNavigationViewModel> BuildMenuTree(List<MenuNavigationViewModel> source)
+        private void FillPagesDictionary(List<MenuNavigationViewModel> nodes, Dictionary<string, PageFolderViewModel> pages, string backUrl = "index.html")
         {
-            if (source == null) return new List<MenuNavigationViewModel>();
-
-            var groups = source.Where(x => string.IsNullOrEmpty(x.ParentId))
-                               .OrderBy(x => x.SortOrder)
-                               .ToList();
-
-            foreach (var item in groups)
+            foreach (var node in nodes)
             {
-                item.Children = GetChildren(source, item.Id);
+                var key = node.Url?.Trim();
+                if (string.IsNullOrEmpty(key) || node.Children.Count == 0) continue;
+
+                if (!pages.ContainsKey(key))
+                {
+                    pages[key] = new PageFolderViewModel
+                    {
+                        Sid = node.Id,
+                        Title = node.Title,
+                        Url = CombineUrl(node.Url, node.Parameter),
+                        Lv = node.Lv,
+                        BackUrl = backUrl,
+                        ModuleName = node.Title,
+                        TypeGroup = node.Title,
+                        Tiles = node.Children.Select((child, index) => new TileViewModel
+                        {
+                            Sid = child.Id,
+                            Title = child.Title,
+                            Url = CombineUrl(child.Url, child.Parameter),
+                            Property = child.SourceType == "PAGE" ? "Page" : "MENU",
+                            Lv = child.Lv,
+                            Seq = child.SortOrder,
+                            Pos = index + 1
+                        }).ToList()
+                    };
+                }
+                FillPagesDictionary(node.Children, pages, key);
             }
-            return groups;
         }
 
-        private List<MenuNavigationViewModel> GetChildren(List<MenuNavigationViewModel> source, string parentId)
+        private string CombineUrl(string? url, string? parameter)
         {
-            var children = source.Where(x => x.ParentId == parentId)
-                                 .OrderBy(x => x.SortOrder)
-                                 .ToList();
-
-            foreach (var child in children)
-            {
-                var grandChildren = GetChildren(source, child.Id);
-                child.Children = grandChildren ?? new List<MenuNavigationViewModel>();
-            }
-            return children;
-        }
-
-        private List<MenuNavigationViewModel> GetMockData()
-        {
-            return new List<MenuNavigationViewModel>
-            {
-                new MenuNavigationViewModel { Id = "1", ParentId = "0", Title = "系統配置", Translate = "MENU.SYSTEM_CONFIG", Type = "group", SortOrder = 1 },
-                new MenuNavigationViewModel { Id = "2", ParentId = "1", Title = "使用者管理", Translate = "MENU.USER_MANAGEMENT", Type = "collapsable", SortOrder = 1 },
-                new MenuNavigationViewModel { Id = "3", ParentId = "2", Title = "清單", Url = "/system/users", Type = "item", SortOrder = 1 }
-            };
+            var cleanUrl = url?.Trim() ?? "";
+            if (string.IsNullOrEmpty(parameter)) return cleanUrl;
+            return cleanUrl.Contains("?") ? $"{cleanUrl}&{parameter}" : $"{cleanUrl}?{parameter}";
         }
     }
 }

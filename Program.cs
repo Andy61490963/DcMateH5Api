@@ -88,6 +88,10 @@ builder.Services.AddScoped<IFormMultipleMappingService, FormMultipleMappingServi
 builder.Services.AddScoped<IDropdownSqlSyncService, DropdownSqlSyncService>();
 builder.Services.AddScoped<IPermissionService, PermissionService>();
 
+//Menu Tree 2026-01-13 leo
+builder.Services.AddScoped<DCMATEH5API.Areas.Menu.Services.IMenuService, DCMATEH5API.Areas.Menu.Services.MenuService>();
+
+
 // 工作站
 builder.Services.AddScoped<IBasRouteService, BasRouteService>();
 builder.Services.AddScoped<IBasOperationService, BasOperationService>();
