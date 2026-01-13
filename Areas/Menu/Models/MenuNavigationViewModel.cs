@@ -65,7 +65,6 @@ namespace DCMATEH5API.Areas.Menu.Models
         public bool Success { get; set; }
         public string Message { get; set; } = string.Empty;
         public MenuResponse? Data { get; set; }
-    }
         public string Translate { get; set; } = string.Empty;
         public string Type { get; set; } = string.Empty;
         public string Icon { get; set; } = string.Empty;
