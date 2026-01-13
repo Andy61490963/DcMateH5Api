@@ -28,3 +28,10 @@ AppData/
 /Dockerfile
 /nginx/
 /nginx.conf
+/.vs/DcMateH5Api/v17
+/.vs/DcMateH5Api/CopilotIndices/17.14.1561.44479
+/.vs/DcMateH5Api/FileContentIndex
+/.vs/ProjectEvaluation
+/.vs/DcMateH5Api
+/Properties/launchSettings.json
+/DcMateH5Api.Tests/ApiControllerTest/FormMultipleMappingControllerTests.cs
