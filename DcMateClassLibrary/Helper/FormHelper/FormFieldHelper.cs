@@ -49,8 +49,9 @@ public static class FormFieldHelper
         { SqlDataType.Decimal,  new() { FormControlType.Number, FormControlType.Text } },
 
         // 字串型欄位，通常最彈性
-        { SqlDataType.NVarChar, new() { FormControlType.Number, FormControlType.Text, FormControlType.Dropdown } },
-        { SqlDataType.VarChar,  new() { FormControlType.Number, FormControlType.Text, FormControlType.Dropdown } },
+        { SqlDataType.NVarChar, new() { FormControlType.Number, FormControlType.Text, FormControlType.Dropdown, FormControlType.Checkbox } },
+        { SqlDataType.VarChar,  new() { FormControlType.Number, FormControlType.Text, FormControlType.Dropdown, FormControlType.Checkbox } },
+        { SqlDataType.Char,  new() { FormControlType.Number, FormControlType.Text, FormControlType.Dropdown, FormControlType.Checkbox } },
 
         // 長文字欄位
         { SqlDataType.Text,     new() { FormControlType.Textarea, FormControlType.Text } },
@@ -100,9 +101,10 @@ public static class FormFieldHelper
     {
         var sqlType = ParseSqlDataType(dataType);
 
-        return ControlTypeWhitelistMap.TryGetValue(sqlType, out var list)
+        var res = ControlTypeWhitelistMap.TryGetValue(sqlType, out var list)
             ? list
             : ControlTypeWhitelistMap[SqlDataType.Unknown];
+        return res;
     }
 
     /// <summary>
@@ -157,6 +159,7 @@ public static class FormFieldHelper
             "bit" => SqlDataType.Bit,
             "nvarchar" => SqlDataType.NVarChar,
             "varchar" => SqlDataType.VarChar,
+            "char" => SqlDataType.Char,
             "datetime" => SqlDataType.DateTime,
             "text" => SqlDataType.Text,
             _ => SqlDataType.Unknown

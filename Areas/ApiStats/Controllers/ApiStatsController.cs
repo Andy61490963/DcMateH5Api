@@ -41,6 +41,13 @@ namespace DcMateH5Api.Areas.ApiStats.Controllers
             return Ok(Result<HealthResponse>.Ok(data));
         }
         
+        [HttpGet("slow-healthz")]
+        public async Task<IActionResult> Slow()
+        {
+            await Task.Delay(30000); // 30 秒
+            return Ok("Healthy");
+        }
+        
         /// <summary>
         /// 測試 LogService 使用的資料庫連線是否正常
         /// </summary>
@@ -62,7 +69,7 @@ namespace DcMateH5Api.Areas.ApiStats.Controllers
             {
                 await conn.OpenAsync(ct);
                 await using var cmd = conn.CreateCommand();
-                cmd.CommandText = "SELECT GETDATE()1"; // 故意錯
+                cmd.CommandText = "SELECT GETDATE()"; // 故意錯
                 await cmd.ExecuteScalarAsync(ct);
             }
 

@@ -9,6 +9,7 @@ using DcMateH5Api.Areas.Form.ViewModels;
 using DcMateH5Api.Helper;
 using DcMateH5Api.SqlHelper;
 using Microsoft.Data.SqlClient;
+using Microsoft.Extensions.Primitives;
 
 namespace DcMateH5Api.Areas.Form.Services;
 
@@ -19,6 +20,7 @@ public class FormMultipleMappingService : IFormMultipleMappingService
 {
     private readonly SqlConnection _con;
     private readonly IFormFieldMasterService _formFieldMasterService;
+    private readonly IFormFieldConfigService _formFieldConfigService;
     private readonly ISchemaService _schemaService;
     private readonly ITransactionService _txService;
     private readonly IFormService _formService;
@@ -27,6 +29,7 @@ public class FormMultipleMappingService : IFormMultipleMappingService
     public FormMultipleMappingService(
         SqlConnection connection,
         IFormFieldMasterService formFieldMasterService,
+        IFormFieldConfigService formFieldConfigService,
         ISchemaService schemaService,
         ITransactionService txService,
         IFormService formService,
@@ -34,6 +37,7 @@ public class FormMultipleMappingService : IFormMultipleMappingService
     {
         _con = connection;
         _formFieldMasterService = formFieldMasterService;
+        _formFieldConfigService = formFieldConfigService;
         _schemaService = schemaService;
         _txService = txService;
         _formService = formService;
@@ -71,28 +75,38 @@ SELECT ID AS Id,
     }
 
     /// <inheritdoc />
-    public MultipleMappingListViewModel GetMappingList(Guid formMasterId, string baseId, CancellationToken ct = default)
+    public MultipleMappingListViewModel GetMappingList(Guid formMasterId, string baseId, Dictionary<string, string>? filters, bool? mode, CancellationToken ct = default)
     {
         ct.ThrowIfCancellationRequested();
 
         var header = GetMappingHeader(formMasterId);
 
         var (basePkName, _, basePkValue) = _schemaService.ResolvePk(header.BASE_TABLE_NAME!, baseId);
-        var (detailPkName, detailPkType, _) = _schemaService.ResolvePk(header.DETAIL_TABLE_NAME!, null);
+        var (detailPkName, _, _) = _schemaService.ResolvePk(header.DETAIL_TABLE_NAME!, null);
 
         EnsureRowExists(header.BASE_TABLE_NAME!, basePkName, basePkValue!);
 
-        // 這裡改成 scalar：先抓字串，再用既有 helper 轉成正確 PK 型別
-//         var linkedDetailIds = _con.Query<string>($@"/**/
-// SELECT CAST([{header.MAPPING_DETAIL_FK_COLUMN}] AS NVARCHAR(4000)) AS Id
-//   FROM [{header.MAPPING_TABLE_NAME}]
-//  WHERE [{header.MAPPING_BASE_FK_COLUMN}] = @BaseId",
-//                 new { BaseId = basePkValue })
-//             .Select(x => ConvertToColumnTypeHelper.ConvertPkType(x, detailPkType))
-//             .ToList();
+        var baseDisplayText = GetBaseDisplayText(header, basePkValue!);
 
-        var linkedItems = LoadLinkedDetailRows(header, detailPkName, basePkValue!);
-        var unlinkedItems = LoadUnlinkedRows(header, detailPkName, basePkValue);
+        // 先宣告在外層，return 才用得到
+        List<MultipleMappingItemViewModel> linkedItems = new();
+        List<MultipleMappingItemViewModel> unlinkedItems = new();
+
+        if (mode == null)
+        {
+            linkedItems = LoadLinkedDetailRows(header, detailPkName, basePkValue!, null);
+            unlinkedItems = LoadUnlinkedRows(header, detailPkName, basePkValue!, baseDisplayText, null);
+        }
+        else if (mode == true)
+        {
+            // linked 套 mapping filters
+            linkedItems = LoadLinkedDetailRows(header, detailPkName, basePkValue!, filters);
+        }
+        else // mode == false
+        {
+            // unlinked 套 detail filters
+            unlinkedItems = LoadUnlinkedRows(header, detailPkName, basePkValue!, baseDisplayText, filters);
+        }
 
         return new MultipleMappingListViewModel
         {
@@ -104,11 +118,68 @@ SELECT ID AS Id,
             MappingDetailFkColumn = header.MAPPING_DETAIL_FK_COLUMN!,
             MappingBaseColumnName = header.MAPPING_BASE_COLUMN_NAME,
             MappingDetailColumnName = header.MAPPING_DETAIL_COLUMN_NAME,
+            TargetMappingColumnName = header.TARGET_MAPPING_COLUMN_NAME,
+            SourceDetailColumnCode = header.SOURCE_DETAIL_COLUMN_CODE,
+            TargetMappingColumnCode = header.TARGET_MAPPING_COLUMN_CODE,
             Linked = linkedItems,
             Unlinked = unlinkedItems
         };
     }
 
+    private static (string WhereSql, DynamicParameters Params) BuildLikeWhere(
+        Dictionary<string, string>? filters,
+        IReadOnlyCollection<string> allowedColumns,
+        string tableAlias,
+        string paramPrefix)
+    {
+        var dp = new DynamicParameters();
+
+        if (filters == null || filters.Count == 0)
+            return (string.Empty, dp);
+
+        // 白名單：避免欄位名注入（欄位名無法參數化，只能靠白名單擋）
+        var whitelist = new HashSet<string>(allowedColumns, StringComparer.OrdinalIgnoreCase);
+
+        var andParts = new List<string>();
+        var pIndex = 0;
+
+        foreach (var (key, value) in filters)
+        {
+            var col = (key ?? string.Empty).Trim();
+            if (string.IsNullOrWhiteSpace(col))
+                continue;
+
+            if (!whitelist.Contains(col))
+                throw new InvalidOperationException($"不允許的查詢欄位：{col}");
+
+            var raw = (value ?? string.Empty).Trim();
+            if (string.IsNullOrWhiteSpace(raw))
+                continue;
+
+            // 參數名要可控，避免跟其他段參數撞名
+            var paramName = $"{paramPrefix}{pIndex++}";
+
+            // 預設 contains：%keyword%（你要更快可改成 keyword%）
+            dp.Add(paramName, $"%{EscapeLike(raw)}%");
+
+            andParts.Add($"{tableAlias}.[{col}] LIKE @{paramName} ESCAPE '\\'");
+        }
+
+        if (andParts.Count == 0)
+            return (string.Empty, dp);
+
+        return ($" AND {string.Join(" AND ", andParts)}", dp);
+    }
+    
+    private static string EscapeLike(string input)
+    {
+        return input
+            .Replace(@"\", @"\\")
+            .Replace("%",  @"\%")
+            .Replace("_",  @"\_")
+            .Replace("[",  @"\[");
+    }
+    
     /// <inheritdoc />
     public void AddMappings(
         Guid formMasterId,
@@ -133,16 +204,24 @@ SELECT ID AS Id,
 
             var detailIds = ConvertDetailIds(request.DetailIds, detailPkType);
 
-            // ---------- Seq 起始值（只在 isSeq = true 時計算） ----------
-            int seq = 0;
+            var mappingPkColumn = header.MAPPING_PK_COLUMN
+                ?? throw new InvalidOperationException("設定檔缺少 MAPPING_PK_COLUMN");
 
+            ValidateColumnName(mappingPkColumn);
+            EnsureColumnExists(header.MAPPING_TABLE_NAME!, mappingPkColumn, "Mapping 表缺少主鍵欄位", tx);
+
+            var columnTypes = LoadColumnTypes(header.MAPPING_TABLE_NAME!, tx);
+            var mappingPkType = columnTypes[mappingPkColumn];
+            var isIdentityPk = _schemaService.IsIdentityColumn(header.MAPPING_TABLE_NAME!, mappingPkColumn, tx);
+
+            // ---------- SEQ 起始值 ----------
+            var seq = 0;
             if (isSeq)
             {
                 seq = _con.ExecuteScalar<int>($@"/**/
     SELECT ISNULL(MAX([SEQ]), 0)
     FROM [{header.MAPPING_TABLE_NAME}]
-    WHERE [{header.MAPPING_BASE_FK_COLUMN}] = @BaseId
-      AND IS_DELETE = 0;",
+    WHERE [{header.MAPPING_BASE_FK_COLUMN}] = @BaseId;",
                     new { BaseId = basePkValue },
                     transaction: tx);
             }
@@ -151,47 +230,75 @@ SELECT ID AS Id,
             {
                 EnsureRowExists(header.DETAIL_TABLE_NAME!, detailPkName, detailId!, tx);
 
-                _con.Execute($@"/**/
+                var insertColumns = new List<string>
+                {
+                    $"[{header.MAPPING_BASE_FK_COLUMN}]",
+                    $"[{header.MAPPING_DETAIL_FK_COLUMN}]"
+                };
+
+                var insertValues = new List<string>
+                {
+                    "@BaseId",
+                    "@DetailId"
+                };
+
+                object? pkValue = null;
+
+                if (!isIdentityPk)
+                {
+                    pkValue = GeneratePkValueHelper.GeneratePkValue(mappingPkType);
+                    insertColumns.Insert(0, $"[{mappingPkColumn}]");
+                    insertValues.Insert(0, "@Pk");
+                }
+
+                if (isSeq)
+                {
+                    insertColumns.Add("[SEQ]");
+                    insertValues.Add("@Seq");
+                }
+
+                insertColumns.Add("CREATE_TIME");
+                insertColumns.Add("EDIT_TIME");
+                insertValues.Add("@CreateTime");
+                insertValues.Add("@EditTime");
+                
+                
+                insertColumns.Add("CREATE_USER");
+                insertColumns.Add("EDIT_USER");
+                insertValues.Add("@CreateUser");
+                insertValues.Add("@EditUser");
+
+                var sql = $@"/**/
     IF NOT EXISTS (
-        SELECT 1 FROM [{header.MAPPING_TABLE_NAME}]
+        SELECT 1
+        FROM [{header.MAPPING_TABLE_NAME}]
         WHERE [{header.MAPPING_BASE_FK_COLUMN}] = @BaseId
           AND [{header.MAPPING_DETAIL_FK_COLUMN}] = @DetailId
-          AND IS_DELETE = 0
     )
     BEGIN
         INSERT INTO [{header.MAPPING_TABLE_NAME}]
-            (SID,
-             [{header.MAPPING_BASE_FK_COLUMN}],
-             [{header.MAPPING_DETAIL_FK_COLUMN}],
-             {(isSeq ? "[SEQ]," : string.Empty)}
-             CREATE_TIME,
-             EDIT_TIME,
-             IS_DELETE)
+            ({string.Join(", ", insertColumns)})
         VALUES
-            (@SID,
-             @BaseId,
-             @DetailId,
-             {(isSeq ? "@Seq," : string.Empty)}
-             @CreateTime,
-             @EditTime,
-             @IsDelete);
-    END",
+            ({string.Join(", ", insertValues)});
+    END";
+
+                _con.Execute(sql,
                     new
                     {
-                        SID = RandomHelper.GenerateRandomDecimal(),
+                        Pk = pkValue,
                         BaseId = basePkValue,
                         DetailId = detailId,
                         Seq = isSeq ? ++seq : (int?)null,
                         CreateTime = DateTime.Now,
                         EditTime = DateTime.Now,
-                        IsDelete = 0
+                        CreateUser = "temp",
+                        EditUser = "temp"
                     },
                     transaction: tx);
             }
         });
     }
-
-
+    
     /// <inheritdoc />
     public void RemoveMappings(Guid formMasterId, MultipleMappingUpsertViewModel request, CancellationToken ct = default)
     {
@@ -220,9 +327,9 @@ WHERE [{header.MAPPING_BASE_FK_COLUMN}] = @BaseId
     }
 
     /// <summary>
-    /// 依指定的 SID 順序重新整理 Mapping 表的 SEQ 欄位，僅針對同一 Base 主鍵的資料列。
+    /// 依設定的 欄位 順序重新整理 Mapping 表的 SEQ 欄位，僅針對同一 Base 主鍵的資料列。
     /// </summary>
-    /// <param name="request">包含設定檔、排序後 SID 清單與 Base 主鍵值的請求模型。</param>
+    /// <param name="request">包含設定檔、排序後 欄位 SID 清單與 Base 主鍵值的請求模型。</param>
     /// <param name="ct">取消權杖。</param>
     /// <returns>實際更新的筆數。</returns>
     public int ReorderMappingSequence(MappingSequenceReorderRequest request, CancellationToken ct = default)
@@ -235,125 +342,89 @@ WHERE [{header.MAPPING_BASE_FK_COLUMN}] = @BaseId
             var header = GetMappingHeader(request.FormMasterId, tx);
             EnsureReorderColumns(header, tx);
 
-            var (basePkName, _, basePkValue) = _schemaService.ResolvePk(header.BASE_TABLE_NAME!, request.Scope.BasePkValue, tx);
+            var (basePkName, _, basePkValue) =
+                _schemaService.ResolvePk(header.BASE_TABLE_NAME!, request.Scope.BasePkValue, tx);
+
             EnsureRowExists(header.BASE_TABLE_NAME!, basePkName, basePkValue!, tx);
 
-            EnsureSidsBelongToBase(header, basePkValue!, request.OrderedSids, tx);
+            var pkColumn = header.MAPPING_PK_COLUMN!;
+            var columnTypes = LoadColumnTypes(header.MAPPING_TABLE_NAME!, tx);
+            var pkType = columnTypes[pkColumn];
+
+            // string → 正確 PK 型別
+            var orderedPks = request.OrderedIds
+                .Select(id => ConvertToColumnTypeHelper.ConvertPkType(id, pkType))
+                .ToList();
+
+            EnsureMappingPkBelongToBase(header, basePkValue!, orderedPks, tx);
 
             var parameters = new DynamicParameters();
             parameters.Add("BaseId", basePkValue);
 
-            var valueFragments = new List<string>();
-            for (var i = 0; i < request.OrderedSids.Count; i++)
+            var valueSql = new List<string>();
+            for (var i = 0; i < orderedPks.Count; i++)
             {
-                var sidParam = $"sid{i}";
-                var seqParam = $"seq{i}";
-                parameters.Add(sidParam, request.OrderedSids[i]);
-                parameters.Add(seqParam, i + 1);
-                valueFragments.Add($"(@{sidParam}, @{seqParam})");
+                parameters.Add($"pk{i}", orderedPks[i]);
+                parameters.Add($"seq{i}", i + 1);
+                valueSql.Add($"(@pk{i}, @seq{i})");
             }
 
-            var valuesSql = string.Join(", ", valueFragments);
-
             var sql = $@"/**/
-;WITH OrderedSids AS (
-    SELECT v.SID, v.Seq
-    FROM (VALUES {valuesSql}) AS v (SID, Seq)
+;WITH OrderedPk AS (
+    SELECT v.Pk, v.Seq
+    FROM (VALUES {string.Join(", ", valueSql)}) AS v (Pk, Seq)
 )
 UPDATE m
    SET m.[SEQ] = o.Seq
-  FROM [{header.MAPPING_TABLE_NAME}] AS m
-  JOIN OrderedSids AS o ON m.SID = o.SID
+  FROM [{header.MAPPING_TABLE_NAME}] m
+  JOIN OrderedPk o ON m.[{pkColumn}] = o.Pk
  WHERE m.[{header.MAPPING_BASE_FK_COLUMN}] = @BaseId;";
 
             return _con.Execute(sql, parameters, transaction: tx);
         });
     }
 
-    /// <summary>
-    /// 依據 MAPPING_TABLE_ID 查詢關聯表所有資料列，並將欄位名稱與值以模型封裝返回。
-    /// </summary>
-    /// <param name="formMasterId">FORM_FIELD_MASTER 的 MAPPING_TABLE_ID。</param>
-    /// <param name="ct">取消權杖。</param>
-    /// <returns>包含關聯表名稱與完整資料列集合的模型。</returns>
-    public async Task<MappingTableDataViewModel> GetMappingTableData(Guid formMasterId, CancellationToken ct = default)
+    private void EnsureMappingPkBelongToBase(
+        FormFieldMasterDto header,
+        object basePkValue,
+        IReadOnlyCollection<object> pkValues,
+        SqlTransaction tx)
     {
-        ct.ThrowIfCancellationRequested();
+        var totalSql = $@"/**/
+SELECT COUNT(1)
+FROM [{header.MAPPING_TABLE_NAME}]
+WHERE [{header.MAPPING_BASE_FK_COLUMN}] = @BaseId;";
 
-        if (formMasterId == Guid.Empty)
-        {
-            throw new InvalidOperationException("FormMasterId 不可為空。");
-        }
+        var total = _con.ExecuteScalar<int>(
+            totalSql,
+            new { BaseId = basePkValue },
+            transaction: tx);
 
-        var header = GetMappingHeader(formMasterId);
-        // var mappingTableName = await GetMappingTableNameAsync(formMasterId, ct);
+        if (total != pkValues.Count)
+            throw new InvalidOperationException("排序數量與 Base 範圍資料筆數不一致");
 
-        var key = _schemaService.GetPrimaryKeyColumn(header.MAPPING_TABLE_NAME!);
-        if (string.IsNullOrWhiteSpace(key))
-        {
-            throw new InvalidOperationException($"關聯表缺少主鍵欄位：{header.MAPPING_TABLE_NAME!}");
-        }
+        var matchedSql = $@"/**/
+SELECT COUNT(1)
+FROM [{header.MAPPING_TABLE_NAME}]
+WHERE [{header.MAPPING_PK_COLUMN}] IN @Ids
+  AND [{header.MAPPING_BASE_FK_COLUMN}] = @BaseId;";
 
-        var baseDisplayColumn = header.MAPPING_BASE_COLUMN_NAME;
-        var detailDisplayColumn = header.MAPPING_DETAIL_COLUMN_NAME;
+        var matched = _con.ExecuteScalar<int>(
+            matchedSql,
+            new { Ids = pkValues, BaseId = basePkValue },
+            transaction: tx);
 
-        if (string.IsNullOrWhiteSpace(baseDisplayColumn) || string.IsNullOrWhiteSpace(detailDisplayColumn))
-        {
-            throw new InvalidOperationException("多對多設定檔缺少顯示欄位（MAPPING_BASE_COLUMN_NAME / MAPPING_DETAIL_COLUMN_NAME）。");
-        }
-
-        const string BaseAlias = "__BaseDisplay";
-        const string DetailAlias = "__DetailDisplay";
-
-        var sql = $@"/**/
-    SELECT 
-        m.*,
-        b.[{baseDisplayColumn}]   AS [{BaseAlias}],
-        d.[{detailDisplayColumn}] AS [{DetailAlias}]
-    FROM [{header.MAPPING_TABLE_NAME!}] AS m
-    JOIN [{header.BASE_TABLE_NAME}] AS b
-      ON m.[{header.MAPPING_BASE_FK_COLUMN}] = b.[{header.MAPPING_BASE_FK_COLUMN}]
-    JOIN [{header.DETAIL_TABLE_NAME}] AS d
-      ON m.[{header.MAPPING_DETAIL_FK_COLUMN}] = d.[{header.MAPPING_DETAIL_FK_COLUMN}]
-    WHERE m.IS_DELETE = 0;";
-
-        var rawRows = (await _con.QueryAsync(sql))
-            .Cast<IDictionary<string, object?>>()
-            .ToList();
-
-        var rows = rawRows.Select(row =>
-        {
-            // 先複製，避免直接動到 row
-            var columns = new Dictionary<string, object?>(row, StringComparer.OrdinalIgnoreCase);
-
-            columns.TryGetValue(BaseAlias, out var baseTextObj);
-            columns.TryGetValue(DetailAlias, out var detailTextObj);
-
-            // 可選：不想讓 alias 混在 Columns，就移除
-            columns.Remove(BaseAlias);
-            columns.Remove(DetailAlias);
-
-            return new MappingTableRowViewModel
-            {
-                BaseDisplayText = baseTextObj?.ToString(),
-                DetailDisplayText = detailTextObj?.ToString(),
-                Columns = columns
-            };
-        }).ToList();
-
-        return new MappingTableDataViewModel
-        {
-            FormMasterId = formMasterId,
-            MappingTableName = header.MAPPING_TABLE_NAME!,
-            MappingTableKey = key,
-            MappingBaseColumnName = baseDisplayColumn,
-            MappingDetailColumnName = detailDisplayColumn,
-            Rows = rows
-        };
+        if (matched != pkValues.Count)
+            throw new InvalidOperationException("排序清單中包含不屬於該 Base 的資料");
     }
 
 
-
+    private static class DisplayAlias
+    {
+        public const string Base  = "__BaseDisplay";
+        public const string Detail = "__DetailDisplay";
+    }
+    
     /// <summary>
     /// 依 FormMasterId + MappingRowId 更新關聯表指定欄位資料。
     /// </summary>
@@ -499,79 +570,288 @@ UPDATE m
         return mappingTableName;
     }
 
+    private string? GetBaseDisplayText(FormFieldMasterDto header, object basePkValue)
+    {
+        var baseDisplayColumn = header.MAPPING_BASE_COLUMN_NAME;
+        if (string.IsNullOrWhiteSpace(baseDisplayColumn))
+            return null;
+
+        var sql = $@"/**/
+SELECT b.[{baseDisplayColumn}]
+FROM [{header.BASE_TABLE_NAME}] b
+WHERE b.[{header.MAPPING_BASE_FK_COLUMN}] = @BaseId;";
+
+        return _con.QueryFirstOrDefault<string?>(sql, new { BaseId = basePkValue });
+    }
+    
     private List<MultipleMappingItemViewModel> LoadLinkedDetailRows(
         FormFieldMasterDto header,
         string detailPkName,
         object basePkValue,
+        Dictionary<string, string>? filters,
         SqlTransaction? tx = null)
     {
-        // 1) 先判斷 mapping 表是否存在 SEQ 欄位（避免直接 SELECT m.SEQ 爆炸）
+        const string MappingPrefix = "m__";
+        const string DetailPrefix  = "d__";
+
+        var baseDisplayColumn = header.MAPPING_BASE_COLUMN_NAME;
+        var detailDisplayColumn = header.MAPPING_DETAIL_COLUMN_NAME;
+
+        if (string.IsNullOrWhiteSpace(baseDisplayColumn) || string.IsNullOrWhiteSpace(detailDisplayColumn))
+            throw new InvalidOperationException("多對多設定檔缺少顯示欄位（MAPPING_BASE_COLUMN_NAME / MAPPING_DETAIL_COLUMN_NAME）。");
+        
+        // 欄位清單（白名單）
         var mappingColumns = _schemaService.GetFormFieldMaster(header.MAPPING_TABLE_NAME!, tx)
-            .ToHashSet(StringComparer.OrdinalIgnoreCase);
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToList();
 
-        var hasSeq = mappingColumns.Contains("SEQ");
+        var detailColumns = _schemaService.GetFormFieldMaster(header.DETAIL_TABLE_NAME!, tx)
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToList();
 
-        // 2) 動態決定 SQL 片段
-        const string SeqAlias = "__SEQ";
+        if (!detailColumns.Contains(detailPkName, StringComparer.OrdinalIgnoreCase))
+            throw new InvalidOperationException($"Detail PK column '{detailPkName}' not found in '{header.DETAIL_TABLE_NAME}'.");
 
-        var selectSeqSql = hasSeq ? $", m.[SEQ] AS [{SeqAlias}]" : string.Empty;
-        var orderBySql   = hasSeq ? "ORDER BY m.[SEQ]" : string.Empty;
+        #region detail 因為要從 detail 表塞值到 mapping表 ，需要設定那個要塞的mapping表的欄位
+        var configRows = _formFieldConfigService.GetFormFieldConfig(header.DETAIL_TABLE_ID);
 
+        // Key = Detail COLUMN_NAME，Value = DETAIL_TO_RELATION_DEFAULT_COLUMN（例如 CODE）
+        var detailToRelationDefaultColumnMap = configRows
+            .Where(r => !string.IsNullOrWhiteSpace(r.COLUMN_NAME))
+            .GroupBy(r => r.COLUMN_NAME.Trim(), StringComparer.OrdinalIgnoreCase)
+            .Select(g =>
+            {
+                // 同一個 COLUMN_NAME 多筆時，確保 DETAIL_TO_RELATION_DEFAULT_COLUMN 不會出現衝突
+                var values = g.Select(x => x.DETAIL_TO_RELATION_DEFAULT_COLUMN?.Trim())
+                    .Where(v => !string.IsNullOrWhiteSpace(v))
+                    .Distinct(StringComparer.OrdinalIgnoreCase)
+                    .ToList();
+
+                if (values.Count > 1)
+                {
+                    throw new InvalidOperationException(
+                        $"FORM_FIELD_CONFIG 欄位 '{g.Key}' 的 DETAIL_TO_RELATION_DEFAULT_COLUMN 設定不唯一：{string.Join(", ", values)}，請先清理資料。");
+                }
+
+                // 沒設定就不回傳給前端（避免前端收到一堆 null/空字串）
+                return new
+                {
+                    DetailColumnName = g.Key,
+                    MappingColumnName = values.Count == 1 ? values[0]! : null
+                };
+            })
+            .Where(x => x.MappingColumnName != null)
+            .ToDictionary(
+                x => x.DetailColumnName,
+                x => x.MappingColumnName!,
+                StringComparer.OrdinalIgnoreCase
+            );
+
+        // 防呆：確保每個 value（例如 CODE）真的存在於 mapping 表欄位白名單
+        foreach (var kv in detailToRelationDefaultColumnMap)
+        {
+            if (!mappingColumns.Contains(kv.Value, StringComparer.OrdinalIgnoreCase))
+            {
+                throw new InvalidOperationException(
+                    $"FORM_FIELD_CONFIG 設定：Detail欄位 '{kv.Key}' 的 DETAIL_TO_RELATION_DEFAULT_COLUMN='{kv.Value}'，" +
+                    $"但 Mapping 表 '{header.MAPPING_TABLE_NAME}' 不存在該欄位，請修正設定或資料表欄位。");
+            }
+        }
+        #endregion
+        
+        var hasSeq = mappingColumns.Contains("SEQ", StringComparer.OrdinalIgnoreCase);
+        var orderBySql = hasSeq ? "ORDER BY m.[SEQ]" : string.Empty;
+
+        var mappingSelect = string.Join(",\n    ",
+            mappingColumns.Select(c => $"m.[{c}] AS [{MappingPrefix}{c}]"));
+
+        var detailSelect = string.Join(",\n    ",
+            detailColumns.Select(c => $"d.[{c}] AS [{DetailPrefix}{c}]"));
+
+        var (filterSql, filterParams) = BuildLikeWhere(
+            filters,
+            allowedColumns: mappingColumns, // 只允許查 detail 的欄位（最簡單）
+            tableAlias: "m",
+            paramPrefix: "mLike"
+        );
+        
         var sql = $@"/**/
-SELECT 
-    d.*{selectSeqSql}
-FROM [{header.MAPPING_TABLE_NAME}] AS m
-JOIN [{header.DETAIL_TABLE_NAME}]  AS d
-  ON m.[{header.MAPPING_DETAIL_FK_COLUMN}] = d.[{detailPkName}]
-WHERE m.[{header.MAPPING_BASE_FK_COLUMN}] = @BaseId
-  AND m.IS_DELETE = 0
-{orderBySql};";
+    SELECT
+        {mappingSelect},
+        {detailSelect},
+        b.[{baseDisplayColumn}]   AS [{DisplayAlias.Base}],
+        d.[{detailDisplayColumn}] AS [{DisplayAlias.Detail}]
+    FROM [{header.MAPPING_TABLE_NAME}] AS m
+    JOIN [{header.DETAIL_TABLE_NAME}]  AS d
+      ON m.[{header.MAPPING_DETAIL_FK_COLUMN}] = d.[{detailPkName}]
+    JOIN [{header.BASE_TABLE_NAME}]    AS b
+      ON m.[{header.MAPPING_BASE_FK_COLUMN}] = b.[{header.MAPPING_BASE_FK_COLUMN}]
+    WHERE m.[{header.MAPPING_BASE_FK_COLUMN}] = @BaseId
+    {filterSql}
+    {orderBySql};";
 
-        var rows = _con.Query(sql, new { BaseId = basePkValue }, transaction: tx)
+        filterParams.Add("BaseId", basePkValue);
+        
+        var rows = _con.Query(sql, filterParams, transaction: tx)
             .Cast<IDictionary<string, object?>>()
             .ToList();
 
         return rows.Select(row =>
         {
-            // 3) 取 DetailPk
-            row.TryGetValue(detailPkName, out var pkVal);
+            row.TryGetValue(DisplayAlias.Base, out var baseTextObj);
+            row.TryGetValue(DisplayAlias.Detail, out var detailTextObj);
 
-            // 4) 取 Seq（不存在就 null）
-            int? seq = null;
-            if (hasSeq && row.TryGetValue(SeqAlias, out var seqObj) && seqObj != null)
+            var mappingFields = new Dictionary<string, object?>(StringComparer.OrdinalIgnoreCase);
+            var detailFields  = new Dictionary<string, object?>(StringComparer.OrdinalIgnoreCase);
+
+            foreach (var kv in row)
             {
-                // 防 DB 是 decimal / long / int
-                seq = Convert.ToInt32(Convert.ToDecimal(seqObj));
+                if (kv.Key.StartsWith(MappingPrefix, StringComparison.OrdinalIgnoreCase))
+                    mappingFields[kv.Key.Substring(MappingPrefix.Length)] = kv.Value;
+
+                else if (kv.Key.StartsWith(DetailPrefix, StringComparison.OrdinalIgnoreCase))
+                    detailFields[kv.Key.Substring(DetailPrefix.Length)] = kv.Value;
             }
 
-            // 5) Fields：移除 alias，保持乾淨
-            var fields = row.ToDictionary(k => k.Key, v => v.Value);
-            if (hasSeq) fields.Remove(SeqAlias);
+            detailFields.TryGetValue(detailPkName, out var pkVal);
 
             return new MultipleMappingItemViewModel
             {
                 DetailPk = pkVal?.ToString() ?? string.Empty,
-                Seq = seq,
-                Fields = fields
+                BaseDisplayText = baseTextObj?.ToString(),
+                DetailDisplayText = detailTextObj?.ToString(),
+                DetailToRelationDefaultColumn = detailToRelationDefaultColumnMap,
+                MappingFields = mappingFields,
+                DetailFields = detailFields
             };
-        }).OrderBy(x => x.Seq).ToList();
+        }).ToList();
     }
 
-    private List<MultipleMappingItemViewModel> LoadUnlinkedRows(FormFieldMasterDto header, string detailPkName, object? basePkValue)
+    private List<MultipleMappingItemViewModel> LoadUnlinkedRows(
+        FormFieldMasterDto header,
+        string detailPkName,
+        object basePkValue,
+        string? baseDisplayText,
+        Dictionary<string, string>? filters,
+        SqlTransaction? tx = null)
     {
-        var rows = _con.Query($@"/**/
-SELECT * FROM [{header.DETAIL_TABLE_NAME}] d
-WHERE NOT EXISTS (
-    SELECT 1 FROM [{header.MAPPING_TABLE_NAME}] m
-    WHERE m.[{header.MAPPING_BASE_FK_COLUMN}] = @BaseId
-      AND m.[{header.MAPPING_DETAIL_FK_COLUMN}] = d.[{detailPkName}]
-)", new { BaseId = basePkValue })
+        const string DetailPrefix = "d__";
+
+        var detailDisplayColumn = header.MAPPING_DETAIL_COLUMN_NAME;
+        if (string.IsNullOrWhiteSpace(detailDisplayColumn))
+            throw new InvalidOperationException("多對多設定檔缺少顯示欄位（MAPPING_DETAIL_COLUMN_NAME）。");
+
+        var detailColumns = _schemaService.GetFormFieldMaster(header.DETAIL_TABLE_NAME!, tx)
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToList();
+
+        if (!detailColumns.Contains(detailPkName, StringComparer.OrdinalIgnoreCase))
+            throw new InvalidOperationException($"Detail PK column '{detailPkName}' not found in '{header.DETAIL_TABLE_NAME}'.");
+
+        // 取得 mapping 欄位白名單（用來驗證 CODE 這種設定值真的存在）
+        var mappingColumns = _schemaService.GetFormFieldMaster(header.MAPPING_TABLE_NAME!, tx)
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToList();
+        
+        #region detail 因為要從 detail 表塞值到 mapping表 ，需要設定那個要塞的mapping表的欄位
+        var configRows = _formFieldConfigService.GetFormFieldConfig(header.DETAIL_TABLE_ID);
+
+        // Key = Detail COLUMN_NAME，Value = DETAIL_TO_RELATION_DEFAULT_COLUMN（例如 CODE）
+        var detailToRelationDefaultColumnMap = configRows
+            .Where(r => !string.IsNullOrWhiteSpace(r.COLUMN_NAME))
+            .GroupBy(r => r.COLUMN_NAME.Trim(), StringComparer.OrdinalIgnoreCase)
+            .Select(g =>
+            {
+                // 同一個 COLUMN_NAME 多筆時，確保 DETAIL_TO_RELATION_DEFAULT_COLUMN 不會出現衝突
+                var values = g.Select(x => x.DETAIL_TO_RELATION_DEFAULT_COLUMN?.Trim())
+                    .Where(v => !string.IsNullOrWhiteSpace(v))
+                    .Distinct(StringComparer.OrdinalIgnoreCase)
+                    .ToList();
+
+                if (values.Count > 1)
+                {
+                    throw new InvalidOperationException(
+                        $"FORM_FIELD_CONFIG 欄位 '{g.Key}' 的 DETAIL_TO_RELATION_DEFAULT_COLUMN 設定不唯一：{string.Join(", ", values)}，請先清理資料。");
+                }
+
+                // 沒設定就不回傳給前端（避免前端收到一堆 null/空字串）
+                return new
+                {
+                    DetailColumnName = g.Key,
+                    MappingColumnName = values.Count == 1 ? values[0]! : null
+                };
+            })
+            .Where(x => x.MappingColumnName != null)
+            .ToDictionary(
+                x => x.DetailColumnName,
+                x => x.MappingColumnName!,
+                StringComparer.OrdinalIgnoreCase
+            );
+
+        // 防呆：確保每個 value（例如 CODE）真的存在於 mapping 表欄位白名單
+        foreach (var kv in detailToRelationDefaultColumnMap)
+        {
+            if (!mappingColumns.Contains(kv.Value, StringComparer.OrdinalIgnoreCase))
+            {
+                throw new InvalidOperationException(
+                    $"FORM_FIELD_CONFIG 設定：Detail欄位 '{kv.Key}' 的 DETAIL_TO_RELATION_DEFAULT_COLUMN='{kv.Value}'，" +
+                    $"但 Mapping 表 '{header.MAPPING_TABLE_NAME}' 不存在該欄位，請修正設定或資料表欄位。");
+            }
+        }
+        #endregion
+        
+        var detailSelect = string.Join(",\n    ",
+            detailColumns.Select(c => $"d.[{c}] AS [{DetailPrefix}{c}]"));
+
+        var (filterSql, filterParams) = BuildLikeWhere(
+            filters,
+            allowedColumns: detailColumns,
+            tableAlias: "d",
+            paramPrefix: "dLike"
+        );
+        
+        var sql = $@"/**/
+    SELECT
+        {detailSelect},
+        d.[{detailDisplayColumn}] AS [{DisplayAlias.Detail}]
+    FROM [{header.DETAIL_TABLE_NAME}] d
+    WHERE 1 = 1
+    {filterSql}
+      AND NOT EXISTS (
+          SELECT 1
+          FROM [{header.MAPPING_TABLE_NAME}] m
+          WHERE m.[{header.MAPPING_BASE_FK_COLUMN}] = @BaseId
+            AND m.[{header.MAPPING_DETAIL_FK_COLUMN}] = d.[{detailPkName}]
+      );";
+
+        filterParams.Add("BaseId", basePkValue);
+        var rows = _con.Query(sql, filterParams, transaction: tx)
             .Cast<IDictionary<string, object?>>()
             .ToList();
 
-        return rows.Select(row => ToItem(detailPkName, row))
-            .OrderBy(x => x.Seq)
-            .ToList();
+        return rows.Select(row =>
+        {
+            row.TryGetValue(DisplayAlias.Detail, out var detailTextObj);
+
+            var detailFields = new Dictionary<string, object?>(StringComparer.OrdinalIgnoreCase);
+            foreach (var kv in row)
+            {
+                if (kv.Key.StartsWith(DetailPrefix, StringComparison.OrdinalIgnoreCase))
+                    detailFields[kv.Key.Substring(DetailPrefix.Length)] = kv.Value;
+            }
+
+            detailFields.TryGetValue(detailPkName, out var pkVal);
+
+            return new MultipleMappingItemViewModel
+            {
+                DetailPk = pkVal?.ToString() ?? string.Empty,
+                BaseDisplayText = baseDisplayText,
+                DetailDisplayText = detailTextObj?.ToString(),
+                DetailToRelationDefaultColumn = detailToRelationDefaultColumnMap,
+                MappingFields = new Dictionary<string, object?>(StringComparer.OrdinalIgnoreCase), // unlinked 沒 mapping
+                DetailFields = detailFields
+            };
+        }).ToList();
     }
 
     private static MultipleMappingItemViewModel ToItem(string pkName, IDictionary<string, object?> row)
@@ -580,7 +860,7 @@ WHERE NOT EXISTS (
         return new MultipleMappingItemViewModel
         {
             DetailPk = pkVal?.ToString() ?? string.Empty,
-            Fields = row.ToDictionary(k => k.Key, v => v.Value)
+            DetailFields = row.ToDictionary(k => k.Key, v => v.Value)
         };
     }
 
@@ -602,24 +882,20 @@ WHERE NOT EXISTS (
     {
         if (request == null) throw new ArgumentNullException(nameof(request));
         if (request.FormMasterId == Guid.Empty)
-        {
             throw new InvalidOperationException("FormMasterId 不可為空");
-        }
 
         if (request.Scope == null || string.IsNullOrWhiteSpace(request.Scope.BasePkValue))
-        {
             throw new InvalidOperationException("BasePkValue 不可為空");
-        }
 
-        if (request.OrderedSids == null || request.OrderedSids.Count == 0)
-        {
-            throw new InvalidOperationException("orderedSids 不可為空");
-        }
+        if (request.OrderedIds == null || request.OrderedIds.Count == 0)
+            throw new InvalidOperationException("OrderedIds 不可為空");
 
-        if (request.OrderedSids.Count != request.OrderedSids.Distinct().Count())
-        {
-            throw new InvalidOperationException("orderedSids 不可重複");
-        }
+        var normalized = request.OrderedIds
+            .Select(x => x.Trim())
+            .ToList();
+
+        if (normalized.Count != normalized.Distinct(StringComparer.OrdinalIgnoreCase).Count())
+            throw new InvalidOperationException("OrderedIds 不可重複");
     }
 
     private static IEnumerable<object> ConvertDetailIds(IEnumerable<string> detailIds, string detailPkType)
@@ -705,21 +981,19 @@ WHERE NOT EXISTS (
         var columns = _schemaService.GetFormFieldMaster(header.MAPPING_TABLE_NAME!, tx)
             .ToHashSet(StringComparer.OrdinalIgnoreCase);
 
-        if (!columns.Contains("SID"))
-        {
-            throw new InvalidOperationException("Mapping 表缺少 SID 欄位，無法執行排序。");
-        }
+        if (string.IsNullOrWhiteSpace(header.MAPPING_PK_COLUMN))
+            throw new InvalidOperationException("設定檔缺少 MAPPING_PK_COLUMN");
+
+        if (!columns.Contains(header.MAPPING_PK_COLUMN))
+            throw new InvalidOperationException($"Mapping 表缺少 {header.MAPPING_PK_COLUMN} 欄位");
 
         if (!columns.Contains("SEQ"))
-        {
-            throw new InvalidOperationException("Mapping 表缺少 SEQ 欄位，無法執行排序。");
-        }
+            throw new InvalidOperationException("Mapping 表缺少 SEQ 欄位");
 
         if (!columns.Contains(header.MAPPING_BASE_FK_COLUMN!))
-        {
-            throw new InvalidOperationException($"Mapping 表缺少 {header.MAPPING_BASE_FK_COLUMN} 欄位，無法依 Base 範圍排序。");
-        }
+            throw new InvalidOperationException($"Mapping 表缺少 {header.MAPPING_BASE_FK_COLUMN} 欄位");
     }
+
 
     private void EnsureSidsBelongToBase(FormFieldMasterDto header, object basePkValue, IReadOnlyCollection<decimal> sids, SqlTransaction tx)
     {
@@ -733,7 +1007,7 @@ WHERE NOT EXISTS (
         }
 
         var matchedCount = _con.ExecuteScalar<int>(
-            $"/**/SELECT COUNT(1) FROM [{header.MAPPING_TABLE_NAME}] WHERE SID IN @Sids AND [{header.MAPPING_BASE_FK_COLUMN}] = @BaseId",
+            $"/**/SELECT COUNT(1) FROM [{header.MAPPING_TABLE_NAME}] WHERE [{header.MAPPING_PK_COLUMN}] IN @Sids AND [{header.MAPPING_BASE_FK_COLUMN}] = @BaseId",
             new { Sids = sids, BaseId = basePkValue }, transaction: tx);
 
         if (matchedCount != sids.Count)

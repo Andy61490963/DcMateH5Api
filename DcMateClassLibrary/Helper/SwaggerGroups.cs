@@ -7,6 +7,7 @@ public static class SwaggerGroups
 {
     public const string ApiStatus = nameof(ApiStatus);
     public const string Security = nameof(Security);
+    public const string Menu = nameof(Menu);
     public const string Permission = nameof(Permission);
     public const string Enum = nameof(Enum);
     public const string Form = nameof(Form);
@@ -27,6 +28,7 @@ public static class SwaggerGroups
         { FormWithMultipleMapping, "多對多維護" },
         { Log, "系統紀錄" },
         
+        { Menu, "群組、功能、權限設定" },
         { RouteOperation, "流程工作站設定" }
     };
 }

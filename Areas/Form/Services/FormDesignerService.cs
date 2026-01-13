@@ -101,6 +101,18 @@ public class FormDesignerService : IFormDesignerService
         Guid? formFieldMasterId,
         CancellationToken ct = default)
     {
+        if (formFieldMasterId == Guid.Empty)
+        {
+            return new List<FormFieldDeleteGuardSqlDto>
+            {
+                new FormFieldDeleteGuardSqlDto
+                {
+                    // Id 不要亂塞 Guid.Empty 當成真資料 Key（除非前端就是靠它判斷新資料）
+                    // 建議讓 Id nullable，或另用 IsNew/IsPlaceholder
+                }
+            };
+        }
+        
         var where = new WhereBuilder<FormFieldDeleteGuardSqlDto>()
             .AndNotDeleted();
 
@@ -440,9 +452,6 @@ public class FormDesignerService : IFormDesignerService
                 if (string.IsNullOrWhiteSpace(master.MAPPING_TABLE_NAME) || master.MAPPING_TABLE_ID is null)
                     throw new InvalidOperationException("缺少關聯表設定：請檢查 MAPPING_TABLE_NAME / MAPPING_TABLE_ID。");
 
-                if (string.IsNullOrWhiteSpace(master.VIEW_DETAIL_TABLE_NAME) || master.VIEW_DETAIL_TABLE_ID is null)
-                    throw new InvalidOperationException("缺少明細檢視表設定：請檢查 VIEW_DETAIL_TABLE_NAME / VIEW_DETAIL_TABLE_ID。");
-
                 if (string.IsNullOrWhiteSpace(master.VIEW_TABLE_NAME) || master.VIEW_TABLE_ID is null)
                     throw new InvalidOperationException("缺少檢視表（View）表設定：請檢查 VIEW_TABLE_NAME / VIEW_TABLE_ID。");
 
@@ -455,11 +464,6 @@ public class FormDesignerService : IFormDesignerService
                     master.MAPPING_TABLE_NAME,
                     master.MAPPING_TABLE_ID.Value,
                     TableSchemaQueryType.OnlyMapping);
-
-                result.ViewDetailFields = await GetFieldsByTableName(
-                    master.VIEW_DETAIL_TABLE_NAME,
-                    master.VIEW_DETAIL_TABLE_ID.Value,
-                    TableSchemaQueryType.DetailView);
 
                 result.ViewFields = await GetFieldsByTableName(
                     master.VIEW_TABLE_NAME,
@@ -478,9 +482,9 @@ public class FormDesignerService : IFormDesignerService
     /// 依名稱關鍵字查詢資料表或檢視表清單。
     /// </summary>
     /// <param name="tableName">表名稱關鍵字或樣式</param>
-    /// <param name="schemaType">搜尋目標類型（主表或檢視表）</param>
+    /// <param name="queryType">搜尋目標類型</param>
     /// <returns>符合條件的表名稱集合</returns>
-    public List<string> SearchTables(string? tableName, TableSchemaQueryType schemaType)
+    public List<string> SearchTables(string? tableName, TableQueryType queryType)
     {
         // 1) 輸入驗證（防 SQL Injection / 非預期字元）
         // - 僅允許英數、底線與點
@@ -491,26 +495,56 @@ public class FormDesignerService : IFormDesignerService
             throw new ArgumentException("tableName 含非法字元");
         }
 
-        // 2) 解析可能的 schema.name 輸入
-        // - 若有「.」，視為 schema + table name
-        // - 若無「.」，僅當作 table name 關鍵字
-        string? schema = null, name = null;
+        // 2) 解析 schema / table
+        string? schema = null;
+        string? name = null;
+
         if (!string.IsNullOrWhiteSpace(tableName))
         {
             var parts = tableName.Split('.', 2, StringSplitOptions.RemoveEmptyEntries);
-            if (parts.Length == 2) { schema = parts[0]; name = parts[1]; }
-            else { name = parts[0]; }
+            if (parts.Length == 2)
+            {
+                schema = parts[0];
+                name = parts[1];
+            }
+            else
+            {
+                name = parts[0];
+            }
         }
 
-        // 決定 VIEW 或 BASE TABLE
-        var tableType = schemaType == TableSchemaQueryType.OnlyView ? "VIEW" : "BASE TABLE";
+        // 3) 依 enum 決定 TABLE_TYPE 條件
+        // - All           → 不加 TABLE_TYPE 條件
+        // - QueryTable    → BASE TABLE
+        // - OnlyViewTable → VIEW
+        string? tableType = queryType switch
+        {
+            TableQueryType.All => null,
+            TableQueryType.QueryTable => "BASE TABLE",
+            TableQueryType.OnlyViewTable => "VIEW",
+            _ => throw new ArgumentOutOfRangeException(nameof(queryType))
+        };
 
-        const string sql = @"/**/
-SELECT TABLE_SCHEMA + '.' + TABLE_NAME
+        const string sql = @"
+/**/
+SELECT
+    TABLE_SCHEMA + '.' + TABLE_NAME AS FullName
 FROM INFORMATION_SCHEMA.TABLES
-ORDER BY TABLE_SCHEMA, TABLE_NAME;";
+WHERE (@tableType IS NULL OR TABLE_TYPE = @tableType)
+  AND (@schema    IS NULL OR TABLE_SCHEMA = @schema)
+  AND (@name      IS NULL OR TABLE_NAME LIKE '%' + @name + '%')
+ORDER BY
+    TABLE_SCHEMA,
+    TABLE_NAME;
+";
 
-        var param = new { tableType, schema, name };
+        var param = new
+        {
+            tableType,
+            schema,
+            name
+        };
+
         return _con.Query<string>(sql, param).ToList();
     }
     
@@ -528,13 +562,13 @@ ORDER BY TABLE_SCHEMA, TABLE_NAME;";
         _con.Execute(@"
         INSERT INTO FORM_FIELD_MASTER
     (ID, FORM_NAME, STATUS, SCHEMA_TYPE,
-     BASE_TABLE_NAME, VIEW_DETAIL_TABLE_NAME, VIEW_TABLE_NAME, DETAIL_TABLE_NAME, MAPPING_TABLE_NAME,
-     BASE_TABLE_ID, VIEW_DETAIL_TABLE_ID,  VIEW_TABLE_ID,  DETAIL_TABLE_ID, MAPPING_TABLE_ID,
+     BASE_TABLE_NAME, VIEW_TABLE_NAME, DETAIL_TABLE_NAME, MAPPING_TABLE_NAME,
+     BASE_TABLE_ID,  VIEW_TABLE_ID,  DETAIL_TABLE_ID, MAPPING_TABLE_ID,
      FUNCTION_TYPE, IS_DELETE, CREATE_TIME, EDIT_TIME)
     VALUES
     (@ID, @FORM_NAME, @STATUS, @SCHEMA_TYPE,
-     @BASE_TABLE_NAME, @VIEW_DETAIL_TABLE_NAME, @VIEW_TABLE_NAME, @DETAIL_TABLE_NAME, @MAPPING_TABLE_NAME,
-     @BASE_TABLE_ID, @VIEW_DETAIL_TABLE_ID, @VIEW_TABLE_ID,  @DETAIL_TABLE_ID, @MAPPING_TABLE_ID,
+     @BASE_TABLE_NAME, @VIEW_TABLE_NAME, @DETAIL_TABLE_NAME, @MAPPING_TABLE_NAME,
+     @BASE_TABLE_ID, @VIEW_TABLE_ID,  @DETAIL_TABLE_ID, @MAPPING_TABLE_ID,
      @FUNCTION_TYPE, 0, GETDATE(), GETDATE());", new
         {
             ID = insertId,
@@ -545,13 +579,11 @@ ORDER BY TABLE_SCHEMA, TABLE_NAME;";
             model.VIEW_TABLE_NAME,
             model.DETAIL_TABLE_NAME,
             model.MAPPING_TABLE_NAME,
-            model.VIEW_DETAIL_TABLE_NAME,
 
             BASE_TABLE_ID   = HasValue(model.BASE_TABLE_NAME)   ? insertId : (Guid?)null,
             VIEW_TABLE_ID   = HasValue(model.VIEW_TABLE_NAME)   ? insertId : (Guid?)null,
             DETAIL_TABLE_ID = HasValue(model.DETAIL_TABLE_NAME) ? insertId : (Guid?)null,
             MAPPING_TABLE_ID = HasValue(model.MAPPING_TABLE_NAME) ? insertId : (Guid?)null,
-            VIEW_DETAIL_TABLE_ID = HasValue(model.VIEW_DETAIL_TABLE_NAME) ? insertId : (Guid?)null,
 
             FUNCTION_TYPE = model.FUNCTION_TYPE,
         });
@@ -594,8 +626,9 @@ ORDER BY TABLE_SCHEMA, TABLE_NAME;";
                 FORM_FIELD_MASTER_ID        = formMasterId ?? Guid.Empty,
                 TableName                   = tableName,
                 COLUMN_NAME                 = columnName,
+                DISPLAY_NAME                = cfg?.DISPLAY_NAME ?? columnName,
                 DATA_TYPE                   = dataType,
-                CONTROL_TYPE                = cfg?.CONTROL_TYPE, // 可能被 policy 改為 null
+                CONTROL_TYPE                = cfg?.CONTROL_TYPE, 
                 CONTROL_TYPE_WHITELIST      = FormFieldHelper.GetControlTypeWhitelist(dataType),
                 QUERY_COMPONENT_TYPE_WHITELIST = FormFieldHelper.GetQueryConditionTypeWhitelist(dataType),
                 IS_REQUIRED                 = cfg?.IS_REQUIRED ?? false, // bool 不可 null，用預設
@@ -607,7 +640,8 @@ ORDER BY TABLE_SCHEMA, TABLE_NAME;";
                 QUERY_COMPONENT             = cfg?.QUERY_COMPONENT ?? QueryComponentType.None,
                 QUERY_CONDITION             = cfg?.QUERY_CONDITION,
                 CAN_QUERY                   = cfg?.CAN_QUERY ?? false,
-                FIELD_ORDER                 = cfg?.FIELD_ORDER
+                FIELD_ORDER                 = cfg?.FIELD_ORDER,
+                DETAIL_TO_RELATION_DEFAULT_COLUMN = cfg?.DETAIL_TO_RELATION_DEFAULT_COLUMN
             };
 
             // 4-2) 依 schemaType 做欄位「置空/預設化」策略
@@ -813,8 +847,7 @@ ORDER BY TABLE_SCHEMA, TABLE_NAME;";
             BASE_TABLE_NAME   = null,
             DETAIL_TABLE_NAME = null,
             VIEW_TABLE_NAME   = null,
-            MAPPING_TABLE_NAME = null,
-            VIEW_DETAIL_TABLE_NAME = null
+            MAPPING_TABLE_NAME = null
         };
 
         switch (schemaType)
@@ -830,9 +863,6 @@ ORDER BY TABLE_SCHEMA, TABLE_NAME;";
                 break;
             case TableSchemaQueryType.OnlyMapping:
                 master.MAPPING_TABLE_NAME = tableName;
-                break;
-            case TableSchemaQueryType.DetailView:
-                master.VIEW_DETAIL_TABLE_NAME = tableName;
                 break;
         }
         
@@ -913,6 +943,7 @@ ORDER BY TABLE_SCHEMA, TABLE_NAME;";
             FORM_FIELD_MASTER_ID = formMasterId,
             TABLE_NAME = model.TableName,
             model.COLUMN_NAME,
+            model.DISPLAY_NAME,
             model.DATA_TYPE,
             CONTROL_TYPE = controlType,
             IS_REQUIRED = isRequired,
@@ -921,7 +952,8 @@ ORDER BY TABLE_SCHEMA, TABLE_NAME;";
             model.FIELD_ORDER,
             model.QUERY_COMPONENT,
             model.QUERY_CONDITION,
-            model.CAN_QUERY
+            model.CAN_QUERY,
+            model.DETAIL_TO_RELATION_DEFAULT_COLUMN
         };
 
         var affected = _con.Execute(Sql.UpsertField, param);
@@ -1299,7 +1331,13 @@ ORDER BY TABLE_SCHEMA, TABLE_NAME;";
         }
     }
 
-    public Guid SaveDropdownOption(Guid? id, Guid dropdownId, string optionText, string optionValue, string? optionTable = null)
+    public Guid SaveDropdownOption(
+        Guid? id,
+        Guid dropdownId,
+        string optionText,
+        string optionValue,
+        string? optionTable = null,
+        SqlTransaction? tx = null)
     {
         var param = new
         {
@@ -1310,9 +1348,9 @@ ORDER BY TABLE_SCHEMA, TABLE_NAME;";
             OptionTable = optionTable
         };
 
-        // ExecuteScalar 直接拿回 OUTPUT 的 Guid
-        return _con.ExecuteScalar<Guid>(Sql.UpsertDropdownOption, param);
+        return _con.ExecuteScalar<Guid>(Sql.UpsertDropdownOption, param, transaction: tx);
     }
+
 
     public async Task<bool> DeleteDropdownOption( Guid optionId, CancellationToken ct = default )
     {
@@ -1594,7 +1632,12 @@ ORDER BY TABLE_SCHEMA, TABLE_NAME;";
             
             STATUS = (int)TableStatusType.Active,
             SCHEMA_TYPE = TableSchemaQueryType.All,
-            FUNCTION_TYPE = FormFunctionType.MasterMaintenance
+            FUNCTION_TYPE = FormFunctionType.MasterMaintenance,
+            
+            CREATE_TIME = DateTime.Now,
+            EDIT_TIME = DateTime.Now,
+            CREATE_USER = Guid.NewGuid(),
+            EDIT_USER = Guid.NewGuid()
         });
         return id;
     }
@@ -1682,6 +1725,8 @@ ORDER BY TABLE_SCHEMA, TABLE_NAME;";
             throw new InvalidOperationException("必須設定對應的關聯欄位名稱");
         }
 
+        ValidateColumnName(model.MAPPING_PK_COLUMN);
+        
         ValidateColumnName(model.MAPPING_BASE_FK_COLUMN);
         ValidateColumnName(model.MAPPING_DETAIL_FK_COLUMN);
 
@@ -1695,6 +1740,21 @@ ORDER BY TABLE_SCHEMA, TABLE_NAME;";
             ValidateColumnName(model.MAPPING_DETAIL_COLUMN_NAME);
         }
 
+        if (!string.IsNullOrWhiteSpace(model.TARGET_MAPPING_COLUMN_NAME))
+        {
+            ValidateColumnName(model.TARGET_MAPPING_COLUMN_NAME);
+        }
+        
+        if (!string.IsNullOrWhiteSpace(model.SOURCE_DETAIL_COLUMN_CODE))
+        {
+            ValidateColumnName(model.SOURCE_DETAIL_COLUMN_CODE);
+        }
+
+        if (!string.IsNullOrWhiteSpace(model.TARGET_MAPPING_COLUMN_CODE))
+        {
+            ValidateColumnName(model.TARGET_MAPPING_COLUMN_CODE);
+        }
+        
         var whereBase = new WhereBuilder<FormFieldMasterDto>()
             .AndEq(x => x.ID, model.BASE_TABLE_ID)
             .AndNotDeleted();
@@ -1703,9 +1763,6 @@ ORDER BY TABLE_SCHEMA, TABLE_NAME;";
             .AndNotDeleted();
         var whereMapping = new WhereBuilder<FormFieldMasterDto>()
             .AndEq(x => x.ID, model.MAPPING_TABLE_ID)
-            .AndNotDeleted();
-        var whereDetailView = new WhereBuilder<FormFieldMasterDto>()
-            .AndEq(x => x.ID, model.VIEW_DETAIL_TABLE_ID)
             .AndNotDeleted();
         var whereView = new WhereBuilder<FormFieldMasterDto>()
             .AndEq(x => x.ID, model.VIEW_TABLE_ID)
@@ -1717,16 +1774,13 @@ ORDER BY TABLE_SCHEMA, TABLE_NAME;";
                             ?? throw new InvalidOperationException("目標表查無資料");
         var mappingMaster = await _sqlHelper.SelectFirstOrDefaultAsync(whereMapping) 
                             ?? throw new InvalidOperationException("關聯表查無資料");
-        var viewDetailMaster = await _sqlHelper.SelectFirstOrDefaultAsync(whereDetailView)
-                         ?? throw new InvalidOperationException("明細檢視表查無資料");
         var viewMaster = await _sqlHelper.SelectFirstOrDefaultAsync(whereView)
                             ?? throw new InvalidOperationException("檢視表查無資料");
 
         var baseTableName = baseMaster.BASE_TABLE_NAME;
         var detailTableName = detailMaster.DETAIL_TABLE_NAME;
         var mappingTableName = mappingMaster.MAPPING_TABLE_NAME;
-        var viewDetailTableName = viewDetailMaster.VIEW_DETAIL_TABLE_NAME;
-        var viewTableName = viewMaster?.VIEW_TABLE_NAME;
+        var viewTableName = viewMaster.VIEW_TABLE_NAME;
 
         if (string.IsNullOrWhiteSpace(baseTableName))
             throw new InvalidOperationException("主表名稱查無設定");
@@ -1744,10 +1798,13 @@ ORDER BY TABLE_SCHEMA, TABLE_NAME;";
         if (!string.IsNullOrWhiteSpace(viewTableName) && GetTableSchema(viewTableName).Count == 0)
             throw new InvalidOperationException("檢視表名稱查無資料");
 
+        EnsureColumnExists(mappingTableName, model.MAPPING_PK_COLUMN, "關聯表缺少主鍵欄位");
+        
         EnsureColumnExists(mappingTableName, model.MAPPING_BASE_FK_COLUMN, "關聯表缺少指向主表的外鍵欄位");
         EnsureColumnExists(mappingTableName, model.MAPPING_DETAIL_FK_COLUMN, "關聯表缺少指向明細表的外鍵欄位");
         EnsureColumnExists(baseTableName, model.MAPPING_BASE_FK_COLUMN, "主表缺少對應的主鍵欄位");
         EnsureColumnExists(detailTableName, model.MAPPING_DETAIL_FK_COLUMN, "目標表缺少對應的主鍵欄位");
+        
         if (!string.IsNullOrWhiteSpace(model.MAPPING_BASE_COLUMN_NAME))
         {
             EnsureColumnExists(baseTableName, model.MAPPING_BASE_COLUMN_NAME, "主表缺少對應的顯示欄位");
@@ -1772,19 +1829,27 @@ ORDER BY TABLE_SCHEMA, TABLE_NAME;";
             model.BASE_TABLE_ID,
             model.DETAIL_TABLE_ID,
             model.MAPPING_TABLE_ID,
-            model.VIEW_DETAIL_TABLE_ID,
             model.VIEW_TABLE_ID,
+            
+            model.FORM_FIELD_MASTER_BUTTON_LINK_ID,
+            model.FORM_FIELD_MASTER1_BUTTON_LINK_ID,
             
             MASTER_TABLE_NAME = baseTableName,
             DETAIL_TABLE_NAME = detailTableName,
             MAPPING_TABLE_NAME = mappingTableName,
-            VIEW_DETAIL_TABLE_NAME = viewDetailTableName,
             VIEW_TABLE_NAME = viewTableName,
+            
+            model.MAPPING_PK_COLUMN,
             
             model.MAPPING_BASE_FK_COLUMN,
             model.MAPPING_DETAIL_FK_COLUMN,
             model.MAPPING_BASE_COLUMN_NAME,
             model.MAPPING_DETAIL_COLUMN_NAME,
+            
+            model.TARGET_MAPPING_COLUMN_NAME,
+            
+            model.SOURCE_DETAIL_COLUMN_CODE,
+            model.TARGET_MAPPING_COLUMN_CODE,
             
             STATUS = (int)TableStatusType.Active,
             SCHEMA_TYPE = TableSchemaQueryType.All,
@@ -1980,6 +2045,7 @@ ORDER BY ORDINAL_POSITION";
 MERGE FORM_FIELD_MASTER AS target
 USING (SELECT @ID AS ID) AS src
 ON target.ID = src.ID
+
 WHEN MATCHED THEN
     UPDATE SET
         FORM_NAME          = @FORM_NAME,
@@ -1993,18 +2059,52 @@ WHEN MATCHED THEN
         MAPPING_TABLE_ID   = @MAPPING_TABLE_ID,
         STATUS             = @STATUS,
         SCHEMA_TYPE        = @SCHEMA_TYPE,
-        FUNCTION_TYPE      = @FUNCTION_TYPE
+        FUNCTION_TYPE      = @FUNCTION_TYPE,
+        EDIT_USER          = @EDIT_USER,
+        EDIT_TIME          = @EDIT_TIME
+
 WHEN NOT MATCHED THEN
     INSERT (
-        ID, FORM_NAME, FORM_CODE, FORM_DESCRIPTION,
-        BASE_TABLE_NAME, VIEW_TABLE_NAME, MAPPING_TABLE_NAME,
-        BASE_TABLE_ID, VIEW_TABLE_ID, MAPPING_TABLE_ID,
-        STATUS, SCHEMA_TYPE, FUNCTION_TYPE, IS_DELETE)
+        ID,
+        FORM_NAME,
+        FORM_CODE,
+        FORM_DESCRIPTION,
+        BASE_TABLE_NAME,
+        VIEW_TABLE_NAME,
+        MAPPING_TABLE_NAME,
+        BASE_TABLE_ID,
+        VIEW_TABLE_ID,
+        MAPPING_TABLE_ID,
+        STATUS,
+        SCHEMA_TYPE,
+        FUNCTION_TYPE,
+        IS_DELETE,
+        CREATE_USER,
+        CREATE_TIME,
+        EDIT_USER,
+        EDIT_TIME
+    )
     VALUES (
-        @ID, @FORM_NAME, @FORM_CODE, @FORM_DESCRIPTION,
-        @BASE_TABLE_NAME, @VIEW_TABLE_NAME, @MAPPING_TABLE_NAME,
-        @BASE_TABLE_ID, @VIEW_TABLE_ID, @MAPPING_TABLE_ID,
-        @STATUS, @SCHEMA_TYPE, @FUNCTION_TYPE, 0)
+        @ID,
+        @FORM_NAME,
+        @FORM_CODE,
+        @FORM_DESCRIPTION,
+        @BASE_TABLE_NAME,
+        @VIEW_TABLE_NAME,
+        @MAPPING_TABLE_NAME,
+        @BASE_TABLE_ID,
+        @VIEW_TABLE_ID,
+        @MAPPING_TABLE_ID,
+        @STATUS,
+        @SCHEMA_TYPE,
+        @FUNCTION_TYPE,
+        0,
+        @CREATE_USER,
+        @CREATE_TIME,
+        @EDIT_USER,
+        @EDIT_TIME
+    )
+
 OUTPUT INSERTED.ID;";
 
         public const string CheckFormMasterExists = @"/**/
@@ -2059,16 +2159,21 @@ WHEN MATCHED THEN
         BASE_TABLE_NAME         = @MASTER_TABLE_NAME,
         DETAIL_TABLE_NAME       = @DETAIL_TABLE_NAME,
         MAPPING_TABLE_NAME      = @MAPPING_TABLE_NAME,
-        VIEW_DETAIL_TABLE_NAME  = @VIEW_DETAIL_TABLE_NAME,
         VIEW_TABLE_NAME         = @VIEW_TABLE_NAME,
         BASE_TABLE_ID           = @BASE_TABLE_ID,
         DETAIL_TABLE_ID         = @DETAIL_TABLE_ID,
         MAPPING_TABLE_ID        = @MAPPING_TABLE_ID,
         VIEW_TABLE_ID           = @VIEW_TABLE_ID,
+        FORM_FIELD_MASTER_BUTTON_LINK_ID = @FORM_FIELD_MASTER_BUTTON_LINK_ID,
+        FORM_FIELD_MASTER1_BUTTON_LINK_ID = @FORM_FIELD_MASTER1_BUTTON_LINK_ID,
+        MAPPING_PK_COLUMN       = @MAPPING_PK_COLUMN,
         MAPPING_BASE_FK_COLUMN  = @MAPPING_BASE_FK_COLUMN,
         MAPPING_DETAIL_FK_COLUMN= @MAPPING_DETAIL_FK_COLUMN,
         MAPPING_BASE_COLUMN_NAME= @MAPPING_BASE_COLUMN_NAME,
         MAPPING_DETAIL_COLUMN_NAME=@MAPPING_DETAIL_COLUMN_NAME,
+        TARGET_MAPPING_COLUMN_NAME = @TARGET_MAPPING_COLUMN_NAME,
+        SOURCE_DETAIL_COLUMN_CODE    = @SOURCE_DETAIL_COLUMN_CODE,
+        TARGET_MAPPING_COLUMN_CODE   = @TARGET_MAPPING_COLUMN_CODE,
         STATUS                  = @STATUS,
         SCHEMA_TYPE             = @SCHEMA_TYPE,
         FUNCTION_TYPE           = @FUNCTION_TYPE,
@@ -2076,16 +2181,22 @@ WHEN MATCHED THEN
 WHEN NOT MATCHED THEN
     INSERT (
         ID, FORM_NAME, FORM_CODE, FORM_DESCRIPTION,
-        BASE_TABLE_NAME, DETAIL_TABLE_NAME, MAPPING_TABLE_NAME, VIEW_DETAIL_TABLE_NAME, VIEW_TABLE_NAME,
-        BASE_TABLE_ID, DETAIL_TABLE_ID, MAPPING_TABLE_ID, VIEW_DETAIL_TABLE_ID, VIEW_TABLE_ID,
+        BASE_TABLE_NAME, DETAIL_TABLE_NAME, MAPPING_TABLE_NAME, VIEW_TABLE_NAME,
+        BASE_TABLE_ID, DETAIL_TABLE_ID, MAPPING_TABLE_ID, VIEW_TABLE_ID,
+        FORM_FIELD_MASTER_BUTTON_LINK_ID, FORM_FIELD_MASTER1_BUTTON_LINK_ID,
+        MAPPING_PK_COLUMN,
+        TARGET_MAPPING_COLUMN_NAME, SOURCE_DETAIL_COLUMN_CODE, TARGET_MAPPING_COLUMN_CODE,
         STATUS, SCHEMA_TYPE, FUNCTION_TYPE, IS_DELETE,
         MAPPING_BASE_FK_COLUMN, MAPPING_DETAIL_FK_COLUMN, MAPPING_BASE_COLUMN_NAME, MAPPING_DETAIL_COLUMN_NAME,
         CREATE_TIME, EDIT_TIME
     )
     VALUES (
         @ID, @FORM_NAME, @FORM_CODE, @FORM_DESCRIPTION,
-        @MASTER_TABLE_NAME, @DETAIL_TABLE_NAME, @MAPPING_TABLE_NAME, @VIEW_DETAIL_TABLE_NAME, @VIEW_TABLE_NAME,
-        @BASE_TABLE_ID, @DETAIL_TABLE_ID, @MAPPING_TABLE_ID, @VIEW_DETAIL_TABLE_ID, @VIEW_TABLE_ID,
+        @MASTER_TABLE_NAME, @DETAIL_TABLE_NAME, @MAPPING_TABLE_NAME, @VIEW_TABLE_NAME,
+        @BASE_TABLE_ID, @DETAIL_TABLE_ID, @MAPPING_TABLE_ID, @VIEW_TABLE_ID,
+        @FORM_FIELD_MASTER_BUTTON_LINK_ID, @FORM_FIELD_MASTER1_BUTTON_LINK_ID,
+        @MAPPING_PK_COLUMN,
+        @TARGET_MAPPING_COLUMN_NAME, @SOURCE_DETAIL_COLUMN_CODE, @TARGET_MAPPING_COLUMN_CODE,
         @STATUS, @SCHEMA_TYPE, @FUNCTION_TYPE, 0,
         @MAPPING_BASE_FK_COLUMN, @MAPPING_DETAIL_FK_COLUMN, @MAPPING_BASE_COLUMN_NAME, @MAPPING_DETAIL_COLUMN_NAME,
         GETDATE(), GETDATE()
@@ -2108,6 +2219,7 @@ AND target.IS_DELETE            = 0
 
 WHEN MATCHED THEN
     UPDATE SET
+        DISPLAY_NAME   = @DISPLAY_NAME,
         CONTROL_TYPE   = @CONTROL_TYPE,
         IS_REQUIRED     = @IS_REQUIRED,
         IS_EDITABLE    = @IS_EDITABLE,
@@ -2115,15 +2227,16 @@ WHEN MATCHED THEN
         QUERY_COMPONENT = @QUERY_COMPONENT,
         QUERY_CONDITION = @QUERY_CONDITION,
         CAN_QUERY      = @CAN_QUERY,
+        DETAIL_TO_RELATION_DEFAULT_COLUMN = @DETAIL_TO_RELATION_DEFAULT_COLUMN,
         EDIT_TIME      = GETDATE()
 WHEN NOT MATCHED THEN
     INSERT (
-        ID, FORM_FIELD_MASTER_ID, TABLE_NAME, COLUMN_NAME, DATA_TYPE,
-        CONTROL_TYPE, IS_REQUIRED, IS_EDITABLE, QUERY_DEFAULT_VALUE, FIELD_ORDER, QUERY_COMPONENT, QUERY_CONDITION, CAN_QUERY, CREATE_TIME, IS_DELETE
+        ID, FORM_FIELD_MASTER_ID, TABLE_NAME, COLUMN_NAME, DISPLAY_NAME, DATA_TYPE,
+        CONTROL_TYPE, IS_REQUIRED, IS_EDITABLE, QUERY_DEFAULT_VALUE, FIELD_ORDER, QUERY_COMPONENT, QUERY_CONDITION, CAN_QUERY, DETAIL_TO_RELATION_DEFAULT_COLUMN, CREATE_TIME, IS_DELETE
     )
     VALUES (
-        @ID, @FORM_FIELD_MASTER_ID, @TABLE_NAME, @COLUMN_NAME, @DATA_TYPE,
-        @CONTROL_TYPE, @IS_REQUIRED, @IS_EDITABLE, @QUERY_DEFAULT_VALUE, @FIELD_ORDER, @QUERY_COMPONENT, @QUERY_CONDITION, @CAN_QUERY, GETDATE(), 0
+        @ID, @FORM_FIELD_MASTER_ID, @TABLE_NAME, @COLUMN_NAME, @DISPLAY_NAME, @DATA_TYPE,
+        @CONTROL_TYPE, @IS_REQUIRED, @IS_EDITABLE, @QUERY_DEFAULT_VALUE, @FIELD_ORDER, @QUERY_COMPONENT, @QUERY_CONDITION, @CAN_QUERY, @DETAIL_TO_RELATION_DEFAULT_COLUMN, GETDATE(), 0
     );";
 
         public const string CheckFieldExists         = @"/**/

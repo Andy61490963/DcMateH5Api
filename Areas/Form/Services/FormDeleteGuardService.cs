@@ -4,6 +4,7 @@ using DcMateH5Api.Areas.Form.Interfaces;
 using DcMateH5Api.Areas.Form.Models;
 using DcMateH5Api.Areas.Form.ViewModels;
 using DcMateH5Api.DbExtensions;
+using Microsoft.Data.SqlClient;
 
 namespace DcMateH5Api.Areas.Form.Services;
 
@@ -32,38 +33,38 @@ public sealed class FormDeleteGuardService : IFormDeleteGuardService
         _db = db;
     }
 
-    /// <summary>
-    /// 依序驗證 Guard SQL，遇到第一條不可刪除即回傳
-    /// </summary>
-    public async Task<DeleteGuardValidateResultViewModel> ValidateDeleteGuardAsync(
-        DeleteGuardValidateRequestViewModel request,
-        CancellationToken ct = default)
+    public async Task<DeleteGuardValidateResultViewModel> ValidateDeleteGuardInternalAsync(
+        Guid formFieldMasterId,
+        Dictionary<string, string> parameters,
+        SqlTransaction tx,
+        CancellationToken ct)
     {
-        // 撈出所有 Guard 規則
-        var rules = await GetGuardRulesAsync(request.FormFieldMasterId, ct);
+        var rules = await GetGuardRulesAsync(formFieldMasterId, tx, ct);
 
+        // 未設定刪除守門規則（Guard Rules），不允許刪除
+        if (rules.Count == 0)
+        {
+            return new DeleteGuardValidateResultViewModel
+            {
+                IsValid = false,
+                CanDelete = false,
+                ErrorMessage = null
+            };
+        }
+        
         foreach (var rule in rules)
         {
-            // 驗證 SQL 基本安全性與參數完整性
-            var validation = ValidateGuardSql(rule, request.Parameters);
+            var validation = ValidateGuardSql(rule, parameters);
             if (!validation.IsValid)
-            {
                 return validation;
-            }
 
-            // 建立 Dapper 參數（只塞 SQL 用得到的）
-            var parameters = BuildParameters(rule.GUARD_SQL!, request.Parameters);
+            var dapperParams = BuildParameters(rule.GUARD_SQL!, parameters);
 
-            // 執行 Guard SQL
-            var canDelete = await ExecuteGuardSqlAsync(rule, parameters, ct);
+            var canDelete = await ExecuteGuardSqlAsync(rule, dapperParams, tx, ct);
 
-            // SQL 沒回傳或回傳格式不對 → 視為規則錯誤
             if (!canDelete.HasValue)
-            {
                 return BuildInvalidResult("Guard SQL 未回傳 CanDelete 結果。");
-            }
 
-            // 只要一條規則不允許 → 直接擋
             if (!canDelete.Value)
             {
                 return new DeleteGuardValidateResultViewModel
@@ -74,13 +75,8 @@ public sealed class FormDeleteGuardService : IFormDeleteGuardService
                 };
             }
         }
-
-        // 全部通過
-        return new DeleteGuardValidateResultViewModel
-        {
-            IsValid = true,
-            CanDelete = true
-        };
+        
+        return new DeleteGuardValidateResultViewModel { IsValid = true, CanDelete = true };
     }
 
     #region Private Methods
@@ -90,6 +86,7 @@ public sealed class FormDeleteGuardService : IFormDeleteGuardService
     /// </summary>
     private async Task<List<FormFieldDeleteGuardSqlDto>> GetGuardRulesAsync(
         Guid formFieldMasterId,
+        SqlTransaction tx,
         CancellationToken ct)
     {
         const string sql = @"
@@ -107,7 +104,9 @@ WHERE FORM_FIELD_MASTER_ID = @FormFieldMasterId
   AND IS_DELETE = 0
 ORDER BY RULE_ORDER";
 
-        var rules = await _db.QueryAsync<FormFieldDeleteGuardSqlDto>(
+        var rules = await _db.QueryInTxAsync<FormFieldDeleteGuardSqlDto>(
+            tx.Connection,
+            tx,
             sql,
             new { FormFieldMasterId = formFieldMasterId },
             ct: ct);
@@ -200,16 +199,22 @@ ORDER BY RULE_ORDER";
     }
 
     /// <summary>
-    /// 執行 Guard SQL，取得 CanDelete
+    /// 執行 Guard SQL，取得 CanDelete（支援交易）
     /// </summary>
     private async Task<bool?> ExecuteGuardSqlAsync(
         FormFieldDeleteGuardSqlDto rule,
         DynamicParameters parameters,
+        SqlTransaction tx,
         CancellationToken ct)
     {
-        var result = await _db.QuerySingleOrDefaultAsync<GuardSqlResult>(
+        if (string.IsNullOrWhiteSpace(rule.GUARD_SQL))
+            return null;
+        
+        var result = await _db.QuerySingleOrDefaultInTxAsync<GuardSqlResult>(
+            tx.Connection,
+            tx,
             rule.GUARD_SQL!,
-            parameters,
+            param: parameters,
             ct: ct);
 
         return result?.CanDelete;

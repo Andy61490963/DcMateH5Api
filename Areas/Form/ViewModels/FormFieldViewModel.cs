@@ -18,17 +18,22 @@ public class FormFieldViewModel
     /// 這個欄位是否為Pk
     /// </summary>
     public bool IS_PK { get; set; }
-
+    
     /// <summary>
     /// 表名稱
     /// </summary>
     public string TableName { get; set; } = string.Empty;
-
+    
     /// <summary>
     /// 欄位名稱
     /// </summary>
     public string COLUMN_NAME { get; set; } = string.Empty;
-
+    
+    /// <summary>
+    /// 顯示名稱
+    /// </summary>
+    public string DISPLAY_NAME { get; set; } = string.Empty;
+    
     /// <summary>
     /// 欄位資料結構類型
     /// </summary>
@@ -73,6 +78,11 @@ public class FormFieldViewModel
     /// 是否允許作為查詢條件欄位。
     /// </summary>
     public bool? CAN_QUERY { get; set; }
+    
+    /// <summary>
+    /// 把明細表的值順便填寫道對應表裡面的欄位的值
+    /// </summary>
+    public string? DETAIL_TO_RELATION_DEFAULT_COLUMN { get; set; }
     
     /// <summary>
     /// 預設值

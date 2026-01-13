@@ -16,9 +16,6 @@ public enum TableSchemaQueryType
     [Display(Name = "關聯表", Description = "多對多關聯使用的對應資料表")]
     OnlyMapping = 3,
     
-    [Display(Name = "明細表的檢視表", Description = "多對多使用的明細表的檢視表")]
-    DetailView = 4,
-    
     [Display(Name = "已完成的設定檔", Description = "已完成的設定檔")]
     All = 5,      
 }

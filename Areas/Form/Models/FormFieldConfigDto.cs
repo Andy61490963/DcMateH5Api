@@ -20,6 +20,9 @@ public class FormFieldConfigDto
     [Column("COLUMN_NAME")]
     public string COLUMN_NAME { get; set; } = string.Empty;
     
+    [Column("DISPLAY_NAME")]
+    public string DISPLAY_NAME { get; set; } = string.Empty;
+    
     [Column("DATA_TYPE")]
     public string DATA_TYPE { get; set; }
 
@@ -55,4 +58,7 @@ public class FormFieldConfigDto
 
     [Column("FIELD_ORDER")]
     public long FIELD_ORDER { get; set; }
+    
+    [Column("DETAIL_TO_RELATION_DEFAULT_COLUMN")]
+    public string? DETAIL_TO_RELATION_DEFAULT_COLUMN { get; set; }
 }

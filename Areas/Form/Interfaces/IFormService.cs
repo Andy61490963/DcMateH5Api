@@ -13,7 +13,7 @@ public interface IFormService
     /// <param name="funcType">功能類型</param>
     /// <param name="request">查詢條件與分頁設定。</param>
     /// <returns>每個表單對應的欄位與資料列集合。</returns>
-    List<FormListDataViewModel> GetFormList(FormFunctionType funcType, FormSearchRequest? request = null);
+    List<FormListDataViewModel> GetFormList(FormFunctionType funcType, FormSearchRequest? request = null, bool returnBaseTableWhenMultipleMapping = false);
     
     /// <summary>
     /// 取得 單一
@@ -24,19 +24,24 @@ public interface IFormService
     FormSubmissionViewModel GetFormSubmission(Guid? id, string? pk = null);
 
     /// <summary>
-    /// 依 BaseTableId（BASE_TABLE_ID）+ Pk 物理刪除資料
+    /// 驗證規則 + 刪除
     /// </summary>
-    void PhysicalDeleteByBaseTableId(Guid baseTableId, string pk);
+    /// <param name="request"></param>
+    /// <param name="ct"></param>
+    /// <returns></returns>
+    Task<DeleteWithGuardResultViewModel> DeleteWithGuardAsync(
+        DeleteWithGuardRequestViewModel request,
+        CancellationToken ct);
     
     /// <summary>
     /// 儲存或更新表單資料
     /// </summary>
-    void SubmitForm(FormSubmissionInputModel input);
+    object SubmitForm(FormSubmissionInputModel input);
 
     /// <summary>
     /// 儲存或更新表單資料，允許呼叫端提供交易物件以便進行複合交易控制。
     /// </summary>
     /// <param name="input">前端送出的表單資料</param>
     /// <param name="tx">資料庫交易物件</param>
-    void SubmitForm(FormSubmissionInputModel input, SqlTransaction tx);
+    object SubmitForm(FormSubmissionInputModel input, SqlTransaction tx);
 }

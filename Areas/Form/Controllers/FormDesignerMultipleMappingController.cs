@@ -108,16 +108,16 @@ public class FormDesignerMultipleMappingController : ControllerBase
     /// 支援前綴與模糊比對（使用 LIKE）。
     /// </summary>
     /// /// <param name="tableName">名稱</param>
-    /// <param name="schemaType">欲搜尋的資料來源類型（主表或檢視表）</param>
+    /// <param name="queryType">欲搜尋的資料來源類型（主表或檢視表）</param>
     /// <returns>符合條件的表名稱集合</returns>
     [HttpGet(Routes.SearchTables)]
     [ProducesResponseType(typeof(List<string>), StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status404NotFound)]
     [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status400BadRequest)]
     [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status500InternalServerError)]
-    public IActionResult SearchTables( string? tableName, [FromQuery] TableSchemaQueryType schemaType )
+    public IActionResult SearchTables( string? tableName, [FromQuery] TableQueryType queryType )
     {
-        var result = _formDesignerService.SearchTables( tableName, schemaType );
+        var result = _formDesignerService.SearchTables( tableName, queryType );
         if ( result.Count == 0 ) return NotFound();
         return Ok( result );
     }
@@ -155,7 +155,7 @@ public class FormDesignerMultipleMappingController : ControllerBase
         try
         {
             if ( model.SchemaType == TableSchemaQueryType.OnlyTable &&
-                ( model.QUERY_COMPONENT != QueryComponentType.None ||
+                ( model.QUERY_COMPONENT != null ||
                  model.CAN_QUERY == true ) )
                 return Conflict( "無法往主表寫入查詢條件" );
             

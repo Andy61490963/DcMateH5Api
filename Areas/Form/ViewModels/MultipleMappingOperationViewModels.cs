@@ -65,14 +65,27 @@ public class MultipleMappingItemViewModel
     public string DetailPk { get; set; } = string.Empty;
 
     /// <summary>
-    /// 關聯表的順序（僅 Linked 項目有值，Unlinked 為 null）
+    /// Base 表顯示文字（由 Join 取得）
     /// </summary>
-    public int? Seq { get; set; }
+    public string? BaseDisplayText { get; init; }
+
+    /// <summary>
+    /// Detail 表顯示文字（由 Join 取得）
+    /// </summary>
+    public string? DetailDisplayText { get; init; }
+    
+    public IReadOnlyDictionary<string, string> DetailToRelationDefaultColumn { get; set; }
+        = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+    
+    /// <summary>
+    /// 關聯表的資料欄位（key value）
+    /// </summary>
+    public Dictionary<string, object?> MappingFields { get; set; } = new();
     
     /// <summary>
     /// 明細資料的欄位與目前值。
     /// </summary>
-    public Dictionary<string, object?> Fields { get; set; } = new();
+    public Dictionary<string, object?> DetailFields { get; set; } = new();
 }
 
 /// <summary>
@@ -120,6 +133,14 @@ public class MultipleMappingListViewModel
     /// </summary>
     public string? MappingDetailColumnName { get; set; }
 
+    
+    public string? TargetMappingColumnName { get; set; }
+    
+    public string? SourceDetailColumnCode { get; set; }
+
+    public string? TargetMappingColumnCode { get; set; }
+    
+    
     /// <summary>
     /// 已建立對應關係的明細資料清單（左側）。
     /// </summary>

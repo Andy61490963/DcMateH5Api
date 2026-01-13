@@ -21,9 +21,10 @@ public class FormService : IFormService
     private readonly IFormDataService _formDataService;
     private readonly IDropdownService _dropdownService;
     private readonly IDropdownSqlSyncService _dropdownSqlSyncService;
+    private readonly IFormDeleteGuardService _formDeleteGuardService;
     private readonly IConfiguration _configuration;
     
-    public FormService(SqlConnection connection, ITransactionService txService, IFormFieldMasterService formFieldMasterService, ISchemaService schemaService, IFormFieldConfigService formFieldConfigService, IDropdownService dropdownService, IFormDataService formDataService, IConfiguration configuration, IDropdownSqlSyncService dropdownSqlSyncService)
+    public FormService(SqlConnection connection, ITransactionService txService, IFormFieldMasterService formFieldMasterService, ISchemaService schemaService, IFormFieldConfigService formFieldConfigService, IDropdownService dropdownService, IFormDataService formDataService, IConfiguration configuration, IDropdownSqlSyncService dropdownSqlSyncService, IFormDeleteGuardService formDeleteGuardService)
     {
         _con = connection;
         _txService = txService;
@@ -33,6 +34,7 @@ public class FormService : IFormService
         _formDataService = formDataService;
         _dropdownService = dropdownService;
         _dropdownSqlSyncService = dropdownSqlSyncService;
+        _formDeleteGuardService = formDeleteGuardService;
         _configuration = configuration;
         _excludeColumns = _configuration.GetSection("FormDesignerSettings:RequiredColumns").Get<List<string>>() ?? new();
         _excludeColumnsId = _configuration.GetSection("DropdownSqlSettings:ExcludeColumns").Get<List<string>>() ?? new();
@@ -101,7 +103,7 @@ public class FormService : IFormService
     /// <returns>
     /// 表單列表頁所需的資料清單，每一筆代表一筆資料列及其對應欄位值。
     /// </returns>
-    public List<FormListDataViewModel> GetFormList(FormFunctionType funcType, FormSearchRequest? request = null)
+    public List<FormListDataViewModel> GetFormList(FormFunctionType funcType, FormSearchRequest? request = null, bool returnBaseTableWhenMultipleMapping = false)
     {
         // ------------------------------------------------------------
         // 1. 取得表單主設定（含欄位設定）
@@ -141,7 +143,18 @@ public class FormService : IFormService
             // --------------------------------------------------------
             // 1. 因為多對多前端要 BASE TABLE資料，走策略模式
             // --------------------------------------------------------
-            var spec = BuildModeSpec(funcType, master);
+            FormListModeSpec spec;
+
+            if (returnBaseTableWhenMultipleMapping && funcType == FormFunctionType.MultipleMappingMaintenance)
+            {
+                // 僅在這裡使用 BuildModeSpec
+                spec = BuildModeSpec(funcType, master);
+            }
+            else
+            {
+                // 原本行為（View → View）
+                spec = BuildDefaultSpec(master);
+            }
 
             var dataTableName = spec.DataTableName;
             var schemaTableId = spec.SchemaTableId;
@@ -218,6 +231,7 @@ public class FormService : IFormService
                     {
                         FieldConfigId = f.FieldConfigId,
                         Column = f.Column,
+                        DISPLAY_NAME = f.DISPLAY_NAME,
                         DATA_TYPE = f.DATA_TYPE,
                         CONTROL_TYPE = f.CONTROL_TYPE,
                         CAN_QUERY = f.CAN_QUERY,
@@ -233,7 +247,8 @@ public class FormService : IFormService
                         DROPDOWNSQL = f.DROPDOWNSQL,
                         OptionList = f.OptionList,
                         SOURCE_TABLE = f.SOURCE_TABLE,
-                        CurrentValue = row.GetValue(f.Column)
+                        CurrentValue = row.GetValue(f.Column),
+                        DETAIL_TO_RELATION_DEFAULT_COLUMN = f.DETAIL_TO_RELATION_DEFAULT_COLUMN
                     })
                     .ToList();
 
@@ -294,6 +309,27 @@ public class FormService : IFormService
         };
     }
 
+    /// <summary>
+    /// Default / View 模式：回傳 ViewTable + View Schema（維持你一般模式的設計）
+    /// </summary>
+    private FormListModeSpec BuildDefaultSpec(FormFieldMasterDto master)
+    {
+        if (string.IsNullOrWhiteSpace(master.VIEW_TABLE_NAME))
+            throw new InvalidOperationException("VIEW_TABLE_NAME missing");
+        if (master.VIEW_TABLE_ID is null)
+            throw new InvalidOperationException("VIEW_TABLE_ID missing");
+        if (string.IsNullOrWhiteSpace(master.BASE_TABLE_NAME))
+            throw new InvalidOperationException("BASE_TABLE_NAME missing");
+
+        return new FormListModeSpec
+        {
+            DataTableName = master.VIEW_TABLE_NAME,
+            SchemaTableId = master.VIEW_TABLE_ID,
+            SchemaQueryType = TableSchemaQueryType.OnlyView,
+            SidColumnsToHide = GetCommonSidColumnsToHide(master.VIEW_TABLE_NAME, master.BASE_TABLE_NAME)
+        };
+    }
+    
     /// <summary>
     /// 根據表單設定抓取主表欄位與現有資料（編輯時用）
     /// 只對主表進行欄位組裝，Dropdown 顯示選項答案
@@ -423,7 +459,8 @@ public class FormService : IFormService
         {
             FieldConfigId = field.ID,
             Column = field.COLUMN_NAME,
-
+            DISPLAY_NAME = field.DISPLAY_NAME,
+            
             CONTROL_TYPE = field.CONTROL_TYPE,
             QUERY_COMPONENT = field.QUERY_COMPONENT,
             QUERY_CONDITION = field.QUERY_CONDITION,
@@ -444,6 +481,7 @@ public class FormService : IFormService
             SOURCE_TABLE = schemaType,
             IS_PK = primaryKeys.Contains(field.COLUMN_NAME),
             IS_RELATION = false,
+            
         };
     }
 
@@ -580,24 +618,24 @@ FROM (
     /// </summary>
     /// <param name="input">前端送出的表單資料</param>
     /// <param name="tx">交易物件</param>
-    public void SubmitForm(FormSubmissionInputModel input, SqlTransaction tx)
+    public object SubmitForm(FormSubmissionInputModel input, SqlTransaction tx)
     {
-        SubmitFormCore(input, tx);
+        return SubmitFormCore(input, tx);
     }
 
     /// <summary>
     /// 儲存或更新表單資料（含下拉選項答案），由本服務自行開啟交易。
     /// </summary>
     /// <param name="input">前端送出的表單資料</param>
-    public void SubmitForm(FormSubmissionInputModel input)
+    public object SubmitForm(FormSubmissionInputModel input)
     {
-        _txService.WithTransaction(tx => SubmitFormCore(input, tx));
+        return _txService.WithTransaction(tx => SubmitFormCore(input, tx));
     }
 
     /// <summary>
     /// 實際執行資料存取的核心邏輯，所有資料庫操作均以同一個交易物件進行。
     /// </summary>
-    private void SubmitFormCore(FormSubmissionInputModel input, SqlTransaction tx)
+    private object SubmitFormCore(FormSubmissionInputModel input, SqlTransaction tx)
     {
         // 查表單主設定
         var master = _formFieldMasterService.GetFormFieldMasterFromId(input.BaseId, tx);
@@ -629,6 +667,8 @@ FROM (
         {
             _con.Execute(Sql.UpsertDropdownAnswer, new { configId, RowId = realRowId, optionId }, transaction: tx);
         }
+
+        return realRowId;
     }
     
     private (List<(string Column, object? Value)> NormalFields,
@@ -782,48 +822,77 @@ FROM (
 
         _con.Execute(sql, paramDict, transaction: tx);
     }
-    
-    public void PhysicalDeleteByBaseTableId(Guid baseTableId, string pk)
+
+    public async Task<DeleteWithGuardResultViewModel> DeleteWithGuardAsync(
+        DeleteWithGuardRequestViewModel request,
+        CancellationToken ct)
     {
-        if (baseTableId == Guid.Empty) throw new ArgumentException("BaseId 不可為空", nameof(baseTableId));
-        if (string.IsNullOrWhiteSpace(pk)) throw new ArgumentException("Pk 不可為空", nameof(pk));
+        if (request == null) throw new ArgumentNullException(nameof(request));
+        if (request.FormFieldMasterId == Guid.Empty)
+            throw new ArgumentException("FormFieldMasterId 不可為空", nameof(request.FormFieldMasterId));
 
-        _txService.WithTransaction(tx => PhysicalDeleteByBaseTableIdCore(baseTableId, pk, tx));
-    }
+        // 這個才應該是 BaseTableId（BASE_TABLE_ID）
+        var baseTableId = request.FormFieldMasterId;
+        var pk = request.pk;
+        
+        if (baseTableId == Guid.Empty)
+            throw new ArgumentException("BaseTableId 不可為空", nameof(request.FormFieldMasterId));
 
-    /// <summary>
-    /// 物理性刪除資料
-    /// </summary>
-    /// <param name="baseTableId"></param>
-    /// <param name="pk"></param>
-    /// <param name="tx"></param>
-    /// <exception cref="InvalidOperationException"></exception>
-    private void PhysicalDeleteByBaseTableIdCore(Guid baseTableId, string pk, SqlTransaction tx)
-    {
-        // 1) 由 BaseTableId 找到實際資料表名（最關鍵）
-        var tableName = _schemaService.GetTableNameByTableId(baseTableId, tx);
+        if (string.IsNullOrWhiteSpace(pk))
+            throw new ArgumentException("Pk 不可為空", nameof(pk));
 
-        // 2) 解析該表 PK（型別要對，避免你拿字串去比 int）
-        var (pkName, _, typedPk) = _schemaService.ResolvePk(tableName, pk, tx);
+        return await _txService.WithTransactionAsync(async (tx, innerCt) =>
+        {
+            // 1) 找實際表名 + PK 型別
+            var tableName = _schemaService.GetTableNameByTableId(baseTableId, tx);
+            var (pkName, _, typedPk) = _schemaService.ResolvePk(tableName, pk, tx);
 
-        // 3) 防 identifier 注入（表名/欄位名不是參數化能救的）
-        ValidateSqlIdentifier(tableName);
-        ValidateSqlIdentifier(pkName);
+            // 2) 防 identifier 注入（表名/欄位名不能參數化）
+            ValidateSqlIdentifier(tableName);
+            ValidateSqlIdentifier(pkName);
 
-        // 4) 先刪 dropdown answer（限定 baseTableId 範圍，避免撞號誤刪）
-        _con.Execute(Sql.DeleteDropdownAnswersByBaseTableIdAndRowId,
-            new { BaseTableId = baseTableId, RowId = typedPk },
-            transaction: tx);
+            // 3) Guard 驗證（同一個 tx 內）
+            var validateResult = await _formDeleteGuardService.ValidateDeleteGuardInternalAsync(
+                request.FormFieldMasterId,
+                request.Parameters,
+                tx,
+                innerCt);
 
-        // 5) 再刪實際資料表
-        var deleteSql = $@"
-DELETE FROM [{tableName}]
-WHERE [{pkName}] = @RowId;";
+            if (!validateResult.IsValid || !validateResult.CanDelete)
+            {
+                return new DeleteWithGuardResultViewModel
+                {
+                    IsValid = validateResult.IsValid,
+                    ErrorMessage = validateResult.ErrorMessage,
+                    CanDelete = validateResult.CanDelete,
+                    BlockedByRule = validateResult.BlockedByRule,
+                    Deleted = false
+                };
+            }
 
-        var affected = _con.Execute(deleteSql, new { RowId = typedPk }, transaction: tx);
+            // 4) 先刪 dropdown answer（限定 baseTableId 範圍避免撞號誤刪）
+            await _con.ExecuteAsync(
+                Sql.DeleteDropdownAnswersByBaseTableIdAndRowId,
+                new { BaseTableId = baseTableId, RowId = typedPk },
+                transaction: tx);
 
-        if (affected == 0)
-            throw new InvalidOperationException($"找不到要刪除的資料：{tableName}.{pkName} = {pk}");
+            // 5) 再刪 Base Table row
+            var deleteSql = $@"
+    DELETE FROM [{tableName}]
+    WHERE [{pkName}] = @RowId;";
+
+            var affected = await _con.ExecuteAsync(
+                deleteSql,
+                new { RowId = typedPk },
+                transaction: tx);
+
+            return new DeleteWithGuardResultViewModel
+            {
+                IsValid = true,
+                CanDelete = true,
+                Deleted = affected > 0
+            };
+        }, ct);
     }
 
     private static void ValidateSqlIdentifier(string identifier)

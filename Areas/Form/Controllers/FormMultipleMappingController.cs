@@ -4,6 +4,7 @@ using DcMateH5Api.Areas.Form.Models;
 using DcMateH5Api.Areas.Form.ViewModels;
 using DcMateH5Api.Helper;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.Extensions.Primitives;
 
 namespace DcMateH5Api.Areas.Form.Controllers;
 
@@ -28,7 +29,7 @@ public class FormMultipleMappingController : ControllerBase
     }
 
     /// <summary>
-    /// 取得多對多維護的資料列表 (暫時用不到)
+    /// 取得多對多維護的資料列表，回傳 baseTable內容
     /// </summary>
     /// <remarks>
     /// ### 範例輸入
@@ -60,7 +61,7 @@ public class FormMultipleMappingController : ControllerBase
             });
         }
         
-        var vm = _formService.GetFormList( _funcType, request );
+        var vm = _formService.GetFormList( _funcType, request, true );
         return Ok(vm);
     }
     
@@ -76,7 +77,7 @@ public class FormMultipleMappingController : ControllerBase
     }
 
     /// <summary>
-    /// 取得多對多維護可用的主檔資料清單，前端可透過回傳的 Pk 作為 BaseId 呼叫 GetMappingList。
+    /// 取得多對多維護可用的主檔資料清單，前端透過FormMasterId 呼叫 GetForms
     /// </summary>
     /// <param name="request">查詢條件與分頁設定，需帶入多對多設定檔 FormMasterId。</param>
     /// <param name="ct">取消工作，避免長時間查詢阻塞。</param>
@@ -97,25 +98,34 @@ public class FormMultipleMappingController : ControllerBase
         var vm = _service.GetForms(request, ct);
         return Ok(vm);
     }
-    
+
     /// <summary>
-    /// 依設定檔與主表主鍵取得左右清單（已關聯 / 未關聯）。
+    /// 依設定檔與主表主鍵取得清單（已關聯 / 未關聯），查詢欄位前端動態解析。
     /// </summary>
     /// <param name="formMasterId">多對多設定檔識別碼。</param>
-    /// <param name="baseId">主表主鍵值。</param>
-    [HttpGet("{formMasterId:guid}/items")]
+    /// <param name="query">查詢條件，key value</param>
+    /// <param name="ct"></param>
+    /// <returns></returns>
+    [HttpPost("{formMasterId:guid}/items/query")]
     [ProducesResponseType(typeof(MultipleMappingListViewModel), StatusCodes.Status200OK)]
     [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status400BadRequest)]
-    public IActionResult GetMappingList(Guid formMasterId, [FromQuery] string baseId, CancellationToken ct)
+    public IActionResult GetMappingList(
+        Guid formMasterId,
+        [FromQuery] MappingListQuery query,
+        CancellationToken ct)
     {
-        if (string.IsNullOrWhiteSpace(baseId))
-        {
+        if (string.IsNullOrWhiteSpace(query.BaseId))
             return BadRequest("BaseId 不可為空");
-        }
 
         try
         {
-            var result = _service.GetMappingList(formMasterId, baseId, ct);
+            var result = _service.GetMappingList(
+                formMasterId,
+                query.BaseId,
+                query.Filters,
+                query.mode,
+                ct);
+
             return Ok(result);
         }
         catch (InvalidOperationException ex)
@@ -197,13 +207,31 @@ public class FormMultipleMappingController : ControllerBase
     }
 
     /// <summary>
-    /// 依 MAPPING_TABLE_ID 取得關聯表所有資料列，並回傳欄位名稱與對應值。
+    /// 重新排序指定關聯表（Mapping Table）的顯示順序。
     /// </summary>
     /// <remarks>
-    /// 業務邏輯：
-    /// 1. 透過 FormMasterId（對應 FORM_FIELD_MASTER.ID）取得 MAPPING_TABLE_NAME。
-    /// 2. 回傳查詢該表全部資料列
+    /// ### 說明
+    ///
+    /// 此 API 用於調整 Mapping Table 中各資料列的排序順序，
+    /// 常見使用情境為後台管理介面拖拉排序。
+    ///
+    /// ### 處理流程
+    ///
+    /// 1. 依請求中的 `FormMasterId` 取得對應的 Mapping Table 設定。
+    /// 2. 驗證欲調整排序的資料列是否存在且屬於該 Mapping Table。
+    /// 3. 依請求提供的新順序更新資料列的 Sequence / Sort 欄位。
+    ///
+    /// ### 注意事項
+    ///
+    /// - 本操作僅進行排序異動，不回傳資料內容。
+    /// - 若請求資料不合法或資料列不存在，將回傳 `400 Bad Request`。
     /// </remarks>
+    /// <param name="request">
+    /// 排序調整請求，包含目標 Mapping Table 與新的排序順序資訊。
+    /// </param>
+    /// <param name="ct">CancellationToken</param>
+    /// <response code="204">排序更新成功。</response>
+    /// <response code="400">請求內容錯誤或排序條件不合法。</response>
     [HttpPost("sequence/reorder")]
     [ProducesResponseType(StatusCodes.Status204NoContent)]
     [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status400BadRequest)]
@@ -218,37 +246,6 @@ public class FormMultipleMappingController : ControllerBase
         {
             var affected = _service.ReorderMappingSequence(request, ct);
             return NoContent();
-        }
-        catch (InvalidOperationException ex)
-        {
-            return BadRequest(ex.Message);
-        }
-    }
-
-    /// <summary>
-    /// 依 MAPPING_TABLE_ID 取得關聯表所有資料列，並回傳欄位名稱與對應值。
-    /// </summary>
-    /// <remarks>
-    /// 業務邏輯：
-    /// 1. 透過 FormMasterId（對應 FORM_FIELD_MASTER.ID）取得 MAPPING_TABLE_NAME。
-    /// 2. 回傳查詢該表全部資料列
-    /// </remarks>
-    /// <param name="formMasterId">FORM_FIELD_MASTER.ID</param>
-    /// <param name="ct">取消權杖。</param>
-    [HttpGet("{formMasterId:guid}/mapping-table")]
-    [ProducesResponseType(typeof(MappingTableDataViewModel), StatusCodes.Status200OK)]
-    [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status400BadRequest)]
-    public async Task<IActionResult> GetMappingTableData(Guid formMasterId, CancellationToken ct)
-    {
-        if (formMasterId == Guid.Empty)
-        {
-            return BadRequest("FormMasterId 不可為空");
-        }
-
-        try
-        {
-            var result = await _service.GetMappingTableData(formMasterId, ct);
-            return Ok(result);
         }
         catch (InvalidOperationException ex)
         {
