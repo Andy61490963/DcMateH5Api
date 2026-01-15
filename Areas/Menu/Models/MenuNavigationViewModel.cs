@@ -23,6 +23,8 @@ namespace DCMATEH5API.Areas.Menu.Models
         public string Url { get; set; } = string.Empty;
         public int Lv { get; set; } // 帶出 LV
 
+        public string ImgIcon { get; set; } = string.Empty; // 新增 ImgIcon
+
         [JsonPropertyName("tiles")]
         public List<TileViewModel> Tiles { get; set; } = new();
     }
@@ -39,6 +41,8 @@ namespace DCMATEH5API.Areas.Menu.Models
         public int Seq { get; set; }
         public int Pos { get; set; }
         public int Lv { get; set; } // 帶出 LV
+
+        public string ImgIcon { get; set; } = string.Empty; // 新增 ImgIcon
     }
 
     // 4. 原始資料零件 (接 SQL 用)
@@ -50,7 +54,7 @@ namespace DCMATEH5API.Areas.Menu.Models
         public string? Parameter { get; set; } // 新增 Parameter 欄位
         public int Lv { get; set; } // 新增 LV 欄位
         public List<MenuNavigationViewModel> Children { get; set; } = new();
-
+        public string ImgIcon { get; set; } = string.Empty; // 新增 ImgIcon 接收 SQL 欄位
         [JsonIgnore]
         public string ParentId { get; set; } = "00000000-0000-0000-0000-000000000000";
         [JsonIgnore]
@@ -64,6 +68,8 @@ namespace DCMATEH5API.Areas.Menu.Models
     {
         public bool Success { get; set; }
         public string Message { get; set; } = string.Empty;
+        public string User { get; set; } = "leo";  // Hard Code
+        public string LV { get; set; } = "2";     // Hard Code
         public MenuResponse? Data { get; set; }
         public string Translate { get; set; } = string.Empty;
         public string Type { get; set; } = string.Empty;
