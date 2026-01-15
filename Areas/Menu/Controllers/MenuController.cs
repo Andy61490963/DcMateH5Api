@@ -33,7 +33,7 @@ namespace DCMATEH5API.Areas.Menu.Controllers
                 {
                     Sid = node.Id,
                     Title = node.Title,
-                    Url = CombineUrl(node.Url, node.Parameter),
+                    Url = node.Url,
                     Property = node.SourceType == "PAGE" ? "Page" : "MENU",
                     Lv = node.Lv,
                     Seq = node.SortOrder,
