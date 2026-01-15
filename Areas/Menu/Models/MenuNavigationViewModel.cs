@@ -13,6 +13,8 @@ namespace DCMATEH5API.Areas.Menu.Models
     // 2. 舊版單頁結構：對應 "index.html": { ... }
     public class PageFolderViewModel
     {
+        public string? Parameter { get; set; } 
+
         public string PageKind { get; set; } = "MENU";
         public string? BackUrl { get; set; }
         public string Sid { get; set; } = string.Empty;
@@ -24,7 +26,7 @@ namespace DCMATEH5API.Areas.Menu.Models
         public int Lv { get; set; } // 帶出 LV
 
         public string ImgIcon { get; set; } = string.Empty; // 新增 ImgIcon
-
+        public string? Desc { get; set; } //  DESC
         [JsonPropertyName("tiles")]
         public List<TileViewModel> Tiles { get; set; } = new();
     }
@@ -32,6 +34,8 @@ namespace DCMATEH5API.Areas.Menu.Models
     // 3. 磁磚結構：對應 tiles 陣列內容
     public class TileViewModel
     {
+        public string? Parameter { get; set; }
+
         public string Sid { get; set; } = string.Empty;
         public string Property { get; set; } = "MENU";
         public string TypeGroup { get; set; } = string.Empty;
@@ -43,6 +47,8 @@ namespace DCMATEH5API.Areas.Menu.Models
         public int Lv { get; set; } // 帶出 LV
 
         public string ImgIcon { get; set; } = string.Empty; // 新增 ImgIcon
+        public string? Desc { get; set; }
+
     }
 
     // 4. 原始資料零件 (接 SQL 用)
@@ -54,6 +60,7 @@ namespace DCMATEH5API.Areas.Menu.Models
         public string? Parameter { get; set; } // 新增 Parameter 欄位
         public int Lv { get; set; } // 新增 LV 欄位
         public List<MenuNavigationViewModel> Children { get; set; } = new();
+        public string? Desc { get; set; }
         public string ImgIcon { get; set; } = string.Empty; // 新增 ImgIcon 接收 SQL 欄位
         [JsonIgnore]
         public string ParentId { get; set; } = "00000000-0000-0000-0000-000000000000";
