@@ -20,6 +20,9 @@ public interface IFormDesignerService
     Guid GetOrCreateFormMasterId( FormFieldMasterDto model );
     
     Task<FormFieldListViewModel?> EnsureFieldsSaved( string tableName, Guid? formMasterId, TableSchemaQueryType type );
+
+    Task<FormFieldListViewModel?> SyncNewFieldsToConfigAsync( string tableName, Guid formMasterId, TableSchemaQueryType schemaType, CancellationToken ct );
+    
     Task<FormFieldListViewModel> GetFieldsByTableName( string tableName, Guid? formMasterId, TableSchemaQueryType schemaType );
 
     /// <summary>
