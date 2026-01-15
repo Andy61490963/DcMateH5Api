@@ -38,7 +38,8 @@ namespace DCMATEH5API.Areas.Menu.Controllers
                     Lv = node.Lv,
                     Seq = node.SortOrder,
                     Pos = index + 1,
-                    ImgIcon = node.ImgIcon
+                    ImgIcon = node.ImgIcon,
+                    Parameter = node.Parameter,
                 }).ToList()
             };
 
@@ -67,6 +68,8 @@ namespace DCMATEH5API.Areas.Menu.Controllers
                         ModuleName = node.Title,
                         TypeGroup = node.Title,
                         ImgIcon = node.ImgIcon,
+                        Desc = node.Desc,
+                        Parameter = node.Parameter,
                         Tiles = node.Children.Select((child, index) => new TileViewModel
                         {
                             Sid = child.Id,
@@ -77,6 +80,8 @@ namespace DCMATEH5API.Areas.Menu.Controllers
                             Seq = child.SortOrder,
                             Pos = index + 1,
                             ImgIcon = child.ImgIcon,
+                            Desc = child.Desc,
+                            Parameter = child.Parameter
                         }).ToList()
                     };
                 }

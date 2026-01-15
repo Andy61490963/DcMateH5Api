@@ -15,17 +15,18 @@ namespace DCMATEH5API.Areas.Menu.Services
         public async Task<List<MenuNavigationViewModel>> GetMenuTreeAsync(string userId)
         {
             string sql = @"
-               -- 1. 來自選單節點
+ -- 1. 來自選單節點
  SELECT 
      CAST(H5_ADM_MENU_MODULE_SID AS VARCHAR(36)) AS Id, 
      CAST(PARENT_ID AS VARCHAR(36)) AS ParentId, 
      MENU_NAME AS Title, 
      URL AS Url, 
-     PARAMETER AS Parameter,
+     PARAMETER AS Parameter, -- 原本就有
+     [DESC] AS [Description], -- 欄位名由 DESCRIPTION 改為 DESC
      0 AS Lv, 
      SEQ AS SortOrder,
      'MENU' AS SourceType,
-     IMGICON AS ImgIcon -- 新增欄位
+     IMGICON AS ImgIcon
  FROM H5_ADM_MENU_MODULE
 
  UNION ALL
@@ -36,11 +37,12 @@ namespace DCMATEH5API.Areas.Menu.Services
      CAST(L.H5_ADM_MENU_MODULE_SID AS VARCHAR(36)) AS ParentId, 
      P.TITLE AS Title, 
      P.URL AS Url, 
-     NULL AS Parameter,
+     P.PARAMETER AS Parameter, -- 新增欄位：現在頁面也能帶參數了
+     P.[DESC] AS [Description], -- 欄位名由 DESCRIPTION 改為 DESC
      P.LV AS Lv, 
      P.SEQ AS SortOrder,
      'PAGE' AS SourceType,
-     P.IMGICON AS ImgIcon -- 新增欄位
+     P.IMGICON AS ImgIcon
  FROM H5_ADM_PAGE_MODULE P
  JOIN H5_ADM_MENU_PAGE_LINK L ON P.H5_ADM_PAGE_MODULE_SID = L.H5_ADM_PAGE_MODULE_SID";
 
