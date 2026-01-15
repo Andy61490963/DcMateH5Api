@@ -64,6 +64,7 @@ namespace DCMATEH5API.Areas.Menu.Controllers
                         BackUrl = backUrl,
                         ModuleName = node.Title,
                         TypeGroup = node.Title,
+                        ImgIcon = node.ImgIcon,
                         Tiles = node.Children.Select((child, index) => new TileViewModel
                         {
                             Sid = child.Id,
@@ -72,7 +73,8 @@ namespace DCMATEH5API.Areas.Menu.Controllers
                             Property = child.SourceType == "PAGE" ? "Page" : "MENU",
                             Lv = child.Lv,
                             Seq = child.SortOrder,
-                            Pos = index + 1
+                            Pos = index + 1,
+                            ImgIcon = child.ImgIcon,
                         }).ToList()
                     };
                 }
