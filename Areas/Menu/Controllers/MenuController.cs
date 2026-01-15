@@ -28,6 +28,7 @@ namespace DCMATEH5API.Areas.Menu.Controllers
             {
                 Title = "首頁",
                 Url = "index.html",
+                ImgIcon = "", // 首頁本身通常沒圖標，或可給預設值
                 Tiles = tree.Select((node, index) => new TileViewModel
                 {
                     Sid = node.Id,
@@ -36,7 +37,8 @@ namespace DCMATEH5API.Areas.Menu.Controllers
                     Property = node.SourceType == "PAGE" ? "Page" : "MENU",
                     Lv = node.Lv,
                     Seq = node.SortOrder,
-                    Pos = index + 1
+                    Pos = index + 1,
+                    ImgIcon = node.ImgIcon
                 }).ToList()
             };
 
