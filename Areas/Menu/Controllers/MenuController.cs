@@ -62,7 +62,7 @@ namespace DCMATEH5API.Areas.Menu.Controllers
                     {
                         Sid = node.Id,
                         Title = node.Title,
-                        Url = CombineUrl(node.Url, node.Parameter),
+                        Url = node.Url,
                         Lv = node.Lv,
                         BackUrl = backUrl,
                         ModuleName = node.Title,
@@ -74,7 +74,7 @@ namespace DCMATEH5API.Areas.Menu.Controllers
                         {
                             Sid = child.Id,
                             Title = child.Title,
-                            Url = CombineUrl(child.Url, child.Parameter),
+                            Url = child.Url,
                             Property = child.SourceType == "PAGE" ? "Page" : "MENU",
                             Lv = child.Lv,
                             Seq = child.SortOrder,
