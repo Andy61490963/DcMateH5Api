@@ -926,6 +926,60 @@ ORDER BY
         return result;
     }
 
+    public async Task<FormFieldListViewModel?> SyncNewFieldsToConfigAsync(string tableName, Guid formMasterId, TableSchemaQueryType schemaType, CancellationToken ct)
+    {
+        ct.ThrowIfCancellationRequested();
+
+        if (string.IsNullOrWhiteSpace(tableName))
+            throw new ArgumentException("tableName 不可為空");
+
+        if (!Regex.IsMatch(tableName, @"^[A-Za-z0-9_\.]+$", RegexOptions.CultureInvariant))
+            throw new ArgumentException("tableName 含非法字元");
+
+        // 1) 取 DB schema
+        var dbColumns = GetTableSchema(tableName);
+        if (dbColumns.Count == 0) return null;
+
+        // 2) 取既有 config（同 master + table）
+        var configs = await GetFieldConfigs(tableName, formMasterId);
+
+        var cfgSet = configs.Keys.ToHashSet(StringComparer.OrdinalIgnoreCase);
+
+        // 3) 差集：只補新增
+        var missing = dbColumns
+            .Where(c => !cfgSet.Contains(c.COLUMN_NAME))
+            .ToList();
+
+        if (missing.Count > 0)
+        {
+            var maxOrder = configs.Values.Any()
+                ? configs.Values.Max(x => x.FIELD_ORDER)
+                : 0;
+
+           
+                var order = maxOrder;
+
+                foreach (var col in missing)
+                {
+                    order += 1000;
+
+                    var vm = CreateDefaultFieldConfig(
+                        col.COLUMN_NAME,
+                        col.DATA_TYPE,
+                        formMasterId,
+                        tableName,
+                        order,
+                        schemaType);
+
+                    // 只針對 missing 做 upsert，既有欄位完全不動
+                    UpsertField(vm, formMasterId);
+                }
+        }
+
+        // 4) 回傳最新 Fields（含 pk / whitelist / 設定等）
+        return await GetFieldsByTableName(tableName, formMasterId, schemaType);
+    }
+    
     /// <summary>
     /// 新增或更新欄位設定，若已存在則更新，否則新增。
     /// </summary>

@@ -139,6 +139,26 @@ public class FormDesignerController : BaseController
     }
 
     /// <summary>
+    /// 同步資料表新增欄位到 FORM_FIELD_CONFIG（只補新增，不影響既有設定）
+    /// </summary>
+    [HttpPost("tables/{tableName}/fields/sync")]
+    [ProducesResponseType(typeof(FormFieldListViewModel), StatusCodes.Status200OK)]
+    [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status400BadRequest)]
+    [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status404NotFound)]
+    public async Task<IActionResult> SyncNewFields(
+        string tableName,
+        [FromQuery] Guid formMasterId,
+        [FromQuery] TableSchemaQueryType schemaType,
+        CancellationToken ct)
+    {
+        var result = await _formDesignerService.SyncNewFieldsToConfigAsync(tableName, formMasterId, schemaType, ct);
+
+        if (result == null) return NotFound();
+
+        return Ok(result);
+    }
+
+    /// <summary>
     /// 依欄位設定 ID 取得單一欄位設定 ( GetFields搜尋時就會先預先建立完成 )
     /// </summary>
     /// <param name="fieldId">FORM_FIELD_CONFIG 的ID</param>
