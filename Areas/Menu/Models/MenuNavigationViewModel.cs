@@ -8,6 +8,11 @@ namespace DCMATEH5API.Areas.Menu.Models
     {
         [JsonPropertyName("pages")]
         public Dictionary<string, PageFolderViewModel> Pages { get; set; } = new();
+
+        // --- 新增這一個欄位 ---
+        // 新增：存放所有 SourceType 為 PAGE 的扁平化清單
+        [JsonPropertyName("pageList")]
+        public List<TileViewModel> PageList { get; set; } = new();
     }
 
     // 2. 舊版單頁結構：對應 "index.html": { ... }

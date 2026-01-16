@@ -64,39 +64,42 @@ namespace DCMATEH5API.Areas.Menu.Services
         }
         public async Task<MenuResponse> GetFullMenuByLvAsync(int lv)
         {
-            // 1. 抓取所有該等級可見的原始資料 (直接複用您現有的 SQL 思路，但不卡 UserId，卡 LV)
-            var tree = await GetMenuTreeAsync(""); // 這裡可以根據需求修改為根據 LV 查詢的 SQL
-
+            // 1. 取得原始樹狀資料
+            var tree = await GetMenuTreeAsync("");
             var response = new MenuResponse();
 
-            // 2. 將樹狀結構轉換為前端需要的 Pages 字典格式
             foreach (var node in tree)
             {
-                // 假設每個根節點（如：生產管理）對應一個 index.html 頁面
+                // --- 處理原本的 Pages 字典 (MENU 層級) ---
                 var pageKey = string.IsNullOrEmpty(node.Url) ? "index.html" : node.Url;
+                var folder = new PageFolderViewModel { /* 賦值邏輯... */ };
 
-                var pageViewModel = new PageFolderViewModel
+                // --- 處理 Tiles 並同時收集到全域的 PageList ---
+                foreach (var child in node.Children)
                 {
-                    Sid = node.Id,
-                    Title = node.Title,
-                    Url = node.Url,
-                    ImgIcon = node.ImgIcon,
-                    Desc = node.Desc,
-                    Lv = node.Lv,
-                    // 關鍵：將子節點轉換為 Tiles (磁磚按鈕)
-                    Tiles = node.Children.Select(c => new TileViewModel
+                    var tile = new TileViewModel
                     {
-                        Sid = c.Id,
-                        Title = c.Title,
-                        Url = c.Url,
-                        ImgIcon = c.ImgIcon,
-                        Desc = c.Desc,
-                        Lv = c.Lv,
-                        Seq = c.SortOrder
-                    }).ToList()
-                };
+                        Sid = child.Id,
+                        Title = child.Title,
+                        Url = child.Url,
+                        ImgIcon = child.ImgIcon,
+                        Desc = child.Desc,
+                        Lv = child.Lv,
+                        Seq = child.SortOrder,
+                        Property = child.SourceType // 這裡會是 'PAGE'
+                    };
 
-                response.Pages.Add(pageKey, pageViewModel);
+                    // 1. 加入該目錄的 Tiles 陣列
+                    folder.Tiles.Add(tile);
+
+                    // 2. 如果是 PAGE，則加入全域的 PageList 陣列
+                    if (child.SourceType == "PAGE")
+                    {
+                        response.PageList.Add(tile);
+                    }
+                }
+
+                response.Pages.Add(pageKey, folder);
             }
 
             return response;
