@@ -72,5 +72,21 @@ namespace DcMateH5Api.Areas.Security.Controllers
             return StatusCode(StatusCodes.Status500InternalServerError, result);
         }
 
+        /// <summary>
+        /// 檢查並更新 Cookie 票證
+        /// </summary>
+        [HttpGet("check-auth")] // 這就是 API 的路徑名稱
+        public async Task<IActionResult> CheckAuth()
+        {
+            var result = await _authService.RefreshAuthCookieAsync();
+
+            if (result.IsSuccess)
+            {
+                return Ok(result); // 回傳成功，前端會收到新的 Cookie
+            }
+
+            return Unauthorized(result); // 回傳 401，引導前端跳轉至登入頁
+        }
+
     }
 }

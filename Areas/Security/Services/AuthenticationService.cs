@@ -21,15 +21,17 @@ public class AuthenticationService : DcMateH5Api.Areas.Security.Interfaces.IAuth
     private readonly SQLGenerateHelper _sqlHelper;
     private readonly IHttpContextAccessor _httpContextAccessor;
     private readonly IPasswordHasher _passwordHasher; // 1. 宣告加密處理器
-
+    private readonly IConfiguration _config; // 1. 宣告設定檔服務
     public AuthenticationService(
         SQLGenerateHelper sqlHelper,
         IHttpContextAccessor httpContextAccessor,
-        IPasswordHasher passwordHasher) // 2. 建構子注入
+        IPasswordHasher passwordHasher,
+        IConfiguration config) // <--- 關鍵修正：加入這行注入
     {
         _sqlHelper = sqlHelper;
         _httpContextAccessor = httpContextAccessor;
         _passwordHasher = passwordHasher;
+        _config = config; // <--- 關鍵修正：指派變數
     }
 
     /// <summary>
@@ -64,11 +66,18 @@ public class AuthenticationService : DcMateH5Api.Areas.Security.Interfaces.IAuth
         };
 
         var claimsIdentity = new ClaimsIdentity(claims, CookieAuthenticationDefaults.AuthenticationScheme);
+       
+        var authProperties = new AuthenticationProperties
+        {
+            IsPersistent = true, // 核心改動：持久化
+            ExpiresUtc = DateTimeOffset.UtcNow.AddMinutes(_config.GetValue<int>("AuthSettings:ExpireTimeSpanMinutes")),
+        };
 
         // 4. 寫入 Cookie (H5 專用)
         await _httpContextAccessor.HttpContext.SignInAsync(
-            CookieAuthenticationDefaults.AuthenticationScheme,
-            new ClaimsPrincipal(claimsIdentity));
+        CookieAuthenticationDefaults.AuthenticationScheme,
+        new ClaimsPrincipal(claimsIdentity),
+        authProperties);
 
         return Result<LoginResponseViewModel>.Ok(new LoginResponseViewModel
         {
@@ -93,5 +102,47 @@ public class AuthenticationService : DcMateH5Api.Areas.Security.Interfaces.IAuth
     public async Task<Result<LoginResponseViewModel>> AuthenticateAsync(string account, string password, CancellationToken ct = default)
     {
         return await H5LoginAsync(account, password, ct);
+    }
+
+    public async Task<Result<bool>> RefreshAuthCookieAsync()
+    {
+        // 1. 取得目前 HttpContext 中的使用者身分
+        var user = _httpContextAccessor.HttpContext.User;
+
+        if (user == null || !user.Identity.IsAuthenticated)
+        {
+            // 修正點：加上 AuthenticationErrorCode
+            return Result<bool>.Fail(AuthenticationErrorCode.UserNotFound, "身分已過期或無效");
+        }
+
+        // 3. 從現有的 Cookie 中提取資訊 (UserId, UserLV 等)
+        var userId = user.FindFirst("UserId")?.Value;
+        var userLv = user.FindFirst("UserLV")?.Value;
+        var account = user.Identity.Name;
+
+        // 4. 重新封裝 Claims
+        var claims = new List<Claim>
+    {
+        new Claim(ClaimTypes.Name, account),
+        new Claim("UserId", userId),
+        new Claim("UserLV", userLv),
+        new Claim("RefreshTime", DateTime.Now.Ticks.ToString())
+    };
+
+        var claimsIdentity = new ClaimsIdentity(claims, CookieAuthenticationDefaults.AuthenticationScheme);
+
+        var authProperties = new AuthenticationProperties
+        {
+            IsPersistent = true,
+            AllowRefresh = true
+            // 不寫 ExpiresUtc，讓它自動吃 Program.cs 的 8 小時設定
+        };
+
+        await _httpContextAccessor.HttpContext.SignInAsync(
+            CookieAuthenticationDefaults.AuthenticationScheme,
+            new ClaimsPrincipal(claimsIdentity),
+            authProperties);
+
+        return Result<bool>.Ok(true);
     }
 }

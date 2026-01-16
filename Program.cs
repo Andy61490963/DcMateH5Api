@@ -115,6 +115,8 @@ builder.Services.AddCors(options =>
 
 // -------------------- 重要：混合驗證模式 (JWT + Cookie) --------------------
 // 修改點：將 Cookie 設為預設 Scheme
+var authSettings = builder.Configuration.GetSection("AuthSettings");
+var expireMinutes = authSettings.GetValue<int>("ExpireTimeSpanMinutes");
 builder.Services
     .AddAuthentication(options =>
     {
@@ -124,6 +126,17 @@ builder.Services
     .AddCookie(options =>
     {
         options.Cookie.Name = "DcMateAuthTicket";
+
+        // 測試用：5 分鐘有效期（只要過 2.5 分鐘有操作就會更新）
+        //options.ExpireTimeSpan = TimeSpan.FromMinutes(5);
+
+        // 正式環境建議：1 小時
+        // options.ExpireTimeSpan = TimeSpan.FromHours(1); 
+
+        options.ExpireTimeSpan = TimeSpan.FromMinutes(expireMinutes); // 從設定檔讀取
+
+        options.SlidingExpiration = true;
+
         options.Events.OnRedirectToLogin = context => {
             context.Response.StatusCode = StatusCodes.Status401Unauthorized;
             return Task.CompletedTask;
