@@ -1,11 +1,3 @@
-using System.Reflection;
-using System.Text;
-using Microsoft.AspNetCore.Authentication.JwtBearer;
-using Microsoft.AspNetCore.Authorization;
-using Microsoft.Extensions.Diagnostics.HealthChecks;
-using Microsoft.IdentityModel.Tokens;
-using Microsoft.OpenApi.Models;
-using DcMateH5Api.Authorization;
 using DcMateH5Api.Areas.Form.Interfaces;
 using DcMateH5Api.Areas.Form.Interfaces.FormLogic;
 using DcMateH5Api.Areas.Form.Interfaces.Transaction;
@@ -22,23 +14,31 @@ using DcMateH5Api.Areas.RouteOperation.Services;
 using DcMateH5Api.Areas.Security.Interfaces;
 using DcMateH5Api.Areas.Security.Models;
 using DcMateH5Api.Areas.Security.Services;
+using DcMateH5Api.Authorization;
 using DcMateH5Api.DbExtensions;
 using DcMateH5Api.Helper;
 using DcMateH5Api.Services.Cache;
 using DcMateH5Api.SqlHelper;
+using Microsoft.AspNetCore.Authentication.Cookies;
+using Microsoft.AspNetCore.Authentication.JwtBearer;
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.HttpOverrides;
 using Microsoft.Data.SqlClient;
+using Microsoft.Extensions.Diagnostics.HealthChecks;
+using Microsoft.IdentityModel.Tokens;
+using Microsoft.OpenApi.Models;
+using System.Reflection;
+using DcMateClassLibrary.Helper;
+using System.Text;
 
 var builder = WebApplication.CreateBuilder(args);
 
-// 容器內對外開 5000（有 Nginx 在前面做 8081 反代）
+// 容器內對外開 5000
 builder.WebHost.UseUrls("http://0.0.0.0:5000");
 
-// -------------------- Config 讀取（有 fallback） --------------------
+// -------------------- Config 讀取 --------------------
 var config = builder.Configuration;
-
-var redisConn = builder.Configuration.GetValue<string>("Redis:Connection");
-
+var redisConn = config.GetValue<string>("Redis:Connection");
 var jwt = config.GetSection("JwtSettings").Get<JwtSettings>()
           ?? throw new InvalidOperationException("JwtSettings missing.");
 
@@ -50,7 +50,7 @@ builder.Services.Configure<FormSettings>(config.GetSection("FormSettings"));
 // -------------------- 分散式快取（Redis） --------------------
 builder.Services.AddStackExchangeRedisCache(opt =>
 {
-    opt.Configuration  = redisConn;
+    opt.Configuration = redisConn;
     opt.InstanceName = "DcMateH5Api:";
 });
 
@@ -63,19 +63,19 @@ builder.Services.AddScoped<SqlConnection, SqlConnection>(_ =>
 });
 
 // -------------------- 基礎服務 --------------------
-builder.Services.AddHttpContextAccessor();
+builder.Services.AddHttpContextAccessor(); // 僅保留這一次註冊
 
 // Db 工具
 builder.Services.AddSingleton<ISqlConnectionFactory, SqlConnectionFactory>();
 builder.Services.AddScoped<IDbExecutor, DbExecutor>();
-builder.Services.AddScoped<SQLGenerateHelper>();    
+builder.Services.AddScoped<DcMateH5Api.SqlHelper.SQLGenerateHelper>();
 
-// 核心功能
+// 核心功能註冊
 builder.Services.AddScoped<ILogService, LogService>();
 builder.Services.AddScoped<IFormDesignerService, FormDesignerService>();
-builder.Services.AddScoped<IAuthenticationService, AuthenticationService>();
+builder.Services.AddScoped<DcMateH5Api.Areas.Security.Interfaces.IAuthenticationService, DcMateH5Api.Areas.Security.Services.AuthenticationService>();
 builder.Services.AddScoped<ITokenGenerator, JwtTokenGenerator>();
-builder.Services.AddScoped<IPasswordHasher, PasswordHasher>();
+builder.Services.AddScoped<DcMateH5Api.Areas.Security.Interfaces.IPasswordHasher, DcMateH5Api.Helper.PasswordHasher>();
 builder.Services.AddScoped<IFormFieldMasterService, FormFieldMasterService>();
 builder.Services.AddScoped<ISchemaService, SchemaService>();
 builder.Services.AddScoped<IFormFieldConfigService, FormFieldConfigService>();
@@ -88,23 +88,18 @@ builder.Services.AddScoped<IFormMultipleMappingService, FormMultipleMappingServi
 builder.Services.AddScoped<IDropdownSqlSyncService, DropdownSqlSyncService>();
 builder.Services.AddScoped<IPermissionService, PermissionService>();
 
-//Menu Tree 2026-01-13 leo
+// Menu Tree
 builder.Services.AddScoped<DCMATEH5API.Areas.Menu.Services.IMenuService, DCMATEH5API.Areas.Menu.Services.MenuService>();
 
-
-// 工作站
+// 工作站與交易
 builder.Services.AddScoped<IBasRouteService, BasRouteService>();
 builder.Services.AddScoped<IBasOperationService, BasOperationService>();
 builder.Services.AddScoped<IBasConditionService, BasConditionService>();
 builder.Services.AddScoped<IRouteOperationService, RouteOperationService>();
-
-// 交易
 builder.Services.AddScoped<ITransactionService, TransactionService>();
-
-// 快取服務
 builder.Services.AddScoped<ICacheService, RedisCacheService>();
 
-// 授權（自訂 Policy/Handler）
+// 授權 Policy
 builder.Services.AddSingleton<IAuthorizationPolicyProvider, PermissionPolicyProvider>();
 builder.Services.AddScoped<IAuthorizationHandler, PermissionAuthorizationHandler>();
 
@@ -118,9 +113,22 @@ builder.Services.AddCors(options =>
          .AllowAnyHeader());
 });
 
-// -------------------- AuthN / AuthZ（JWT） --------------------
+// -------------------- 重要：混合驗證模式 (JWT + Cookie) --------------------
+// 修改點：將 Cookie 設為預設 Scheme
 builder.Services
-    .AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
+    .AddAuthentication(options =>
+    {
+        options.DefaultScheme = CookieAuthenticationDefaults.AuthenticationScheme;
+        options.DefaultChallengeScheme = CookieAuthenticationDefaults.AuthenticationScheme;
+    })
+    .AddCookie(options =>
+    {
+        options.Cookie.Name = "DcMateAuthTicket";
+        options.Events.OnRedirectToLogin = context => {
+            context.Response.StatusCode = StatusCodes.Status401Unauthorized;
+            return Task.CompletedTask;
+        };
+    })
     .AddJwtBearer(options =>
     {
         options.MapInboundClaims = false;
@@ -136,57 +144,38 @@ builder.Services
             ClockSkew = TimeSpan.Zero
         };
     });
+
 builder.Services.AddAuthorization();
 
 builder.Services.AddControllers()
     .AddJsonOptions(options =>
     {
-        options.JsonSerializerOptions.PropertyNamingPolicy = null; // 因在 ASP.NET Core 3.0 之後，內建的 System.Text.Json 預設會用 camelCase（小駝峰）序列化屬性名稱
+        options.JsonSerializerOptions.PropertyNamingPolicy = null;
     });
 
-// -------------------- 健康檢查（給 LB/Nginx） --------------------
-builder.Services.AddHealthChecks()
-    .AddCheck("self", () => HealthCheckResult.Healthy());
+// -------------------- 健康檢查 --------------------
+builder.Services.AddHealthChecks().AddCheck("self", () => HealthCheckResult.Healthy());
 
-// -------------------- Swagger（分組 + Bearer） --------------------
+// -------------------- Swagger --------------------
 var swaggerGroups = new[]
 {
-    SwaggerGroups.Form,
-    SwaggerGroups.FormWithMasterDetail,
-    SwaggerGroups.FormWithMultipleMapping,
-    SwaggerGroups.Menu,
-    SwaggerGroups.Permission,
-    SwaggerGroups.Security,
-    SwaggerGroups.Enum,
-    SwaggerGroups.ApiStatus,
-    SwaggerGroups.Log,
-    SwaggerGroups.RouteOperation
+    SwaggerGroups.Form, SwaggerGroups.FormWithMasterDetail, SwaggerGroups.FormWithMultipleMapping,
+    SwaggerGroups.Menu, SwaggerGroups.Permission, SwaggerGroups.Security,
+    SwaggerGroups.Enum, SwaggerGroups.ApiStatus, SwaggerGroups.Log, SwaggerGroups.RouteOperation
 };
 
 builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddSwaggerGen(options =>
 {
-    options.SwaggerDoc("v1", new OpenApiInfo
-    {
-        Title = "API (All)",
-        Version = "v1",
-        Description = "右上角可切換分組"
-    });
-
+    options.SwaggerDoc("v1", new OpenApiInfo { Title = "API (All)", Version = "v1" });
     foreach (var g in swaggerGroups)
     {
-        options.SwaggerDoc(g, new OpenApiInfo
-        {
-            Title = $"{SwaggerGroups.DisplayNames[g]} API",
-            Version = "v1",
-            Description = $"DcMateH5Api - {g} Controllers"
-        });
+        options.SwaggerDoc(g, new OpenApiInfo { Title = $"{SwaggerGroups.DisplayNames[g]} API", Version = "v1" });
     }
 
     var xml = $"{Assembly.GetExecutingAssembly().GetName().Name}.xml";
     var xmlPath = Path.Combine(AppContext.BaseDirectory, xml);
-    if (File.Exists(xmlPath))
-        options.IncludeXmlComments(xmlPath, includeControllerXmlComments: true);
+    if (File.Exists(xmlPath)) options.IncludeXmlComments(xmlPath);
 
     options.AddSecurityDefinition("Bearer", new OpenApiSecurityScheme
     {
@@ -197,8 +186,7 @@ builder.Services.AddSwaggerGen(options =>
         Scheme = "bearer",
         BearerFormat = "JWT"
     });
-    options.AddSecurityRequirement(new OpenApiSecurityRequirement
-    {
+    options.AddSecurityRequirement(new OpenApiSecurityRequirement {
         {
             new OpenApiSecurityScheme {
                 Reference = new OpenApiReference { Type = ReferenceType.SecurityScheme, Id = "Bearer" }
@@ -207,8 +195,7 @@ builder.Services.AddSwaggerGen(options =>
         }
     });
 
-    options.DocInclusionPredicate((doc, api) =>
-        doc == "v1" || string.Equals(api.GroupName, doc, StringComparison.OrdinalIgnoreCase));
+    options.DocInclusionPredicate((doc, api) => doc == "v1" || string.Equals(api.GroupName, doc, StringComparison.OrdinalIgnoreCase));
 });
 
 // =====================================================================
@@ -220,37 +207,23 @@ app.UseForwardedHeaders(new ForwardedHeadersOptions
     ForwardedHeaders = ForwardedHeaders.XForwardedProto | ForwardedHeaders.XForwardedHost
 });
 
-app.UseRouting();            // 沒有它 CORS 很容易沒套用到 endpoint
-
-app.UseCors(CorsPolicy);     // 放在 Routing 後、Auth 前
-
-// 懶得在 controller裡面包一堆 try catch
+app.UseRouting();
+app.UseCors(CorsPolicy);
 app.UseMiddleware<GlobalExceptionMiddleware>();
 
-// 測試 PR 審核有沒有啟用的註解
 app.UseAuthentication();
 app.UseAuthorization();
 
 app.UseSwagger();
-
 app.UseSwaggerUI(options =>
 {
     options.SwaggerEndpoint("swagger/v1/swagger.json", "All APIs v1");
     foreach (var g in swaggerGroups)
         options.SwaggerEndpoint($"swagger/{g}/swagger.json", $"{g} API v1");
-
     options.RoutePrefix = string.Empty;
 });
 
-
-// Area + Controllers
-// app.MapControllerRoute(
-//     name: "areas",
-//     pattern: "{area:exists}/{controller=Home}/{action=Index}/{id?}");
-
 app.MapControllers();
-
-// 健康檢查端點
 app.MapHealthChecks("/healthz");
 
 app.Run();

@@ -1,5 +1,6 @@
-using System.Security.Cryptography;
 using DcMateH5Api.Areas.Security.Interfaces;
+using System.Security.Cryptography;
+using System.Text;
 
 namespace DcMateH5Api.Helper
 {
@@ -98,14 +99,82 @@ namespace DcMateH5Api.Helper
         /// <returns>是否驗證成功</returns>
         public bool VerifyPassword(string password, string storedHash, string storedSalt)
         {
-            // 使用同一個 Salt 重新計算 Hash
-            var hashToCompare = HashPassword(password, storedSalt);
+            //// 使用同一個 Salt 重新計算 Hash
+            //var hashToCompare = HashPassword(password, storedSalt);
 
-            var storedHashBytes = Convert.FromBase64String(storedHash);
-            var hashBytes = Convert.FromBase64String(hashToCompare);
+            //var storedHashBytes = Convert.FromBase64String(storedHash);
+            //var hashBytes = Convert.FromBase64String(hashToCompare);
 
-            // 使用固定時間比較，避免 timing attack
-            return CryptographicOperations.FixedTimeEquals(storedHashBytes, hashBytes);
+            //// 使用固定時間比較，避免 timing attack
+            //return CryptographicOperations.FixedTimeEquals(storedHashBytes, hashBytes);
+            return WeYuVerifyPassword(password, storedHash, storedSalt);
+        }
+
+        public string WeYuHashPassword(string password, string salt)
+        {
+            // 呼叫您提到的 DLL 加密方法
+            // 例如：return WeYudll.Encrypt(password, salt);
+            return "DLL運算的加密結果";
+        }
+
+        /// <summary>
+        /// 驗證舊系統的 AES 加密密碼
+        /// </summary>
+        /// <param name="inputPassword">使用者輸入的明文密碼</param>
+        /// <param name="storedHash">資料庫中的 SECOND_PWD 欄位 (密文)</param>
+        /// <param name="salt">資料庫中的 PWD 欄位 (作為解密用的 Salt)</param>
+        /// <returns>驗證是否成功</returns>
+        public bool WeYuVerifyPassword(string inputPassword, string storedHash, string salt)
+        {
+            // 預防資料庫欄位為 null 或 PWD (salt) 長度不足導致 Substring 崩潰
+            if (string.IsNullOrEmpty(storedHash) || string.IsNullOrEmpty(salt) || salt.Length < 9)
+            {
+                return false;
+            }
+
+            try
+            {
+                // 1. 設定舊系統固定的內部密鑰
+                string internalKey = "WeYuTech";
+
+                // 2. 舊系統邏輯：拿 PWD 欄位的前 9 位當作 Salt 進行衍生
+                byte[] saltBytes = Encoding.UTF8.GetBytes(salt.Substring(0, 9));
+
+                // 3. 修正過時警告：明確指定 SHA1 (與舊系統保持一致) 與 迭代次數
+                // 舊版預設迭代次數為 1000
+                using var keyGenerator = new Rfc2898DeriveBytes(internalKey, saltBytes, 1000, HashAlgorithmName.SHA1);
+
+                // 4. 使用 Aes 進行解密 (取代過時的 RijndaelManaged)
+                using Aes aes = Aes.Create();
+                aes.KeySize = 128;
+                aes.BlockSize = 128;
+                aes.Mode = CipherMode.CBC;
+                aes.Padding = PaddingMode.PKCS7;
+
+                aes.Key = keyGenerator.GetBytes(16);
+                aes.IV = keyGenerator.GetBytes(16);
+
+                // 5. 執行解密流程
+                ICryptoTransform decryptor = aes.CreateDecryptor();
+                byte[] encryptBytes = Convert.FromBase64String(storedHash);
+
+                using MemoryStream memoryStream = new MemoryStream();
+                using (CryptoStream cryptoStream = new CryptoStream(memoryStream, decryptor, CryptoStreamMode.Write))
+                {
+                    cryptoStream.Write(encryptBytes, 0, encryptBytes.Length);
+                    cryptoStream.Flush();
+                }
+
+                // 6. 比對解密後的明文與輸入密碼
+                byte[] decryptBytes = memoryStream.ToArray();
+                string decryptedData = Encoding.UTF8.GetString(decryptBytes);
+
+                return decryptedData == inputPassword;
+            }
+            catch
+            {
+                return false;
+            }
         }
     }
 }

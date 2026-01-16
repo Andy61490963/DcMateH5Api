@@ -1,4 +1,5 @@
-﻿using DcMateH5Api.Areas.Security.Interfaces;
+﻿using DcMateClassLibrary.Helper;
+using DcMateH5Api.Areas.Security.Interfaces;
 using DcMateH5Api.Areas.Security.Models;
 using DcMateH5Api.Areas.Security.ViewModels;
 
@@ -10,12 +11,11 @@ public class UserAccountMapper
     {
         return new UserAccount
         {
-            Id = Guid.NewGuid(),               
+            Id = IdHelper.GenerateNumericId(),
             Account = dto.Account.Trim(),
             Name = dto.Account.Trim(),
             PasswordSalt = salt,
             PasswordHash = hasher.HashPassword(dto.Password, salt),
-            Role = "Admin"
         };
     }
 }
