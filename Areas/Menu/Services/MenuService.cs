@@ -64,64 +64,54 @@ namespace DCMATEH5API.Areas.Menu.Services
         }
         public async Task<MenuResponse> GetFullMenuByLvAsync(int lv)
         {
-            // 1. 取得原始樹狀資料 (已包含層級關係)
             var tree = await GetMenuTreeAsync("");
             var response = new MenuResponse();
 
-            // 2. 手動建立「首頁」節點 (Hardcode index.html)
-            var rootPage = new PageFolderViewModel
-            {
-                Title = "首頁",
-                Url = "index.html",
-                PageKind = "MENU",
-                Sid = "", // 首頁通常沒有實體 SID
-                Lv = 0,
-                Tiles = new List<TileViewModel>()
-            };
+            // 1. 手動建立「首頁」
+            var rootPage = new PageFolderViewModel { Title = "首頁", Url = "index.html", Tiles = new List<TileViewModel>() };
 
             foreach (var node in tree)
             {
-                // --- 規則 A：如果 node 是最頂層 (ParentId 為 0000...) ---
-                // 將它轉換為「首頁」裡面的磁磚 (Tiles)
+                // --- 修正 A：首頁磁磚 (Tiles) 也要帶入 Parameter ---
                 rootPage.Tiles.Add(new TileViewModel
                 {
                     Sid = node.Id,
                     Title = node.Title,
                     Url = node.Url,
+                    Parameter = node.Parameter, // <-- 加入這一行
                     ImgIcon = node.ImgIcon,
                     Seq = node.SortOrder,
-                    Lv = node.Lv,
-                    Property = "MENU"
+                    Lv = node.Lv
                 });
 
-                // --- 規則 B：為每個頂層節點建立它自己的頁面入口 ---
-                // 這是為了讓使用者點擊「KANBAN」後，能進入該目錄查看內部的 PAGE
                 var folderKey = string.IsNullOrEmpty(node.Url) ? $"{node.Title}/index.html" : node.Url;
 
+                // --- 修正 B：目錄頁面 (Folder) 帶入 Parameter ---
                 var folder = new PageFolderViewModel
                 {
                     Sid = node.Id,
                     Title = node.Title,
                     Url = node.Url,
+                    Parameter = node.Parameter, // <-- 加入這一行
                     ImgIcon = node.ImgIcon,
                     Lv = node.Lv,
+                    // --- 修正 C：子頁面磁磚 (Tiles) 帶入 Parameter ---
                     Tiles = node.Children.Select(c => new TileViewModel
                     {
                         Sid = c.Id,
                         Title = c.Title,
                         Url = c.Url,
+                        Parameter = c.Parameter, // <-- 加入這一行
                         ImgIcon = c.ImgIcon,
                         Seq = c.SortOrder,
-                        Lv = c.Lv,
-                        Property = c.SourceType // 區分是 MENU 還是 PAGE
+                        Lv = c.Lv
                     }).ToList()
                 };
 
-                // 加入字典 (例如：MES-ADM/index.html)
                 if (!response.Pages.ContainsKey(folderKey))
                     response.Pages.Add(folderKey, folder);
 
-                // --- 規則 C：同時收集所有 SourceType 為 PAGE 的到全域 PageList ---
+                // --- 修正 D：全域 PageList 也要帶入 Parameter ---
                 foreach (var child in node.Children.Where(x => x.SourceType == "PAGE"))
                 {
                     response.PageList.Add(new TileViewModel
@@ -129,14 +119,13 @@ namespace DCMATEH5API.Areas.Menu.Services
                         Sid = child.Id,
                         Title = child.Title,
                         Url = child.Url,
+                        Parameter = child.Parameter, // <-- 加入這一行
                         ImgIcon = child.ImgIcon
                     });
                 }
             }
 
-            // 最後：把最重要的「首頁」塞進 Dictionary 最前面
             response.Pages.Add("index.html", rootPage);
-
             return response;
         }
 
