@@ -127,6 +127,8 @@ builder.Services
     {
         options.Cookie.Name = "DcMateAuthTicket";
 
+        // --- 關鍵修正：將 Cookie 作用域擴大到整個 IP ---
+        options.Cookie.Path = "/";
         // 測試用：5 分鐘有效期（只要過 2.5 分鐘有操作就會更新）
         //options.ExpireTimeSpan = TimeSpan.FromMinutes(5);
 
