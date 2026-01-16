@@ -5,6 +5,7 @@ using DcMateH5Api.Areas.Security.Models;
 using DcMateH5Api.Areas.Security.ViewModels;
 using DcMateH5Api.Models;
 using DcMateH5Api.SqlHelper;
+using DCMATEH5API.Areas.Menu.Services;
 using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.Authentication.Cookies;
 using Microsoft.AspNetCore.Http;
@@ -22,16 +23,19 @@ public class AuthenticationService : DcMateH5Api.Areas.Security.Interfaces.IAuth
     private readonly IHttpContextAccessor _httpContextAccessor;
     private readonly IPasswordHasher _passwordHasher; // 1. 宣告加密處理器
     private readonly IConfiguration _config; // 1. 宣告設定檔服務
+    private readonly IMenuService _menuService;
     public AuthenticationService(
         SQLGenerateHelper sqlHelper,
         IHttpContextAccessor httpContextAccessor,
         IPasswordHasher passwordHasher,
-        IConfiguration config) // <--- 關鍵修正：加入這行注入
+        IConfiguration config,
+        IMenuService menuService) // <--- 關鍵修正：加入這行注入
     {
         _sqlHelper = sqlHelper;
         _httpContextAccessor = httpContextAccessor;
         _passwordHasher = passwordHasher;
-        _config = config; // <--- 關鍵修正：指派變數
+        _config = config; 
+        _menuService = menuService;
     }
 
     /// <summary>
@@ -79,12 +83,17 @@ public class AuthenticationService : DcMateH5Api.Areas.Security.Interfaces.IAuth
         new ClaimsPrincipal(claimsIdentity),
         authProperties);
 
+        // 1. 呼叫選單服務 (假設您的 IMenuService 回傳的就是 MenuResponse)
+        var menuData = await _menuService.GetFullMenuByLvAsync(user.LV ?? 0);
+
+        // 2. 封裝並回傳
         return Result<LoginResponseViewModel>.Ok(new LoginResponseViewModel
         {
             User = user.Account,
-            LV = userLv,
+            LV = user.LV?.ToString() ?? "0",
             Sid = user.Id.ToString(),
-            Token = "COOKIE_AUTH_SUCCESS"
+            Token = "COOKIE_AUTH_SUCCESS",
+            Menus = menuData // <--- 這裡就會包含 "pages" 的 Dictionary 結構
         });
     }
 

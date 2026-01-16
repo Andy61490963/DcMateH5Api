@@ -1,24 +1,27 @@
 using DcMateH5Api.Areas.Security.Models;
 using DcMateH5Api.Models;
+using System.Collections.Generic; // 務必引用，才能使用 List
 
 namespace DcMateH5Api.Areas.Security.ViewModels;
+using DCMATEH5API.Areas.Menu.Models;
 
 public class LoginResponseViewModel
 {
-    // 1. 補齊你需要的欄位
     public string User { get; set; } = string.Empty;
     public string LV { get; set; } = string.Empty;
     public string Token { get; set; } = string.Empty;
     public string Sid { get; set; } = string.Empty;
 
-    // 2. 新增：無參數構造函數 (解決 CS7036 報錯)
+    // --- 新增：存放選單樹狀結構的欄位 ---
+    // 這裡的 MenuNode 是您在 Menu 模組定義的類別
+    public MenuResponse Menus { get; set; } = new();
+
     public LoginResponseViewModel() { }
 
-    // 3. 保留：原本同事寫的構造函數 (選配，若其他地方有用到就留著)
     public LoginResponseViewModel(UserAccount user, TokenResult? token)
     {
         this.User = user.Account;
-        this.LV = "2";
+        this.LV = user.LV?.ToString() ?? "0"; // 建議這裡改為動取抓取 user.LV，不要寫死 "2"
         this.Sid = user.Id.ToString();
         this.Token = token?.Token ?? "";
     }
