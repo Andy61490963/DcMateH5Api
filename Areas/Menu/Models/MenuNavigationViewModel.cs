@@ -6,13 +6,11 @@ namespace DCMATEH5API.Areas.Menu.Models
     // 1. 最外層容器：對應 JSON 的 "pages"
     public class MenuResponse
     {
-        [JsonPropertyName("pages")]
-        public Dictionary<string, PageFolderViewModel> Pages { get; set; } = new();
+        // 將原本的 public Dictionary<string, PageFolderViewModel> Pages 修改如下
+        public Dictionary<string, PageFolderViewModel> MenuList { get; set; } = new Dictionary<string, PageFolderViewModel>();
 
-        // --- 新增這一個欄位 ---
-        // 新增：存放所有 SourceType 為 PAGE 的扁平化清單
-        [JsonPropertyName("pageList")]
-        public List<TileViewModel> PageList { get; set; } = new();
+        // PageList 通常存放扁平化的頁面清單，用於快速搜尋
+        public List<TileViewModel> PageList { get; set; } = new List<TileViewModel>();
     }
 
     // 2. 舊版單頁結構：對應 "index.html": { ... }

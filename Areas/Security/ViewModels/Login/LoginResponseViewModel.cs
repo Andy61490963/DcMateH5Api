@@ -12,6 +12,10 @@ public class LoginResponseViewModel
     public string Token { get; set; } = string.Empty;
     public string Sid { get; set; } = string.Empty;
 
+    // 新增：起始時間
+    public string ExpiresFrom { get; set; }
+    public string ExpiresTo { get; set; }
+
     // --- 新增：存放選單樹狀結構的欄位 ---
     // 這裡的 MenuNode 是您在 Menu 模組定義的類別
     public MenuResponse Menus { get; set; } = new();

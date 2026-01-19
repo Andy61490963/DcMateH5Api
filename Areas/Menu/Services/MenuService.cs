@@ -67,13 +67,14 @@ namespace DCMATEH5API.Areas.Menu.Services
             var tree = await GetMenuTreeAsync("");
             var response = new MenuResponse();
 
-            // 1. 手動建立「首頁」
             var rootPage = new PageFolderViewModel { Title = "首頁", Url = "index.html", Tiles = new List<TileViewModel>() };
 
-            // 2. 呼叫遞迴函式來填充 response.Pages 與 rootPage.Tiles
+            // 呼叫遞迴填充
             FillPagesRecursive(tree, response, rootPage.Tiles);
 
-            response.Pages.Add("index.html", rootPage);
+            // 修改處：將 response.Pages 改為 response.MenuList
+            response.MenuList.Add("index.html", rootPage);
+
             return response;
         }
 
@@ -119,8 +120,9 @@ namespace DCMATEH5API.Areas.Menu.Services
                         FillPagesRecursive(node.Children, response, folder.Tiles);
                     }
 
-                    if (!response.Pages.ContainsKey(targetUrl))
-                        response.Pages.Add(targetUrl, folder);
+                    // 修改處：將 response.Pages 改為 response.MenuList
+                    if (!response.MenuList.ContainsKey(targetUrl))
+                        response.MenuList.Add(targetUrl, folder);
                 }
                 else if (node.SourceType == "PAGE")
                 {

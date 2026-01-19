@@ -33,7 +33,7 @@ namespace DCMATEH5API.Areas.Menu.Controllers
             var finalResult = new MenuResponse();
 
             // 預設首頁入口
-            finalResult.Pages["index.html"] = new PageFolderViewModel
+            finalResult.MenuList["index.html"] = new PageFolderViewModel
             {
                 Title = "首頁",
                 Url = "index.html",
@@ -53,7 +53,7 @@ namespace DCMATEH5API.Areas.Menu.Controllers
             };
 
             // 遞迴將樹狀平鋪到 Dictionary 中
-            FillPagesDictionary(tree, finalResult.Pages);
+            FillPagesDictionary(tree, finalResult.MenuList);
 
             // --- 修正：回傳真實的 user 與 LV ---
             return Ok(new MenuResult

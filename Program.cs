@@ -1,3 +1,4 @@
+using DcMateClassLibrary.Helper;
 using DcMateH5Api.Areas.Form.Interfaces;
 using DcMateH5Api.Areas.Form.Interfaces.FormLogic;
 using DcMateH5Api.Areas.Form.Interfaces.Transaction;
@@ -22,13 +23,13 @@ using DcMateH5Api.SqlHelper;
 using Microsoft.AspNetCore.Authentication.Cookies;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.AspNetCore.Authorization;
+using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.HttpOverrides;
 using Microsoft.Data.SqlClient;
 using Microsoft.Extensions.Diagnostics.HealthChecks;
 using Microsoft.IdentityModel.Tokens;
 using Microsoft.OpenApi.Models;
 using System.Reflection;
-using DcMateClassLibrary.Helper;
 using System.Text;
 
 var builder = WebApplication.CreateBuilder(args);
@@ -138,24 +139,34 @@ builder.Services
     .AddCookie(options =>
     {
         options.Cookie.Name = "DcMateAuthTicket";
-
-        // --- 關鍵修正 1：將作用域擴大到整個 IP ---
         options.Cookie.Path = "/";
 
-        // --- 關鍵修正 2：確保在非加密 (HTTP) 與跨 IP 環境下能儲存 Cookie ---
-        // 讓瀏覽器在跨站請求時仍允許傳送 Cookie
+        // 保持您的安全設定，相容集中式佈署 (HTTP 同源)
         options.Cookie.SameSite = SameSiteMode.Lax;
-        // 允許在 HTTP 環境下傳送，避免被瀏覽器因安全原則拒收
         options.Cookie.SecurePolicy = CookieSecurePolicy.SameAsRequest;
 
-        // 設定有效期 (由 appsettings.json 讀取)
         options.ExpireTimeSpan = TimeSpan.FromMinutes(expireMinutes);
         options.SlidingExpiration = true;
 
-        // 針對 API 調整：當未授權時回傳 401 而非導向登入頁
-        options.Events.OnRedirectToLogin = context => {
-            context.Response.StatusCode = StatusCodes.Status401Unauthorized;
-            return Task.CompletedTask;
+        options.Events = new CookieAuthenticationEvents
+        {
+            // 修正重點：Cookie 驗證中，攔截請求的正確事件是 OnValidatePrincipal
+            OnValidatePrincipal = context =>
+            {
+                // 如果 Cookie 沒抓到，我們張開眼睛去看看 Header 有沒有
+                if (!context.Principal.Identity.IsAuthenticated)
+                {
+                    // 這裡的邏輯需要配合自定義的 Middleware 處理更順暢
+                }
+                return Task.CompletedTask;
+            },
+
+            // 針對 API 調整：未授權回傳 401
+            OnRedirectToLogin = context =>
+            {
+                context.Response.StatusCode = StatusCodes.Status401Unauthorized;
+                return Task.CompletedTask;
+            }
         };
     })
     .AddJwtBearer(options =>
@@ -215,6 +226,32 @@ builder.Services.AddSwaggerGen(options =>
         Scheme = "bearer",
         BearerFormat = "JWT"
     });
+
+    // 1. 加入您的 ManualToken 定義
+    options.AddSecurityDefinition("ManualToken", new OpenApiSecurityScheme
+    {
+        Name = "X-Auth-Token",
+        In = ParameterLocation.Header,
+        Type = SecuritySchemeType.ApiKey,
+        Description = "請輸入登入回傳的加密金鑰 (Token)"
+    });
+
+    // 2. 關鍵修正：將原本的 AddSecurityRequirement 替換為包含兩者的組合
+    options.AddSecurityRequirement(new OpenApiSecurityRequirement {
+        {
+            new OpenApiSecurityScheme {
+                Reference = new OpenApiReference { Type = ReferenceType.SecurityScheme, Id = "ManualToken" }
+            },
+            Array.Empty<string>()
+        },
+        {
+            new OpenApiSecurityScheme {
+                Reference = new OpenApiReference { Type = ReferenceType.SecurityScheme, Id = "Bearer" }
+            },
+            Array.Empty<string>()
+        }
+    });
+
     options.AddSecurityRequirement(new OpenApiSecurityRequirement {
         {
             new OpenApiSecurityScheme {
@@ -245,6 +282,19 @@ app.UseForwardedHeaders(new ForwardedHeadersOptions
 app.UseRouting();
 //app.UseCors(CorsPolicy);
 app.UseMiddleware<GlobalExceptionMiddleware>();
+
+// --- 核心改動：將 Header Token 轉入 Cookie 字串中 ---
+app.Use(async (context, next) =>
+{
+    // 1. 檢查 Header 是否有傳入 Token
+    if (context.Request.Headers.TryGetValue("X-Auth-Token", out var token) && !string.IsNullOrEmpty(token))
+    {
+        // 2. 終極方案：直接在 Request Header 的 "Cookie" 欄位中注入金鑰字串
+        // 這就像是在信封袋外面貼上標籤，後續的驗證機制一定能張開眼睛讀取到它
+        context.Request.Headers.Append("Cookie", $"DcMateAuthTicket={token}");
+    }
+    await next();
+});
 
 app.UseAuthentication();
 app.UseAuthorization();

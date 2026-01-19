@@ -43,17 +43,17 @@ public class AuthenticationService : DcMateH5Api.Areas.Security.Interfaces.IAuth
     /// </summary>
     public async Task<Result<LoginResponseViewModel>> H5LoginAsync(string account, string password, CancellationToken ct = default)
     {
-        // 1. 查詢資料庫：只根據帳號查詢
+        //  查詢資料庫：只根據帳號查詢
         var where = new WhereBuilder<UserAccount>()
             .AndEq(x => x.Account, account);
 
         var user = await _sqlHelper.SelectFirstOrDefaultAsync(where, ct);
 
-        // 2. 驗證帳號是否存在
+        //  驗證帳號是否存在
         if (user == null)
             return Result<LoginResponseViewModel>.Fail(AuthenticationErrorCode.UserNotFound, "帳號或密碼錯誤");
 
-        // 3. 密碼驗證：呼叫 PasswordHasher 執行 加解密邏輯
+        //  密碼驗證：呼叫 PasswordHasher 執行 加解密邏輯
         bool isValid = _passwordHasher.VerifyPassword(password, user.PasswordHash, user.PasswordSalt);
 
         if (!isValid)
@@ -77,23 +77,43 @@ public class AuthenticationService : DcMateH5Api.Areas.Security.Interfaces.IAuth
             ExpiresUtc = DateTimeOffset.UtcNow.AddMinutes(_config.GetValue<int>("AuthSettings:ExpireTimeSpanMinutes")),
         };
 
-        // 4. 寫入 Cookie (H5 專用)
+        // --- 1. 執行登入 (這會讓系統在 Response Header 產生 Cookie) ---
         await _httpContextAccessor.HttpContext.SignInAsync(
-        CookieAuthenticationDefaults.AuthenticationScheme,
-        new ClaimsPrincipal(claimsIdentity),
-        authProperties);
+            CookieAuthenticationDefaults.AuthenticationScheme,
+            new ClaimsPrincipal(claimsIdentity),
+            authProperties);
 
-        // 1. 呼叫選單服務 (假設您的 IMenuService 回傳的就是 MenuResponse)
+        // --- 2. 抓取加密的 Ticket ---
+        var setCookieHeader = _httpContextAccessor.HttpContext.Response.Headers["Set-Cookie"].ToString();
+        // 只取 DcMateAuthTicket=... 的部分，並去掉名稱，只留純金鑰
+        string encryptedTicket = string.Empty;
+        if (!string.IsNullOrEmpty(setCookieHeader))
+        {
+            var ticketPart = setCookieHeader.Split(';')[0]; // 取得 "DcMateAuthTicket=CfDJ8..."
+            encryptedTicket = ticketPart.Replace("DcMateAuthTicket=", ""); // 只保留純亂碼金鑰
+        }
+
+        // --- 3. 計算明碼有效期 (與 authProperties 同步) ---
+        // 將過期時間轉換為 ISO 格式字串，方便前端 JS 解析
+        string expiresFrom = DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss"); // 現在時間
+        string expiresTo = authProperties.ExpiresUtc?.ToString("yyyy-MM-dd HH:mm:ss") ?? "";
+
+        // 呼叫選單服務 (假設您的 IMenuService 回傳的就是 MenuResponse)
         var menuData = await _menuService.GetFullMenuByLvAsync(user.LV ?? 0);
 
-        // 2. 封裝並回傳
+        // --- 4. 封裝並回傳 ---
         return Result<LoginResponseViewModel>.Ok(new LoginResponseViewModel
         {
             User = user.Account,
             LV = user.LV?.ToString() ?? "0",
             Sid = user.Id.ToString(),
-            Token = "COOKIE_AUTH_SUCCESS",
-            Menus = menuData // <--- 這裡就會包含 "pages" 的 Dictionary 結構
+            // 回傳加密金鑰給前端存 localStorage
+            Token = encryptedTicket,
+            // 新增：回傳明碼有效期
+            ExpiresFrom = expiresFrom,
+            ExpiresTo = expiresTo,
+            // 回傳您改名後的 MenuList 字典
+            Menus = menuData
         });
     }
 
