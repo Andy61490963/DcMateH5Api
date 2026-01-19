@@ -70,68 +70,72 @@ namespace DCMATEH5API.Areas.Menu.Services
             // 1. 手動建立「首頁」
             var rootPage = new PageFolderViewModel { Title = "首頁", Url = "index.html", Tiles = new List<TileViewModel>() };
 
-            foreach (var node in tree)
+            // 2. 呼叫遞迴函式來填充 response.Pages 與 rootPage.Tiles
+            FillPagesRecursive(tree, response, rootPage.Tiles);
+
+            response.Pages.Add("index.html", rootPage);
+            return response;
+        }
+
+        // 新增遞迴輔助方法
+        private void FillPagesRecursive(List<MenuNavigationViewModel> nodes, MenuResponse response, List<TileViewModel> parentTiles)
+        {
+            foreach (var node in nodes)
             {
-                // --- 修正 A：首頁磁磚 (Tiles) 也要帶入 Parameter ---
-                rootPage.Tiles.Add(new TileViewModel
+                // 統一生成 Key 值邏輯
+                var targetUrl = string.IsNullOrEmpty(node.Url) ? $"{node.Title}/index.html" : node.Url;
+
+                // 加入父層的磁磚清單
+                parentTiles.Add(new TileViewModel
                 {
                     Sid = node.Id,
                     Title = node.Title,
-                    Url = node.Url,
-                    Parameter = node.Parameter, // <-- 加入這一行
+                    Url = targetUrl,
+                    Parameter = node.Parameter,
                     Property = node.SourceType,
                     ImgIcon = node.ImgIcon,
                     Seq = node.SortOrder,
                     Lv = node.Lv
                 });
 
-                var folderKey = string.IsNullOrEmpty(node.Url) ? $"{node.Title}/index.html" : node.Url;
-
-                // --- 修正 B：目錄頁面 (Folder) 帶入 Parameter ---
-                var folder = new PageFolderViewModel
+                // 核心修正：只要是 MENU，不論在哪一層，都要在 Pages 字典長出內容
+                if (node.SourceType == "MENU")
                 {
-                    Sid = node.Id,
-                    Title = node.Title,
-                    Url = node.Url,
-                    Parameter = node.Parameter, // <-- 加入這一行
-                    Property = node.SourceType,
-                    ImgIcon = node.ImgIcon,
-                    Lv = node.Lv,
-                    // --- 修正 C：子頁面磁磚 (Tiles) 帶入 Parameter ---
-                    Tiles = node.Children.Select(c => new TileViewModel
+                    var folder = new PageFolderViewModel
                     {
-                        Sid = c.Id,
-                        Title = c.Title,
-                        Url = c.Url,
-                        Parameter = c.Parameter, // <-- 加入這一行
-                        Property = c.SourceType,
-                        ImgIcon = c.ImgIcon,
-                        Seq = c.SortOrder,
-                        Lv = c.Lv
-                    }).ToList()
-                };
+                        Sid = node.Id,
+                        Title = node.Title,
+                        Url = node.Url,
+                        Parameter = node.Parameter,
+                        Property = node.SourceType,
+                        ImgIcon = node.ImgIcon,
+                        Lv = node.Lv,
+                        Tiles = new List<TileViewModel>()
+                    };
 
-                if (!response.Pages.ContainsKey(folderKey))
-                    response.Pages.Add(folderKey, folder);
+                    // 繼續往下層遞迴處理子項目，並將結果存入目前 folder 的 Tiles 中
+                    if (node.Children != null && node.Children.Any())
+                    {
+                        FillPagesRecursive(node.Children, response, folder.Tiles);
+                    }
 
-                // --- 修正 D：全域 PageList 也要帶入 Parameter ---
-                foreach (var child in node.Children.Where(x => x.SourceType == "PAGE"))
+                    if (!response.Pages.ContainsKey(targetUrl))
+                        response.Pages.Add(targetUrl, folder);
+                }
+                else if (node.SourceType == "PAGE")
                 {
+                    // 如果是 PAGE，則加入全域的 PageList
                     response.PageList.Add(new TileViewModel
                     {
-                        Sid = child.Id,
-                        Title = child.Title,
-                        Url = child.Url,
-                        Parameter = child.Parameter, // <-- 加入這一行
-                        Property = child.SourceType, // <-- 關鍵：這裡必須是 PAGE
-                        ImgIcon = child.ImgIcon
+                        Sid = node.Id,
+                        Title = node.Title,
+                        Url = node.Url,
+                        Parameter = node.Parameter,
+                        Property = node.SourceType,
+                        ImgIcon = node.ImgIcon
                     });
                 }
             }
-
-            response.Pages.Add("index.html", rootPage);
-            return response;
         }
-
     }
 }
