@@ -33,6 +33,18 @@ using System.Text;
 
 var builder = WebApplication.CreateBuilder(args);
 
+// 註冊 CORS 服務
+builder.Services.AddCors(options =>
+{
+    options.AddPolicy("CorsPolicy", p =>
+    {
+        p.SetIsOriginAllowed(origin => true) // 動態允許所有來源
+         .AllowAnyMethod()
+         .AllowAnyHeader()
+         .AllowCredentials(); // 允許跨 IP 存取 Cookie
+    });
+});
+
 // 容器內對外開 5000
 builder.WebHost.UseUrls("http://0.0.0.0:5000");
 
@@ -104,14 +116,14 @@ builder.Services.AddSingleton<IAuthorizationPolicyProvider, PermissionPolicyProv
 builder.Services.AddScoped<IAuthorizationHandler, PermissionAuthorizationHandler>();
 
 // -------------------- CORS --------------------
-const string CorsPolicy = "AllowAll";
-builder.Services.AddCors(options =>
-{
-    options.AddPolicy(CorsPolicy, p =>
-        p.AllowAnyOrigin()
-         .AllowAnyMethod()
-         .AllowAnyHeader());
-});
+//const string CorsPolicy = "AllowAll";
+//builder.Services.AddCors(options =>
+//{
+//    options.AddPolicy(CorsPolicy, p =>
+//        p.AllowAnyOrigin()
+//         .AllowAnyMethod()
+//         .AllowAnyHeader());
+//});
 
 // -------------------- 重要：混合驗證模式 (JWT + Cookie) --------------------
 // 修改點：將 Cookie 設為預設 Scheme
@@ -127,18 +139,20 @@ builder.Services
     {
         options.Cookie.Name = "DcMateAuthTicket";
 
-        // --- 關鍵修正：將 Cookie 作用域擴大到整個 IP ---
+        // --- 關鍵修正 1：將作用域擴大到整個 IP ---
         options.Cookie.Path = "/";
-        // 測試用：5 分鐘有效期（只要過 2.5 分鐘有操作就會更新）
-        //options.ExpireTimeSpan = TimeSpan.FromMinutes(5);
 
-        // 正式環境建議：1 小時
-        // options.ExpireTimeSpan = TimeSpan.FromHours(1); 
+        // --- 關鍵修正 2：確保在非加密 (HTTP) 與跨 IP 環境下能儲存 Cookie ---
+        // 讓瀏覽器在跨站請求時仍允許傳送 Cookie
+        options.Cookie.SameSite = SameSiteMode.Lax;
+        // 允許在 HTTP 環境下傳送，避免被瀏覽器因安全原則拒收
+        options.Cookie.SecurePolicy = CookieSecurePolicy.SameAsRequest;
 
-        options.ExpireTimeSpan = TimeSpan.FromMinutes(expireMinutes); // 從設定檔讀取
-
+        // 設定有效期 (由 appsettings.json 讀取)
+        options.ExpireTimeSpan = TimeSpan.FromMinutes(expireMinutes);
         options.SlidingExpiration = true;
 
+        // 針對 API 調整：當未授權時回傳 401 而非導向登入頁
         options.Events.OnRedirectToLogin = context => {
             context.Response.StatusCode = StatusCodes.Status401Unauthorized;
             return Task.CompletedTask;
@@ -217,13 +231,19 @@ builder.Services.AddSwaggerGen(options =>
 
 var app = builder.Build();
 
+// --- 加入這兩行 ---
+app.UseDefaultFiles(); // 讓系統自動找 index.html
+app.UseStaticFiles();  // 啟用 wwwroot 靜態檔案支援
+
+// 關鍵順序：必須在 Authentication 之前啟用
+app.UseCors("CorsPolicy");
 app.UseForwardedHeaders(new ForwardedHeadersOptions
 {
     ForwardedHeaders = ForwardedHeaders.XForwardedProto | ForwardedHeaders.XForwardedHost
 });
 
 app.UseRouting();
-app.UseCors(CorsPolicy);
+//app.UseCors(CorsPolicy);
 app.UseMiddleware<GlobalExceptionMiddleware>();
 
 app.UseAuthentication();

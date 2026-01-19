@@ -79,6 +79,7 @@ namespace DCMATEH5API.Areas.Menu.Services
                     Title = node.Title,
                     Url = node.Url,
                     Parameter = node.Parameter, // <-- 加入這一行
+                    Property = node.SourceType,
                     ImgIcon = node.ImgIcon,
                     Seq = node.SortOrder,
                     Lv = node.Lv
@@ -93,6 +94,7 @@ namespace DCMATEH5API.Areas.Menu.Services
                     Title = node.Title,
                     Url = node.Url,
                     Parameter = node.Parameter, // <-- 加入這一行
+                    Property = node.SourceType,
                     ImgIcon = node.ImgIcon,
                     Lv = node.Lv,
                     // --- 修正 C：子頁面磁磚 (Tiles) 帶入 Parameter ---
@@ -102,6 +104,7 @@ namespace DCMATEH5API.Areas.Menu.Services
                         Title = c.Title,
                         Url = c.Url,
                         Parameter = c.Parameter, // <-- 加入這一行
+                        Property = c.SourceType,
                         ImgIcon = c.ImgIcon,
                         Seq = c.SortOrder,
                         Lv = c.Lv
@@ -120,6 +123,7 @@ namespace DCMATEH5API.Areas.Menu.Services
                         Title = child.Title,
                         Url = child.Url,
                         Parameter = child.Parameter, // <-- 加入這一行
+                        Property = child.SourceType, // <-- 關鍵：這裡必須是 PAGE
                         ImgIcon = child.ImgIcon
                     });
                 }
