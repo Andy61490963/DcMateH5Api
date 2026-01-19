@@ -21,6 +21,7 @@ namespace DcMateH5Api.Areas.Security.Interfaces
         /// </summary>
         Task<Result<int>> RegisterAsync(RegisterRequestViewModel request, CancellationToken ct = default);
 
-        Task<Result<bool>> RefreshAuthCookieAsync();
+
+        Task<Result<LoginResponseViewModel>> ExtendSessionAsync();
     }
 }

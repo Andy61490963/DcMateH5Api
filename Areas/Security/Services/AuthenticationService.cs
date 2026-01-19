@@ -90,7 +90,7 @@ public class AuthenticationService : DcMateH5Api.Areas.Security.Interfaces.IAuth
         if (!string.IsNullOrEmpty(setCookieHeader))
         {
             var ticketPart = setCookieHeader.Split(';')[0]; // 取得 "DcMateAuthTicket=CfDJ8..."
-            encryptedTicket = ticketPart.Replace("DcMateAuthTicket=", ""); // 只保留純亂碼金鑰
+            encryptedTicket = ExtractTokenFromResponse(); // 只保留純亂碼金鑰
         }
 
         // --- 3. 計算明碼有效期 (與 authProperties 同步) ---
@@ -133,7 +133,7 @@ public class AuthenticationService : DcMateH5Api.Areas.Security.Interfaces.IAuth
         return await H5LoginAsync(account, password, ct);
     }
 
-    public async Task<Result<bool>> RefreshAuthCookieAsync()
+    private async Task<Result<bool>> RefreshAuthCookieAsync()
     {
         // 1. 取得目前 HttpContext 中的使用者身分
         var user = _httpContextAccessor.HttpContext.User;
@@ -173,5 +173,46 @@ public class AuthenticationService : DcMateH5Api.Areas.Security.Interfaces.IAuth
             authProperties);
 
         return Result<bool>.Ok(true);
+    }
+
+    public async Task<Result<LoginResponseViewModel>> ExtendSessionAsync()
+    {
+        var refreshResult = await RefreshAuthCookieAsync();
+
+        // 修正後的程式碼：使用現有的 Unauthorized 成員
+        if (!refreshResult.IsSuccess)
+        {
+            return Result<LoginResponseViewModel>.Fail(AuthenticationErrorCode.Unauthorized, refreshResult.Message);
+        }
+
+        // 2. 統一處理 Token 提取
+        var setCookieHeader = _httpContextAccessor.HttpContext.Response.Headers["Set-Cookie"].ToString();
+        string newTicket = "";
+        if (setCookieHeader.Contains("DcMateAuthTicket="))
+        {
+            newTicket = ExtractTokenFromResponse();
+        }
+
+        // 3. 回傳封裝後的結果
+        return Result<LoginResponseViewModel>.Ok(new LoginResponseViewModel
+        {
+            Token = newTicket,
+            ExpiresFrom = DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss"),
+            ExpiresTo = DateTime.Now.AddMinutes(_config.GetValue<int>("AuthSettings:ExpireTimeSpanMinutes")).ToString("yyyy-MM-dd HH:mm:ss")
+        });
+    }
+
+    // 新增這個私有工具，專門負責從 Response 提取金鑰
+    private string ExtractTokenFromResponse()
+    {
+        var setCookieHeader = _httpContextAccessor.HttpContext.Response.Headers["Set-Cookie"].ToString();
+
+        if (!string.IsNullOrEmpty(setCookieHeader) && setCookieHeader.Contains("DcMateAuthTicket="))
+        {
+            // 取得第一個分段並移除名稱部分
+            return setCookieHeader.Split(';')[0].Replace("DcMateAuthTicket=", "");
+        }
+
+        return string.Empty;
     }
 }

@@ -5,6 +5,7 @@ using DcMateH5Api.Helper;
 using DcMateH5Api.Models;
 using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.Authentication.Cookies;
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 
 namespace DcMateH5Api.Areas.Security.Controllers
@@ -20,14 +21,18 @@ namespace DcMateH5Api.Areas.Security.Controllers
     {
         // 使用完整命名空間來避開衝突
         private readonly DcMateH5Api.Areas.Security.Interfaces.IAuthenticationService _authService;
-
+        private readonly IHttpContextAccessor _httpContextAccessor; // 新增注入
+        private readonly IConfiguration _config; // 新增注入
         /// <summary>
         /// 建構函式注入驗證服務。
         /// </summary>
         /// <param name="authService">驗證服務。</param>
-        public LoginController(DcMateH5Api.Areas.Security.Interfaces.IAuthenticationService authService)
+        public LoginController(DcMateH5Api.Areas.Security.Interfaces.IAuthenticationService authService, IHttpContextAccessor httpContextAccessor,
+        IConfiguration config)
         {
             _authService = authService;
+            _httpContextAccessor = httpContextAccessor;
+            _config = config;
         }
 
         /// <summary>
@@ -49,7 +54,18 @@ namespace DcMateH5Api.Areas.Security.Controllers
             
             return Unauthorized(result);
         }
-        
+
+        [Authorize]
+        [HttpPost("extend-session")]
+        public async Task<IActionResult> ExtendSession()
+        {
+            var result = await _authService.ExtendSessionAsync(); // 只要呼叫這行
+
+            if (result.IsSuccess) return Ok(result.Data);
+
+            return Unauthorized(result.Message);
+        }
+
         /// <summary>
         /// 註冊新帳號。
         /// </summary>
@@ -75,41 +91,7 @@ namespace DcMateH5Api.Areas.Security.Controllers
             return StatusCode(StatusCodes.Status500InternalServerError, result);
         }
 
-        /// <summary>
-        /// 檢查並更新 Cookie 票證
-        /// </summary>
-        [HttpGet("check-auth")] // 這就是 API 的路徑名稱
-        public async Task<IActionResult> CheckAuth()
-        {
-            var result = await _authService.RefreshAuthCookieAsync();
-
-            if (result.IsSuccess)
-            {
-                return Ok(result); // 回傳成功，前端會收到新的 Cookie
-            }
-
-            return Unauthorized(result); // 回傳 401，引導前端跳轉至登入頁
-        }
-
-        [HttpGet("check-expire")]
-        public async Task<IActionResult> GetCookieExpire() // 補上 async 與 Task
-        {
-            // 取得目前的驗證屬性
-            var authResult = await HttpContext.AuthenticateAsync(CookieAuthenticationDefaults.AuthenticationScheme);
-
-            if (authResult.Succeeded)
-            {
-                // 從屬性中抓取過期時間
-                var expiresUtc = authResult.Properties.ExpiresUtc;
-                return Ok(new
-                {
-                    ExpireTime = expiresUtc?.ToLocalTime().ToString("yyyy-MM-dd HH:mm:ss"),
-                    IsExpired = expiresUtc < DateTimeOffset.UtcNow,
-                });
-            }
-
-            return Unauthorized();
-        }
+        
 
     }
 }
