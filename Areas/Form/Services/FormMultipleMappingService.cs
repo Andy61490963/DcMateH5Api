@@ -291,8 +291,8 @@ SELECT ID AS Id,
                         Seq = isSeq ? ++seq : (int?)null,
                         CreateTime = DateTime.Now,
                         EditTime = DateTime.Now,
-                        CreateUser = "temp",
-                        EditUser = "temp"
+                        CreateUser = Guid.NewGuid(),
+                        EditUser = Guid.NewGuid()
                     },
                     transaction: tx);
             }
