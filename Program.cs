@@ -23,6 +23,7 @@ using DcMateH5Api.SqlHelper;
 using Microsoft.AspNetCore.Authentication.Cookies;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.AspNetCore.Authorization;
+using Microsoft.AspNetCore.DataProtection;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.HttpOverrides;
 using Microsoft.Data.SqlClient;
@@ -33,6 +34,22 @@ using System.Reflection;
 using System.Text;
 
 var builder = WebApplication.CreateBuilder(args);
+
+// --- 關鍵設定：金鑰持久化 ---
+// 1. 指定存放路徑：在專案根目錄下建立「SecurityKeys」資料夾
+var keysPath = Path.Combine(builder.Environment.ContentRootPath, "SecurityKeys");
+
+// 2. 確保資料夾存在
+if (!Directory.Exists(keysPath))
+{
+    Directory.CreateDirectory(keysPath);
+}
+
+// 3. 配置資料保護
+builder.Services.AddDataProtection()
+    .PersistKeysToFileSystem(new DirectoryInfo(keysPath)) // 將 XML 金鑰存入硬碟
+    .SetApplicationName("DcMateH5Api") // 固定名稱，這對正確解密非常重要
+    .SetDefaultKeyLifetime(TimeSpan.FromDays(90)); // 金鑰 90 天後自動輪替
 
 // 註冊 CORS 服務
 builder.Services.AddCors(options =>
@@ -252,14 +269,14 @@ builder.Services.AddSwaggerGen(options =>
         }
     });
 
-    options.AddSecurityRequirement(new OpenApiSecurityRequirement {
-        {
-            new OpenApiSecurityScheme {
-                Reference = new OpenApiReference { Type = ReferenceType.SecurityScheme, Id = "Bearer" }
-            },
-            Array.Empty<string>()
-        }
-    });
+    //options.AddSecurityRequirement(new OpenApiSecurityRequirement {
+    //    {
+    //        new OpenApiSecurityScheme {
+    //            Reference = new OpenApiReference { Type = ReferenceType.SecurityScheme, Id = "Bearer" }
+    //        },
+    //        Array.Empty<string>()
+    //    }
+    //});
 
     options.DocInclusionPredicate((doc, api) => doc == "v1" || string.Equals(api.GroupName, doc, StringComparison.OrdinalIgnoreCase));
 });
