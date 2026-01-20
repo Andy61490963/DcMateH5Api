@@ -96,7 +96,7 @@ public class AuthenticationService : DcMateH5Api.Areas.Security.Interfaces.IAuth
         // --- 3. 計算明碼有效期 (與 authProperties 同步) ---
         // 將過期時間轉換為 ISO 格式字串，方便前端 JS 解析
         string expiresFrom = DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss"); // 現在時間
-        string expiresTo = authProperties.ExpiresUtc?.ToString("yyyy-MM-dd HH:mm:ss") ?? "";
+        string expiresTo = authProperties.ExpiresUtc?.ToLocalTime().ToString("yyyy-MM-dd HH:mm:ss") ?? "";
 
         // 呼叫選單服務 (假設您的 IMenuService 回傳的就是 MenuResponse)
         var menuData = await _menuService.GetFullMenuByLvAsync(user.LV ?? 0);
