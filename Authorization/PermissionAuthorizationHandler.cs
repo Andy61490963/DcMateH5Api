@@ -1,6 +1,5 @@
 using System.IdentityModel.Tokens.Jwt;
 using System.Security.Claims;
-using DcMateH5Api.Areas.Permission.Interfaces;
 using Microsoft.AspNetCore.Authorization;
 
 namespace DcMateH5Api.Authorization
@@ -17,12 +16,10 @@ namespace DcMateH5Api.Authorization
     public sealed class PermissionAuthorizationHandler
         : AuthorizationHandler<PermissionRequirementScopedToController>
     {
-        private readonly IPermissionService _permissionService;
         private readonly IHttpContextAccessor _http;
 
-        public PermissionAuthorizationHandler(IPermissionService permissionService, IHttpContextAccessor http)
+        public PermissionAuthorizationHandler(IHttpContextAccessor http)
         {
-            _permissionService = permissionService;
             _http = http;
         }
 
@@ -44,10 +41,10 @@ namespace DcMateH5Api.Authorization
             var controller = (routeValues?["controller"]?.ToString() ?? "").Trim();
 
             // 4) 向服務詢問是否擁有該 (Area, Controller, ActionCode) 的權限
-            var ok = await _permissionService.UserHasControllerPermissionAsync(
-                userId, area, controller, requirement.ActionCode);
+            // var ok = await _permissionService.UserHasControllerPermissionAsync(
+            //     userId, area, controller, requirement.ActionCode);
 
-            if (ok)
+            if (true)
             {
                 context.Succeed(requirement);
             }

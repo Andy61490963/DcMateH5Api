@@ -1,5 +1,5 @@
 using ClassLibrary;
-// ½T«O¤Þ¥Î¤¶­±©R¦WªÅ¶¡
+// ï¿½Tï¿½Oï¿½Þ¥Î¤ï¿½ï¿½ï¿½ï¿½Rï¿½Wï¿½Å¶ï¿½
 using DcMateH5Api.Areas.Security.Interfaces;
 using DcMateH5Api.Areas.Security.Models;
 using DcMateH5Api.Areas.Security.ViewModels;
@@ -8,28 +8,27 @@ using DcMateH5Api.SqlHelper;
 using DCMATEH5API.Areas.Menu.Services;
 using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.Authentication.Cookies;
-using Microsoft.AspNetCore.Http;
 using System.Security.Claims;
 
 namespace DcMateH5Api.Areas.Security.Services;
 
 /// <summary>
-/// ÅçÃÒªA°È¹ê§@
+/// ï¿½ï¿½ï¿½ÒªAï¿½È¹ï¿½@
 /// </summary>
-// ­×¥¿­«ÂI¡Gª½±µ¨Ï¥Î¥þ¦WÄ~©Ó¡A¸Ñ¨M CS0104 ¼Ò½k°Ñ¦Ò°ÝÃD
-public class AuthenticationService : DcMateH5Api.Areas.Security.Interfaces.IAuthenticationService
+// ï¿½×¥ï¿½ï¿½ï¿½ï¿½Iï¿½Gï¿½ï¿½ï¿½ï¿½ï¿½Ï¥Î¥ï¿½ï¿½Wï¿½~ï¿½Ó¡Aï¿½Ñ¨M CS0104 ï¿½Ò½kï¿½Ñ¦Ò°ï¿½ï¿½D
+public class AuthenticationService : Interfaces.IAuthenticationService
 {
     private readonly SQLGenerateHelper _sqlHelper;
     private readonly IHttpContextAccessor _httpContextAccessor;
-    private readonly IPasswordHasher _passwordHasher; // 1. «Å§i¥[±K³B²z¾¹
-    private readonly IConfiguration _config; // 1. «Å§i³]©wÀÉªA°È
+    private readonly IPasswordHasher _passwordHasher; // 1. ï¿½Å§iï¿½[ï¿½Kï¿½Bï¿½zï¿½ï¿½
+    private readonly IConfiguration _config; // 1. ï¿½Å§iï¿½]ï¿½wï¿½ÉªAï¿½ï¿½
     private readonly IMenuService _menuService;
     public AuthenticationService(
         SQLGenerateHelper sqlHelper,
         IHttpContextAccessor httpContextAccessor,
         IPasswordHasher passwordHasher,
         IConfiguration config,
-        IMenuService menuService) // <--- ÃöÁä­×¥¿¡G¥[¤J³o¦æª`¤J
+        IMenuService menuService) // <--- ï¿½ï¿½ï¿½ï¿½×¥ï¿½ï¿½Gï¿½[ï¿½Jï¿½oï¿½ï¿½`ï¿½J
     {
         _sqlHelper = sqlHelper;
         _httpContextAccessor = httpContextAccessor;
@@ -39,27 +38,27 @@ public class AuthenticationService : DcMateH5Api.Areas.Security.Interfaces.IAuth
     }
 
     /// <summary>
-    /// H5 ±M¥Îµn¤J¡G¨Ï¥Î Cookie ¦sÀxª¬ºA
+    /// H5 ï¿½Mï¿½Îµnï¿½Jï¿½Gï¿½Ï¥ï¿½ Cookie ï¿½sï¿½xï¿½ï¿½ï¿½A
     /// </summary>
     public async Task<Result<LoginResponseViewModel>> H5LoginAsync(string account, string password, CancellationToken ct = default)
     {
-        //  ¬d¸ß¸ê®Æ®w¡G¥u®Ú¾Ú±b¸¹¬d¸ß
+        //  ï¿½dï¿½ß¸ï¿½Æ®wï¿½Gï¿½uï¿½Ú¾Ú±bï¿½ï¿½ï¿½dï¿½ï¿½
         var where = new WhereBuilder<UserAccount>()
             .AndEq(x => x.Account, account);
 
         var user = await _sqlHelper.SelectFirstOrDefaultAsync(where, ct);
 
-        //  ÅçÃÒ±b¸¹¬O§_¦s¦b
+        //  ï¿½ï¿½ï¿½Ò±bï¿½ï¿½ï¿½Oï¿½_ï¿½sï¿½b
         if (user == null)
-            return Result<LoginResponseViewModel>.Fail(AuthenticationErrorCode.UserNotFound, "±b¸¹©Î±K½X¿ù»~");
+            return Result<LoginResponseViewModel>.Fail(AuthenticationErrorCode.UserNotFound, "ï¿½bï¿½ï¿½ï¿½Î±Kï¿½Xï¿½ï¿½ï¿½~");
 
-        //  ±K½XÅçÃÒ¡G©I¥s PasswordHasher °õ¦æ ¥[¸Ñ±KÅÞ¿è
+        //  ï¿½Kï¿½Xï¿½ï¿½ï¿½Ò¡Gï¿½Iï¿½s PasswordHasher ï¿½ï¿½ï¿½ï¿½ ï¿½[ï¿½Ñ±Kï¿½Þ¿ï¿½
         bool isValid = _passwordHasher.VerifyPassword(password, user.PasswordHash, user.PasswordSalt);
 
         if (!isValid)
-            return Result<LoginResponseViewModel>.Fail(AuthenticationErrorCode.UserNotFound, "±b¸¹©Î±K½X¿ù»~");
+            return Result<LoginResponseViewModel>.Fail(AuthenticationErrorCode.UserNotFound, "ï¿½bï¿½ï¿½ï¿½Î±Kï¿½Xï¿½ï¿½ï¿½~");
 
-        // --- ÅçÃÒ¦¨¥\¡A·Ç³Æ¼g¤J Cookie ---
+        // --- ï¿½ï¿½ï¿½Ò¦ï¿½ï¿½\ï¿½Aï¿½Ç³Æ¼gï¿½J Cookie ---
         string userLv = user.LV?.ToString() ?? "0";
 
         var claims = new List<Claim>
@@ -73,46 +72,46 @@ public class AuthenticationService : DcMateH5Api.Areas.Security.Interfaces.IAuth
        
         var authProperties = new AuthenticationProperties
         {
-            IsPersistent = true, // ®Ö¤ß§ï°Ê¡G«ù¤[¤Æ
+            IsPersistent = true, // ï¿½Ö¤ß§ï¿½Ê¡Gï¿½ï¿½ï¿½[ï¿½ï¿½
             ExpiresUtc = DateTimeOffset.UtcNow.AddMinutes(_config.GetValue<int>("AuthSettings:ExpireTimeSpanMinutes")),
         };
 
-        // --- 1. °õ¦æµn¤J (³o·|Åý¨t²Î¦b Response Header ²£¥Í Cookie) ---
+        // --- 1. ï¿½ï¿½ï¿½ï¿½nï¿½J (ï¿½oï¿½|ï¿½ï¿½ï¿½tï¿½Î¦b Response Header ï¿½ï¿½ï¿½ï¿½ Cookie) ---
         await _httpContextAccessor.HttpContext.SignInAsync(
             CookieAuthenticationDefaults.AuthenticationScheme,
             new ClaimsPrincipal(claimsIdentity),
             authProperties);
 
-        // --- 2. §ì¨ú¥[±Kªº Ticket ---
+        // --- 2. ï¿½ï¿½ï¿½ï¿½[ï¿½Kï¿½ï¿½ Ticket ---
         var setCookieHeader = _httpContextAccessor.HttpContext.Response.Headers["Set-Cookie"].ToString();
-        // ¥u¨ú DcMateAuthTicket=... ªº³¡¤À¡A¨Ã¥h±¼¦WºÙ¡A¥u¯d¯Âª÷Æ_
+        // ï¿½uï¿½ï¿½ DcMateAuthTicket=... ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Aï¿½Ã¥hï¿½ï¿½ï¿½Wï¿½Ù¡Aï¿½uï¿½dï¿½Âªï¿½ï¿½_
         string encryptedTicket = string.Empty;
         if (!string.IsNullOrEmpty(setCookieHeader))
         {
-            var ticketPart = setCookieHeader.Split(';')[0]; // ¨ú±o "DcMateAuthTicket=CfDJ8..."
-            encryptedTicket = ExtractTokenFromResponse(); // ¥u«O¯d¯Â¶Ã½Xª÷Æ_
+            var ticketPart = setCookieHeader.Split(';')[0]; // ï¿½ï¿½ï¿½o "DcMateAuthTicket=CfDJ8..."
+            encryptedTicket = ExtractTokenFromResponse(); // ï¿½uï¿½Oï¿½dï¿½Â¶Ã½Xï¿½ï¿½ï¿½_
         }
 
-        // --- 3. ­pºâ©ú½X¦³®Ä´Á (»P authProperties ¦P¨B) ---
-        // ±N¹L´Á®É¶¡Âà´«¬° ISO ®æ¦¡¦r¦ê¡A¤è«K«eºÝ JS ¸ÑªR
-        string expiresFrom = DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss"); // ²{¦b®É¶¡
+        // --- 3. ï¿½pï¿½ï¿½ï¿½ï¿½Xï¿½ï¿½ï¿½Ä´ï¿½ (ï¿½P authProperties ï¿½Pï¿½B) ---
+        // ï¿½Nï¿½Lï¿½ï¿½ï¿½É¶ï¿½ï¿½à´«ï¿½ï¿½ ISO ï¿½æ¦¡ï¿½rï¿½ï¿½Aï¿½ï¿½Kï¿½eï¿½ï¿½ JS ï¿½ÑªR
+        string expiresFrom = DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss"); // ï¿½{ï¿½bï¿½É¶ï¿½
         string expiresTo = authProperties.ExpiresUtc?.ToLocalTime().ToString("yyyy-MM-dd HH:mm:ss") ?? "";
 
-        // ©I¥s¿ï³æªA°È (°²³]±zªº IMenuService ¦^¶Çªº´N¬O MenuResponse)
+        // ï¿½Iï¿½sï¿½ï¿½ï¿½Aï¿½ï¿½ (ï¿½ï¿½ï¿½]ï¿½zï¿½ï¿½ IMenuService ï¿½^ï¿½Çªï¿½ï¿½Nï¿½O MenuResponse)
         var menuData = await _menuService.GetFullMenuByLvAsync(user.LV ?? 0);
 
-        // --- 4. «Ê¸Ë¨Ã¦^¶Ç ---
+        // --- 4. ï¿½Ê¸Ë¨Ã¦^ï¿½ï¿½ ---
         return Result<LoginResponseViewModel>.Ok(new LoginResponseViewModel
         {
             User = user.Account,
             LV = user.LV?.ToString() ?? "0",
             Sid = user.Id.ToString(),
-            // ¦^¶Ç¥[±Kª÷Æ_µ¹«eºÝ¦s localStorage
+            // ï¿½^ï¿½Ç¥[ï¿½Kï¿½ï¿½ï¿½_ï¿½ï¿½ï¿½eï¿½Ý¦s localStorage
             Token = encryptedTicket,
-            // ·s¼W¡G¦^¶Ç©ú½X¦³®Ä´Á
+            // ï¿½sï¿½Wï¿½Gï¿½^ï¿½Ç©ï¿½ï¿½Xï¿½ï¿½ï¿½Ä´ï¿½
             ExpiresFrom = expiresFrom,
             ExpiresTo = expiresTo,
-            // ¦^¶Ç±z§ï¦W«áªº MenuList ¦r¨å
+            // ï¿½^ï¿½Ç±zï¿½ï¿½Wï¿½áªº MenuList ï¿½rï¿½ï¿½
             Menus = menuData
         });
     }
@@ -122,12 +121,6 @@ public class AuthenticationService : DcMateH5Api.Areas.Security.Interfaces.IAuth
         await _httpContextAccessor.HttpContext.SignOutAsync(CookieAuthenticationDefaults.AuthenticationScheme);
     }
 
-    public Task<Result<int>> RegisterAsync(RegisterRequestViewModel request, CancellationToken ct = default)
-    {
-        // ¥¼¨Ó¹ê§@µù¥U®É·|¥Î¨ì IdHelper.GenerateNumericId()
-        throw new NotImplementedException();
-    }
-
     public async Task<Result<LoginResponseViewModel>> AuthenticateAsync(string account, string password, CancellationToken ct = default)
     {
         return await H5LoginAsync(account, password, ct);
@@ -135,21 +128,21 @@ public class AuthenticationService : DcMateH5Api.Areas.Security.Interfaces.IAuth
 
     private async Task<Result<bool>> RefreshAuthCookieAsync()
     {
-        // 1. ¨ú±o¥Ø«e HttpContext ¤¤ªº¨Ï¥ÎªÌ¨­¤À
+        // 1. ï¿½ï¿½ï¿½oï¿½Ø«e HttpContext ï¿½ï¿½ï¿½ï¿½ï¿½Ï¥ÎªÌ¨ï¿½ï¿½ï¿½
         var user = _httpContextAccessor.HttpContext.User;
 
         if (user == null || !user.Identity.IsAuthenticated)
         {
-            // ­×¥¿ÂI¡G¥[¤W AuthenticationErrorCode
-            return Result<bool>.Fail(AuthenticationErrorCode.UserNotFound, "¨­¤À¤w¹L´Á©ÎµL®Ä");
+            // ï¿½×¥ï¿½ï¿½Iï¿½Gï¿½[ï¿½W AuthenticationErrorCode
+            return Result<bool>.Fail(AuthenticationErrorCode.UserNotFound, "ï¿½ï¿½ï¿½ï¿½ï¿½wï¿½Lï¿½ï¿½ï¿½ÎµLï¿½ï¿½");
         }
 
-        // 3. ±q²{¦³ªº Cookie ¤¤´£¨ú¸ê°T (UserId, UserLV µ¥)
+        // 3. ï¿½qï¿½{ï¿½ï¿½ï¿½ï¿½ Cookie ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½T (UserId, UserLV ï¿½ï¿½)
         var userId = user.FindFirst("UserId")?.Value;
         var userLv = user.FindFirst("UserLV")?.Value;
         var account = user.Identity.Name;
 
-        // 4. ­«·s«Ê¸Ë Claims
+        // 4. ï¿½ï¿½ï¿½sï¿½Ê¸ï¿½ Claims
         var claims = new List<Claim>
     {
         new Claim(ClaimTypes.Name, account),
@@ -164,7 +157,7 @@ public class AuthenticationService : DcMateH5Api.Areas.Security.Interfaces.IAuth
         {
             IsPersistent = true,
             AllowRefresh = true
-            // ¤£¼g ExpiresUtc¡AÅý¥¦¦Û°Ê¦Y Program.cs ªº 8 ¤p®É³]©w
+            // ï¿½ï¿½ï¿½g ExpiresUtcï¿½Aï¿½ï¿½ï¿½ï¿½ï¿½Û°Ê¦Y Program.cs ï¿½ï¿½ 8 ï¿½pï¿½É³]ï¿½w
         };
 
         await _httpContextAccessor.HttpContext.SignInAsync(
@@ -179,13 +172,13 @@ public class AuthenticationService : DcMateH5Api.Areas.Security.Interfaces.IAuth
     {
         var refreshResult = await RefreshAuthCookieAsync();
 
-        // ­×¥¿«áªºµ{¦¡½X¡G¨Ï¥Î²{¦³ªº Unauthorized ¦¨­û
+        // ï¿½×¥ï¿½ï¿½áªºï¿½{ï¿½ï¿½ï¿½Xï¿½Gï¿½Ï¥Î²{ï¿½ï¿½ï¿½ï¿½ Unauthorized ï¿½ï¿½ï¿½ï¿½
         if (!refreshResult.IsSuccess)
         {
             return Result<LoginResponseViewModel>.Fail(AuthenticationErrorCode.Unauthorized, refreshResult.Message);
         }
 
-        // 2. ²Î¤@³B²z Token ´£¨ú
+        // 2. ï¿½Î¤@ï¿½Bï¿½z Token ï¿½ï¿½ï¿½ï¿½
         var setCookieHeader = _httpContextAccessor.HttpContext.Response.Headers["Set-Cookie"].ToString();
         string newTicket = "";
         if (setCookieHeader.Contains("DcMateAuthTicket="))
@@ -193,7 +186,7 @@ public class AuthenticationService : DcMateH5Api.Areas.Security.Interfaces.IAuth
             newTicket = ExtractTokenFromResponse();
         }
 
-        // 3. ¦^¶Ç«Ê¸Ë«áªºµ²ªG
+        // 3. ï¿½^ï¿½Ç«Ê¸Ë«áªºï¿½ï¿½ï¿½G
         return Result<LoginResponseViewModel>.Ok(new LoginResponseViewModel
         {
             Token = newTicket,
@@ -202,14 +195,14 @@ public class AuthenticationService : DcMateH5Api.Areas.Security.Interfaces.IAuth
         });
     }
 
-    // ·s¼W³o­Ó¨p¦³¤u¨ã¡A±Mªù­t³d±q Response ´£¨úª÷Æ_
+    // ï¿½sï¿½Wï¿½oï¿½Ó¨pï¿½ï¿½ï¿½uï¿½ï¿½Aï¿½Mï¿½ï¿½ï¿½tï¿½dï¿½q Response ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½_
     private string ExtractTokenFromResponse()
     {
         var setCookieHeader = _httpContextAccessor.HttpContext.Response.Headers["Set-Cookie"].ToString();
 
         if (!string.IsNullOrEmpty(setCookieHeader) && setCookieHeader.Contains("DcMateAuthTicket="))
         {
-            // ¨ú±o²Ä¤@­Ó¤À¬q¨Ã²¾°£¦WºÙ³¡¤À
+            // ï¿½ï¿½ï¿½oï¿½Ä¤@ï¿½Ó¤ï¿½ï¿½qï¿½Ã²ï¿½ï¿½ï¿½ï¿½Wï¿½Ù³ï¿½ï¿½ï¿½
             return setCookieHeader.Split(';')[0].Replace("DcMateAuthTicket=", "");
         }
 

@@ -1,4 +1,3 @@
-using DcMateClassLibrary.Helper;
 using DcMateH5Api.Areas.Form.Interfaces;
 using DcMateH5Api.Areas.Form.Interfaces.FormLogic;
 using DcMateH5Api.Areas.Form.Interfaces.Transaction;
@@ -8,10 +7,6 @@ using DcMateH5Api.Areas.Form.Services.FormLogic;
 using DcMateH5Api.Areas.Form.Services.Transaction;
 using DcMateH5Api.Areas.Log.Interfaces;
 using DcMateH5Api.Areas.Log.Services;
-using DcMateH5Api.Areas.Permission.Interfaces;
-using DcMateH5Api.Areas.Permission.Services;
-using DcMateH5Api.Areas.RouteOperation.Interfaces;
-using DcMateH5Api.Areas.RouteOperation.Services;
 using DcMateH5Api.Areas.Security.Interfaces;
 using DcMateH5Api.Areas.Security.Models;
 using DcMateH5Api.Areas.Security.Services;
@@ -21,10 +16,8 @@ using DcMateH5Api.Helper;
 using DcMateH5Api.Services.Cache;
 using DcMateH5Api.SqlHelper;
 using Microsoft.AspNetCore.Authentication.Cookies;
-using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.DataProtection;
-using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.HttpOverrides;
 using Microsoft.Data.SqlClient;
 using Microsoft.Extensions.Diagnostics.HealthChecks;
@@ -98,14 +91,14 @@ builder.Services.AddHttpContextAccessor(); // 僅保留這一次註冊
 // Db 工具
 builder.Services.AddSingleton<ISqlConnectionFactory, SqlConnectionFactory>();
 builder.Services.AddScoped<IDbExecutor, DbExecutor>();
-builder.Services.AddScoped<DcMateH5Api.SqlHelper.SQLGenerateHelper>();
+builder.Services.AddScoped<SQLGenerateHelper>();
 
 // 核心功能註冊
 builder.Services.AddScoped<ILogService, LogService>();
 builder.Services.AddScoped<IFormDesignerService, FormDesignerService>();
-builder.Services.AddScoped<DcMateH5Api.Areas.Security.Interfaces.IAuthenticationService, DcMateH5Api.Areas.Security.Services.AuthenticationService>();
+builder.Services.AddScoped<IAuthenticationService, AuthenticationService>();
 builder.Services.AddScoped<ITokenGenerator, JwtTokenGenerator>();
-builder.Services.AddScoped<DcMateH5Api.Areas.Security.Interfaces.IPasswordHasher, DcMateH5Api.Helper.PasswordHasher>();
+builder.Services.AddScoped<IPasswordHasher, PasswordHasher>();
 builder.Services.AddScoped<IFormFieldMasterService, FormFieldMasterService>();
 builder.Services.AddScoped<ISchemaService, SchemaService>();
 builder.Services.AddScoped<IFormFieldConfigService, FormFieldConfigService>();
@@ -116,16 +109,11 @@ builder.Services.AddScoped<IFormDeleteGuardService, FormDeleteGuardService>();
 builder.Services.AddScoped<IFormMasterDetailService, FormMasterDetailService>();
 builder.Services.AddScoped<IFormMultipleMappingService, FormMultipleMappingService>();
 builder.Services.AddScoped<IDropdownSqlSyncService, DropdownSqlSyncService>();
-builder.Services.AddScoped<IPermissionService, PermissionService>();
 
 // Menu Tree
 builder.Services.AddScoped<DCMATEH5API.Areas.Menu.Services.IMenuService, DCMATEH5API.Areas.Menu.Services.MenuService>();
 
 // 工作站與交易
-builder.Services.AddScoped<IBasRouteService, BasRouteService>();
-builder.Services.AddScoped<IBasOperationService, BasOperationService>();
-builder.Services.AddScoped<IBasConditionService, BasConditionService>();
-builder.Services.AddScoped<IRouteOperationService, RouteOperationService>();
 builder.Services.AddScoped<ITransactionService, TransactionService>();
 builder.Services.AddScoped<ICacheService, RedisCacheService>();
 

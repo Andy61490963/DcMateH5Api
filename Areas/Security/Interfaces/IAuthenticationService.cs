@@ -16,12 +16,6 @@ namespace DcMateH5Api.Areas.Security.Interfaces
         /// <returns>登入結果，失敗則回傳 null。</returns>
         Task<Result<LoginResponseViewModel>> AuthenticateAsync(string account, string password, CancellationToken ct = default);
 
-        /// <summary>
-        /// 註冊成功回傳新建筆數（通常是 1）
-        /// </summary>
-        Task<Result<int>> RegisterAsync(RegisterRequestViewModel request, CancellationToken ct = default);
-
-
         Task<Result<LoginResponseViewModel>> ExtendSessionAsync();
     }
 }
