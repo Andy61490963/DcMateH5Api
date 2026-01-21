@@ -400,50 +400,25 @@ public class FormDesignerMasterDetailController : ControllerBase
     }
 
     /// <summary>
-    /// 建立一筆空白下拉選項
+    /// 以「前端送來的完整清單」覆蓋下拉選項（Replace All）
     /// </summary>
-    /// <param name="dropdownId">FORM_FIELD_DROPDOWN 的ID</param>
-    /// <param name="ct"></param>
-    /// <returns></returns>
-    [HttpPost("dropdowns/{dropdownId:guid}/options")]
-    [ProducesResponseType(StatusCodes.Status200OK)]
+    /// <remarks>
+    /// </remarks>
+    [HttpPut("dropdowns/{dropdownId:guid}/options:replace")]
+    [ProducesResponseType(typeof(List<FormFieldDropdownOptionsDto>), StatusCodes.Status200OK)]
     [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status400BadRequest)]
-    public async Task<IActionResult> CreateDropdownOption( Guid dropdownId, CancellationToken ct )
+    public async Task<IActionResult> ReplaceDropdownOptions(
+        Guid dropdownId,
+        [FromBody] List<DropdownOptionItemViewModel> options,
+        CancellationToken ct)
     {
-        _formDesignerService.SaveDropdownOption( null, dropdownId, "", "" );
-        var options = await _formDesignerService.GetDropdownOptions( dropdownId, ct );
-        return Ok( options );
-    }
+        if (!ModelState.IsValid)
+            return ValidationProblem(ModelState);
 
-    /// <summary>
-    /// 儲存單筆下拉選項（新增/更新）
-    /// </summary>
-    /// <param name="dropdownId">FORM_FIELD_DROPDOWN 的ID</param>
-    /// <param name="dto"></param>
-    /// <returns></returns>
-    [HttpPut("dropdowns/{dropdownId:guid}/options")]
-    [ProducesResponseType(StatusCodes.Status200OK)]
-    [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status400BadRequest)]
-    public IActionResult SaveDropdownOption( Guid dropdownId, [FromBody] SaveOptionViewModel dto )
-    {
-        _formDesignerService.SaveDropdownOption( dto.Id, dropdownId, dto.OptionText, dto.OptionValue );
-        return Ok();
-    }
+        await _formDesignerService.ReplaceDropdownOptionsAsync(dropdownId, options, ct);
 
-    /// <summary>
-    /// 刪除下拉選項
-    /// </summary>
-    /// <param name="optionId">FORM_FIELD_DROPDOWN_OPTIONS 的ID</param>
-    /// <param name="dropdownId"></param>
-    /// <returns></returns>
-    [HttpDelete("dropdowns/options/{optionId:guid}")]
-    [ProducesResponseType(StatusCodes.Status200OK)]
-    [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status400BadRequest)]
-    public async Task<IActionResult> DeleteDropdownOption( Guid optionId, [FromQuery] Guid dropdownId )
-    {
-        await _formDesignerService.DeleteDropdownOption( optionId );
-        var options = await _formDesignerService.GetDropdownOptions( dropdownId );
-        return Ok(options);
+        var latestOptions = await _formDesignerService.GetDropdownOptions(dropdownId, ct);
+        return Ok(latestOptions);
     }
     
     // ────────── Form Header ──────────

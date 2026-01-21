@@ -524,11 +524,11 @@ WHERE [{header.MAPPING_PK_COLUMN}] IN @Ids
         {
             throw new InvalidOperationException("多對多設定檔缺少關聯表外鍵欄位設定");
         }
-        if (string.IsNullOrWhiteSpace(header.MAPPING_BASE_COLUMN_NAME) ||
-            string.IsNullOrWhiteSpace(header.MAPPING_DETAIL_COLUMN_NAME))
-        {
-            throw new InvalidOperationException("多對多設定檔缺少關聯表外鍵顯示欄位設定");
-        }
+        // if (string.IsNullOrWhiteSpace(header.MAPPING_BASE_COLUMN_NAME) ||
+        //     string.IsNullOrWhiteSpace(header.MAPPING_DETAIL_COLUMN_NAME))
+        // {
+        //     throw new InvalidOperationException("多對多設定檔缺少關聯表外鍵顯示欄位設定");
+        // }
         
         ValidateTableName(header.BASE_TABLE_NAME);
         ValidateTableName(header.DETAIL_TABLE_NAME);
