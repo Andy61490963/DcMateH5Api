@@ -908,6 +908,14 @@ ORDER BY
             }
         }
 
+        // 6.5) 將 schema 已不存在的欄位設定標記為 Inactive（OnlyTable/Detail/Mapping 才做）
+        if (schemaType is TableSchemaQueryType.OnlyTable 
+            or TableSchemaQueryType.OnlyDetail 
+            or TableSchemaQueryType.OnlyMapping)
+        {
+            await DeleteOrphanFieldConfigsAsync(tableName, masterId, columns);
+        }
+        
         // 7) 重新查詢所有欄位設定，確保回傳資料與 DB 同步
         var result = await GetFieldsByTableName(tableName, masterId, schemaType);
 
@@ -925,7 +933,48 @@ ORDER BY
 
         return result;
     }
+    
+    /// <summary>
+    /// 將「資料表 schema 已不存在」的欄位設定標記為 Inactive（不刪除，可復原）。
+    /// </summary>
+    private async Task DeleteOrphanFieldConfigsAsync(
+        string tableName,
+        Guid masterId,
+        IReadOnlyList<DbColumnInfo> schemaColumns)
+    {
+        // 1) schema 欄位集合（O(n)）
+        var schemaSet = schemaColumns
+            .Select(x => x.COLUMN_NAME)
+            .Where(x => !string.IsNullOrWhiteSpace(x))
+            .ToHashSet(StringComparer.OrdinalIgnoreCase);
 
+        // 2) 取 configs（原本就有）
+        var configs = await GetFieldConfigs(tableName, masterId).ConfigureAwait(false);
+        if (configs.Count == 0)
+            return;
+
+        // 3) 找 orphan：Config 有，但 schema 不存在（O(m)）
+        var orphanIds = configs.Values
+            .Where(cfg =>
+                !string.IsNullOrWhiteSpace(cfg.COLUMN_NAME) &&
+                !schemaSet.Contains(cfg.COLUMN_NAME))
+            .Select(cfg => cfg.ID)
+            .Distinct()
+            .ToList();
+
+        if (orphanIds.Count == 0)
+            return;
+        
+        // 4.1 一定要 WHERE：用 WhereBuilder 組 IN
+        var where = new WhereBuilder<FormFieldConfigDto>()
+            .AndIn(x => x.ID, orphanIds);
+
+        // 4.2 軟刪除
+        await _sqlHelper.DeleteWhereAsync(
+                where)
+            .ConfigureAwait(false);
+    }
+    
     public async Task<FormFieldListViewModel?> SyncNewFieldsToConfigAsync(string tableName, Guid formMasterId, TableSchemaQueryType schemaType, CancellationToken ct)
     {
         ct.ThrowIfCancellationRequested();
