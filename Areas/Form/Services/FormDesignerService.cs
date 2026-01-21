@@ -606,6 +606,12 @@ ORDER BY
         var configs = await GetFieldConfigs(tableName, formMasterId);
         var requiredFieldIds = GetRequiredFieldIds();
 
+        // 先決定 masterId（提供 dropdown 查詢用）
+        var masterId = formMasterId ?? configs.Values.First().FORM_FIELD_MASTER_ID;
+
+        // 一次查 dropdown 對照表（masterId 可能是 Guid.Empty 就不用查，避免浪費）
+        var dropdownMap = await GetDropdownIdMapByMasterIdAsync(masterId);
+        
         // 查 PK
         var pk = _schemaService.GetPrimaryKeyColumns(tableName);
         
@@ -620,27 +626,35 @@ ORDER BY
             var hasCfg  = configs.TryGetValue(columnName, out var cfg);
             var fieldId = hasCfg ? cfg!.ID : Guid.NewGuid();
 
+            // dropdownId：只有「有 cfg 且 dropdown 存在」才會有值
+            dropdownMap.TryGetValue(fieldId, out var dropdownId);
+            
             var vm = new FormFieldViewModel
             {
-                ID                          = fieldId,
-                FORM_FIELD_MASTER_ID        = formMasterId ?? Guid.Empty,
-                TableName                   = tableName,
-                COLUMN_NAME                 = columnName,
-                DISPLAY_NAME                = cfg?.DISPLAY_NAME ?? columnName,
-                DATA_TYPE                   = dataType,
-                CONTROL_TYPE                = cfg?.CONTROL_TYPE, 
-                CONTROL_TYPE_WHITELIST      = FormFieldHelper.GetControlTypeWhitelist(dataType),
+                ID = fieldId,
+                FORM_FIELD_MASTER_ID = masterId,
+                FORM_FIELD_DROPDOWN_ID = dropdownId == Guid.Empty ? null : dropdownId,
+
+                TableName = tableName,
+                COLUMN_NAME = columnName,
+                DISPLAY_NAME = cfg?.DISPLAY_NAME ?? columnName,
+                DATA_TYPE = dataType,
+
+                CONTROL_TYPE = cfg?.CONTROL_TYPE,
+                CONTROL_TYPE_WHITELIST = FormFieldHelper.GetControlTypeWhitelist(dataType),
                 QUERY_COMPONENT_TYPE_WHITELIST = FormFieldHelper.GetQueryConditionTypeWhitelist(dataType),
-                IS_REQUIRED                 = cfg?.IS_REQUIRED ?? false, // bool 不可 null，用預設
-                IS_EDITABLE                 = cfg?.IS_EDITABLE ?? true,  // bool 不可 null，用預設
-                IS_VALIDATION_RULE          = requiredFieldIds.Contains(fieldId),
-                IS_PK                       = pk.Contains(columnName),
-                QUERY_DEFAULT_VALUE         = cfg?.QUERY_DEFAULT_VALUE,
-                SchemaType                  = schemaType,
-                QUERY_COMPONENT             = cfg?.QUERY_COMPONENT ?? QueryComponentType.None,
-                QUERY_CONDITION             = cfg?.QUERY_CONDITION,
-                CAN_QUERY                   = cfg?.CAN_QUERY ?? false,
-                FIELD_ORDER                 = cfg?.FIELD_ORDER,
+
+                IS_REQUIRED = cfg?.IS_REQUIRED ?? false,
+                IS_EDITABLE = cfg?.IS_EDITABLE ?? true,
+                IS_VALIDATION_RULE = requiredFieldIds.Contains(fieldId),
+                IS_PK = pk.Contains(columnName),
+
+                QUERY_DEFAULT_VALUE = cfg?.QUERY_DEFAULT_VALUE,
+                SchemaType = schemaType,
+                QUERY_COMPONENT = cfg?.QUERY_COMPONENT ?? QueryComponentType.None,
+                QUERY_CONDITION = cfg?.QUERY_CONDITION,
+                CAN_QUERY = cfg?.CAN_QUERY ?? false,
+                FIELD_ORDER = cfg?.FIELD_ORDER,
                 DETAIL_TO_RELATION_DEFAULT_COLUMN = cfg?.DETAIL_TO_RELATION_DEFAULT_COLUMN
             };
 
@@ -653,8 +667,6 @@ ORDER BY
         // .Where(f => !_excludeColumns.Any(ex => 
         //     f.COLUMN_NAME.Contains(ex, StringComparison.OrdinalIgnoreCase)))
         // .ToList();
-        
-        var masterId = formMasterId ?? configs.Values.FirstOrDefault()?.FORM_FIELD_MASTER_ID ?? Guid.Empty;
 
         var result = new FormFieldListViewModel
         {
@@ -662,6 +674,23 @@ ORDER BY
         };
 
         return result;
+    }
+
+    private async Task<Dictionary<Guid, Guid>> GetDropdownIdMapByMasterIdAsync(Guid masterId)
+    {
+        // masterId 下面所有欄位設定的 dropdown（只取未刪除）
+        const string sql = @"
+SELECT d.ID AS DropdownId, d.FORM_FIELD_CONFIG_ID AS FieldConfigId
+FROM FORM_FIELD_DROPDOWN d
+INNER JOIN FORM_FIELD_CONFIG c ON c.ID = d.FORM_FIELD_CONFIG_ID
+WHERE c.FORM_FIELD_MASTER_ID = @MasterId
+  AND d.IS_DELETE = 0
+  AND c.IS_DELETE = 0;";
+
+        var rows = await _con.QueryAsync<(Guid DropdownId, Guid FieldConfigId)>(
+            new CommandDefinition(sql, new { MasterId = masterId }));
+
+        return rows.ToDictionary(x => x.FieldConfigId, x => x.DropdownId);
     }
 
     /// <summary>
@@ -908,6 +937,14 @@ ORDER BY
             }
         }
 
+        // 6.5) 將 schema 已不存在的欄位設定標記為 Inactive（OnlyTable/Detail/Mapping 才做）
+        if (schemaType is TableSchemaQueryType.OnlyTable 
+            or TableSchemaQueryType.OnlyDetail 
+            or TableSchemaQueryType.OnlyMapping)
+        {
+            await DeleteOrphanFieldConfigsAsync(tableName, masterId, columns);
+        }
+        
         // 7) 重新查詢所有欄位設定，確保回傳資料與 DB 同步
         var result = await GetFieldsByTableName(tableName, masterId, schemaType);
 
@@ -925,7 +962,48 @@ ORDER BY
 
         return result;
     }
+    
+    /// <summary>
+    /// 將「資料表 schema 已不存在」的欄位設定標記為 Inactive（不刪除，可復原）。
+    /// </summary>
+    private async Task DeleteOrphanFieldConfigsAsync(
+        string tableName,
+        Guid masterId,
+        IReadOnlyList<DbColumnInfo> schemaColumns)
+    {
+        // 1) schema 欄位集合（O(n)）
+        var schemaSet = schemaColumns
+            .Select(x => x.COLUMN_NAME)
+            .Where(x => !string.IsNullOrWhiteSpace(x))
+            .ToHashSet(StringComparer.OrdinalIgnoreCase);
 
+        // 2) 取 configs（原本就有）
+        var configs = await GetFieldConfigs(tableName, masterId).ConfigureAwait(false);
+        if (configs.Count == 0)
+            return;
+
+        // 3) 找 orphan：Config 有，但 schema 不存在（O(m)）
+        var orphanIds = configs.Values
+            .Where(cfg =>
+                !string.IsNullOrWhiteSpace(cfg.COLUMN_NAME) &&
+                !schemaSet.Contains(cfg.COLUMN_NAME))
+            .Select(cfg => cfg.ID)
+            .Distinct()
+            .ToList();
+
+        if (orphanIds.Count == 0)
+            return;
+        
+        // 4.1 一定要 WHERE：用 WhereBuilder 組 IN
+        var where = new WhereBuilder<FormFieldConfigDto>()
+            .AndIn(x => x.ID, orphanIds);
+
+        // 4.2 軟刪除
+        await _sqlHelper.DeleteWhereAsync(
+                where)
+            .ConfigureAwait(false);
+    }
+    
     /// <summary>
     /// 新增或更新欄位設定，若已存在則更新，否則新增。
     /// </summary>
@@ -1330,34 +1408,6 @@ ORDER BY
             throw new InvalidOperationException( $"同步下拉選項失敗：{ex.Message}", ex );
         }
     }
-
-    public Guid SaveDropdownOption(
-        Guid? id,
-        Guid dropdownId,
-        string optionText,
-        string optionValue,
-        string? optionTable = null,
-        SqlTransaction? tx = null)
-    {
-        var param = new
-        {
-            Id = (id == Guid.Empty ? null : id),
-            DropdownId = dropdownId,
-            OptionText = optionText,
-            OptionValue = optionValue,
-            OptionTable = optionTable
-        };
-
-        return _con.ExecuteScalar<Guid>(Sql.UpsertDropdownOption, param, transaction: tx);
-    }
-
-
-    public async Task<bool> DeleteDropdownOption( Guid optionId, CancellationToken ct = default )
-    {
-        var where = new WhereBuilder<FormFieldDropdownOptionsDto>()
-            .AndEq(x => x.ID, optionId);
-        return await _sqlHelper.DeleteWhereAsync(where, ct) > 0;
-    }
     
     public Task SaveDropdownSql( Guid dropdownId, string sql, CancellationToken ct )
     {
@@ -1581,6 +1631,103 @@ ORDER BY
                 _con.Close();
         }
     }
+
+    public async Task ReplaceDropdownOptionsAsync(
+    Guid dropdownId,
+    IReadOnlyList<DropdownOptionItemViewModel> options,
+    CancellationToken ct)
+{
+    if (options is null) throw new ArgumentNullException(nameof(options));
+
+    // ✅ 0) 擋 options 內部重複 Id（避免同批次 Insert 同 PK）
+    var dupIds = options
+        .Where(x => x.Id.HasValue && x.Id.Value != Guid.Empty)
+        .GroupBy(x => x.Id!.Value)
+        .Where(g => g.Count() > 1)
+        .Select(g => g.Key)
+        .ToList();
+
+    if (dupIds.Count > 0)
+        throw new InvalidOperationException("options 內有重複 Id，會造成 PK 衝突");
+
+    // dropdown 檢查略（你原本那段 OK）
+
+    await _sqlHelper.TxAsync(async (conn, tx, innerCt) =>
+    {
+        // ✅ 1) 抓此 dropdown 下所有 options（包含已刪除，才能復活）
+        var existWhere = new WhereBuilder<FormFieldDropdownOptionsDto>()
+            .AndEq(x => x.FORM_FIELD_DROPDOWN_ID, dropdownId);
+
+        var dbOptions = await _sqlHelper.SelectWhereInTxAsync(conn, tx, existWhere, ct: innerCt);
+
+        // 這個 dropdown 下有哪些 ID（含已刪除）
+        var dbMap = dbOptions.ToDictionary(x => x.ID, x => x);
+
+        // ✅ 2) inputIds（有效 Id）
+        var inputIds = options
+            .Where(x => x.Id.HasValue && x.Id.Value != Guid.Empty)
+            .Select(x => x.Id!.Value)
+            .ToHashSet();
+
+        // ✅ 3) 缺少的 → soft delete（只針對未刪除）
+        var dbIdsNotDeleted = dbOptions
+            .Where(x => x.IS_DELETE == false) // 若是 bool，改成 == false
+            .Select(x => x.ID)
+            .ToHashSet();
+
+        var toDelete = dbIdsNotDeleted.Except(inputIds).ToList();
+        if (toDelete.Count > 0)
+        {
+            var delWhere = new WhereBuilder<FormFieldDropdownOptionsDto>()
+                .AndEq(x => x.FORM_FIELD_DROPDOWN_ID, dropdownId)
+                .AndIn(x => x.ID, toDelete)
+                .AndNotDeleted();
+
+            await _sqlHelper.DeleteWhereInTxAsync(conn, tx, delWhere, ct: innerCt);
+        }
+
+        // ✅ 4) Upsert（同 dropdown 存在→Update，不存在→Insert）
+        //    重點：如果前端帶 Id 但不屬於此 dropdown，我們「不採用該 Id」，改 new Guid 新增
+        foreach (var item in options)
+        {
+            var text = item.OptionText?.Trim();
+            var value = item.OptionValue?.Trim();
+
+            if (string.IsNullOrWhiteSpace(text) || string.IsNullOrWhiteSpace(value))
+                throw new InvalidOperationException("OptionText/OptionValue 不可空白");
+
+            var hasValidId = item.Id.HasValue && item.Id.Value != Guid.Empty;
+            var inputId = hasValidId ? item.Id!.Value : Guid.Empty;
+
+            // 同 dropdown 下存在（含已刪除）→ Update + 復活
+            if (hasValidId && dbMap.ContainsKey(inputId))
+            {
+                await _sqlHelper.UpdateById<FormFieldDropdownOptionsDto>(inputId)
+                    .Set(x => x.OPTION_TEXT, text!)
+                    .Set(x => x.OPTION_VALUE, value!)
+                    .Set(x => x.IS_DELETE, 0) // 若是 bool 改成 false
+                    .Audit(false)
+                    .ExecuteInTxAsync(conn, tx, ct: innerCt);
+
+                continue;
+            }
+
+            // 不存在（或前端帶了不屬於此 dropdown 的 Id）→ Insert
+            // 為了避免 PK 撞到別的 dropdown 的 Id，這裡一律用 new Guid
+            var entity = new FormFieldDropdownOptionsDto
+            {
+                ID = Guid.NewGuid(),
+                FORM_FIELD_DROPDOWN_ID = dropdownId,
+                OPTION_TEXT = text!,
+                OPTION_VALUE = value!,
+                IS_DELETE = false // 若是 bool 改成 false
+            };
+
+            await _sqlHelper.InsertInTxAsync(conn, tx, entity, ct: innerCt);
+        }
+    }, ct: ct);
+}
+
 
         
     public async Task<Guid> SaveFormHeader( FormHeaderViewModel model )

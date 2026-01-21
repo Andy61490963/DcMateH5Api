@@ -75,13 +75,18 @@ namespace DcMateH5Api.SqlHelper
         private Task<DateTime> GetDbNowInTxAsync(SqlConnection conn, SqlTransaction tx, CancellationToken ct)
             => _db.ExecuteScalarInTxAsync<DateTime>(conn, tx, "SELECT SYSDATETIME();", ct: ct);
 
-        private static void AddAuditForInsert(List<string> cols, List<string> vals, DynamicParameters dp, Guid uid, DateTime now)
+        private static void AddAuditForInsert(
+            List<string> cols,
+            List<string> vals,
+            DynamicParameters dp,
+            Guid uid,
+            DateTime now)
         {
-            cols.Add($"[{COL_CREATE_USER}]"); vals.Add($"@{P_CREATE_USER}"); dp.Add(P_CREATE_USER, uid);
-            cols.Add($"[{COL_CREATE_TIME}]"); vals.Add($"@{P_CREATE_TIME}"); dp.Add(P_CREATE_TIME, now);
-            cols.Add($"[{COL_EDIT_USER}]");   vals.Add($"@{P_EDIT_USER}");   dp.Add(P_EDIT_USER, uid);
-            cols.Add($"[{COL_EDIT_TIME}]");   vals.Add($"@{P_EDIT_TIME}");   dp.Add(P_EDIT_TIME, now);
-            cols.Add($"[{COL_IS_DELETE}]");   vals.Add($"@{P_IS_DELETE}");   dp.Add(P_IS_DELETE, false);
+            AddColIfNotExists(cols, vals, dp, COL_CREATE_USER, P_CREATE_USER, uid);
+            AddColIfNotExists(cols, vals, dp, COL_CREATE_TIME, P_CREATE_TIME, now);
+            AddColIfNotExists(cols, vals, dp, COL_EDIT_USER,   P_EDIT_USER,   uid);
+            AddColIfNotExists(cols, vals, dp, COL_EDIT_TIME,   P_EDIT_TIME,   now);
+            AddColIfNotExists(cols, vals, dp, COL_IS_DELETE,   P_IS_DELETE,   false);
         }
 
         private static void AddAuditForUpdate(List<string> sets, DynamicParameters dp, Guid uid, DateTime now)
@@ -90,6 +95,23 @@ namespace DcMateH5Api.SqlHelper
             sets.Add($"[{COL_EDIT_TIME}] = @{P_EDIT_TIME}"); dp.Add(P_EDIT_TIME, now);
         }
         
+        private static void AddColIfNotExists(
+            List<string> cols,
+            List<string> vals,
+            DynamicParameters dp,
+            string colName,
+            string paramName,
+            object value)
+        {
+            var colToken = $"[{colName}]";
+            if (cols.Any(c => string.Equals(c, colToken, StringComparison.OrdinalIgnoreCase)))
+                return;
+
+            cols.Add(colToken);
+            vals.Add("@" + paramName);
+            dp.Add(paramName, value);
+        }
+
         #region Transaction
 
         public Task TxAsync(

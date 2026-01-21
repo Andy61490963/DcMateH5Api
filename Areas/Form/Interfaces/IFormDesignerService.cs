@@ -20,6 +20,7 @@ public interface IFormDesignerService
     Guid GetOrCreateFormMasterId( FormFieldMasterDto model );
     
     Task<FormFieldListViewModel?> EnsureFieldsSaved( string tableName, Guid? formMasterId, TableSchemaQueryType type );
+    
     Task<FormFieldListViewModel> GetFieldsByTableName( string tableName, Guid? formMasterId, TableSchemaQueryType schemaType );
 
     /// <summary>
@@ -72,16 +73,7 @@ public interface IFormDesignerService
     Task<List<FormFieldDropdownOptionsDto>> GetDropdownOptions( Guid dropDownId, CancellationToken ct = default );
 
     Task SaveDropdownSql( Guid dropdownId, string sql, CancellationToken ct );
-    Guid SaveDropdownOption(
-        Guid? id,
-        Guid dropdownId,
-        string optionText,
-        string optionValue,
-        string? optionTable = null,
-        SqlTransaction? tx = null);
-
-    Task<bool> DeleteDropdownOption(Guid optionId, CancellationToken ct = default);
-
+    
     Task SetDropdownMode( Guid dropdownId, bool isUseSql, CancellationToken ct );
 
     ValidateSqlResultViewModel ValidateDropdownSql( string sql );
@@ -95,6 +87,8 @@ public interface IFormDesignerService
     /// <param name="dropdownId">FORM_FIELD_DROPDOWN 的ID</param>
     /// <returns>匯入結果</returns>
     PreviousQueryDropdownImportResultViewModel ImportPreviousQueryDropdownValues(string sql, Guid dropdownId);
+
+    Task ReplaceDropdownOptionsAsync(Guid dropdownId, IReadOnlyList<DropdownOptionItemViewModel> options, CancellationToken ct = default);
 
     Task<Guid> SaveFormHeader( FormHeaderViewModel model );
 

@@ -15,6 +15,11 @@ public class FormFieldViewModel
     public Guid FORM_FIELD_MASTER_ID { get; set; }
 
     /// <summary>
+    /// 下拉選單
+    /// </summary>
+    public Guid? FORM_FIELD_DROPDOWN_ID { get; set; }
+    
+    /// <summary>
     /// 這個欄位是否為Pk
     /// </summary>
     public bool IS_PK { get; set; }

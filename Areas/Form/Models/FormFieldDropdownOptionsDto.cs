@@ -21,4 +21,7 @@ public class FormFieldDropdownOptionsDto
     
     [Column("OPTION_TEXT")]
     public string OPTION_TEXT { get; set; }
+    
+    [Column("IS_DELETE")]
+    public bool IS_DELETE { get; set; }
 }
