@@ -1633,54 +1633,101 @@ WHERE c.FORM_FIELD_MASTER_ID = @MasterId
     }
 
     public async Task ReplaceDropdownOptionsAsync(
-        Guid dropdownId,
-        IReadOnlyList<DropdownOptionItemViewModel> options,
-        CancellationToken ct)
+    Guid dropdownId,
+    IReadOnlyList<DropdownOptionItemViewModel> options,
+    CancellationToken ct)
+{
+    if (options is null) throw new ArgumentNullException(nameof(options));
+
+    // ✅ 0) 擋 options 內部重複 Id（避免同批次 Insert 同 PK）
+    var dupIds = options
+        .Where(x => x.Id.HasValue && x.Id.Value != Guid.Empty)
+        .GroupBy(x => x.Id!.Value)
+        .Where(g => g.Count() > 1)
+        .Select(g => g.Key)
+        .ToList();
+
+    if (dupIds.Count > 0)
+        throw new InvalidOperationException("options 內有重複 Id，會造成 PK 衝突");
+
+    // dropdown 檢查略（你原本那段 OK）
+
+    await _sqlHelper.TxAsync(async (conn, tx, innerCt) =>
     {
-        if (options is null) throw new ArgumentNullException(nameof(options));
+        // ✅ 1) 抓此 dropdown 下所有 options（包含已刪除，才能復活）
+        var existWhere = new WhereBuilder<FormFieldDropdownOptionsDto>()
+            .AndEq(x => x.FORM_FIELD_DROPDOWN_ID, dropdownId);
 
-        // 1) 查 dropdown 是否存在、是否允許手動
-        var dropdownWhere = new WhereBuilder<FormDropDownDto>()
-            .AndEq(x => x.ID, dropdownId)
-            .AndNotDeleted();
+        var dbOptions = await _sqlHelper.SelectWhereInTxAsync(conn, tx, existWhere, ct: innerCt);
 
-        var dropdown = await _sqlHelper.SelectFirstOrDefaultAsync(dropdownWhere, ct);
-        if (dropdown is null) throw new KeyNotFoundException("Dropdown 不存在");
-        if (dropdown.ISUSESQL) throw new InvalidOperationException("此 Dropdown 使用 SQL 來源，禁止手動覆蓋選項");
+        // 這個 dropdown 下有哪些 ID（含已刪除）
+        var dbMap = dbOptions.ToDictionary(x => x.ID, x => x);
 
-        // 2) 最小防呆：至少避免插入空字串（ModelState 擋過通常不會進來，但保險）
-        foreach (var item in options)
+        // ✅ 2) inputIds（有效 Id）
+        var inputIds = options
+            .Where(x => x.Id.HasValue && x.Id.Value != Guid.Empty)
+            .Select(x => x.Id!.Value)
+            .ToHashSet();
+
+        // ✅ 3) 缺少的 → soft delete（只針對未刪除）
+        var dbIdsNotDeleted = dbOptions
+            .Where(x => x.IS_DELETE == false) // 若是 bool，改成 == false
+            .Select(x => x.ID)
+            .ToHashSet();
+
+        var toDelete = dbIdsNotDeleted.Except(inputIds).ToList();
+        if (toDelete.Count > 0)
         {
-            if (string.IsNullOrWhiteSpace(item.OptionText) || string.IsNullOrWhiteSpace(item.OptionValue))
-                throw new InvalidOperationException("OptionText/OptionValue 不可空白");
+            var delWhere = new WhereBuilder<FormFieldDropdownOptionsDto>()
+                .AndEq(x => x.FORM_FIELD_DROPDOWN_ID, dropdownId)
+                .AndIn(x => x.ID, toDelete)
+                .AndNotDeleted();
+
+            await _sqlHelper.DeleteWhereInTxAsync(conn, tx, delWhere, ct: innerCt);
         }
 
-        // 3) 交易：全刪 + 全插
-        await _sqlHelper.TxAsync(async (conn, tx, innerCt) =>
+        // ✅ 4) Upsert（同 dropdown 存在→Update，不存在→Insert）
+        //    重點：如果前端帶 Id 但不屬於此 dropdown，我們「不採用該 Id」，改 new Guid 新增
+        foreach (var item in options)
         {
-            // 3-1) 軟刪除該 dropdown 原本所有 options（先刪乾淨）
-            var deleteWhere = new WhereBuilder<FormFieldDropdownOptionsDto>()
-                .AndEq(x => x.FORM_FIELD_DROPDOWN_ID, dropdownId)
-                .AndNotDeleted(); // 只刪未刪除的，避免重複打 UPDATE
+            var text = item.OptionText?.Trim();
+            var value = item.OptionValue?.Trim();
 
-            await _sqlHelper.DeleteWhereInTxAsync(conn, tx, deleteWhere, ct: innerCt);
+            if (string.IsNullOrWhiteSpace(text) || string.IsNullOrWhiteSpace(value))
+                throw new InvalidOperationException("OptionText/OptionValue 不可空白");
 
-            // 3-2) 逐筆插入新 options
-            // 最簡單：全給新 ID（如果你不需要保留 optionId）
-            foreach (var item in options)
+            var hasValidId = item.Id.HasValue && item.Id.Value != Guid.Empty;
+            var inputId = hasValidId ? item.Id!.Value : Guid.Empty;
+
+            // 同 dropdown 下存在（含已刪除）→ Update + 復活
+            if (hasValidId && dbMap.ContainsKey(inputId))
             {
-                var entity = new FormFieldDropdownOptionsDto
-                {
-                    ID = Guid.NewGuid(),
-                    FORM_FIELD_DROPDOWN_ID = dropdownId,
-                    OPTION_TEXT = item.OptionText.Trim(),
-                    OPTION_VALUE = item.OptionValue.Trim()
-                };
+                await _sqlHelper.UpdateById<FormFieldDropdownOptionsDto>(inputId)
+                    .Set(x => x.OPTION_TEXT, text!)
+                    .Set(x => x.OPTION_VALUE, value!)
+                    .Set(x => x.IS_DELETE, 0) // 若是 bool 改成 false
+                    .Audit(false)
+                    .ExecuteInTxAsync(conn, tx, ct: innerCt);
 
-                await _sqlHelper.InsertInTxAsync(conn, tx, entity, ct: innerCt);
+                continue;
             }
-        }, ct: ct);
-    }
+
+            // 不存在（或前端帶了不屬於此 dropdown 的 Id）→ Insert
+            // 為了避免 PK 撞到別的 dropdown 的 Id，這裡一律用 new Guid
+            var entity = new FormFieldDropdownOptionsDto
+            {
+                ID = Guid.NewGuid(),
+                FORM_FIELD_DROPDOWN_ID = dropdownId,
+                OPTION_TEXT = text!,
+                OPTION_VALUE = value!,
+                IS_DELETE = false // 若是 bool 改成 false
+            };
+
+            await _sqlHelper.InsertInTxAsync(conn, tx, entity, ct: innerCt);
+        }
+    }, ct: ct);
+}
+
 
         
     public async Task<Guid> SaveFormHeader( FormHeaderViewModel model )
