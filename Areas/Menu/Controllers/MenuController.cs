@@ -1,6 +1,7 @@
 using DCMATEH5API.Areas.Menu.Models;
 using DCMATEH5API.Areas.Menu.Services;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.Authorization; // 確保加入此命名空間
 using System.Collections.Generic;
 using System.Linq;
 using System.Threading.Tasks;
@@ -10,6 +11,7 @@ namespace DCMATEH5API.Areas.Menu.Controllers
     [Area("Menu")]
     [Route("api/[area]/[controller]")]
     [ApiController]
+    [Authorize] // 加上授權，確保只有登入者能撈選單
     public class MenuController : ControllerBase
     {
         private readonly IMenuService _menuService;
@@ -18,17 +20,24 @@ namespace DCMATEH5API.Areas.Menu.Controllers
         [HttpGet("GetMenuTree")]
         public async Task<IActionResult> GetNavigation()
         {
-            string currentUserId = "SystemAdmin";
-            var tree = await _menuService.GetMenuTreeAsync(currentUserId);
+            // --- 修正：動態讀取登入者資訊 ---
+            // 讀取登入時存入 ClaimTypes.Name 的帳號
+            var currentUser = User.Identity?.Name ?? "Guest";
+
+            // 讀取登入時自定義存入的 "UserLV"
+            var currentLv = User.FindFirst("UserLV")?.Value ?? "0";
+
+            // 使用動態帳號去撈取該人的選單樹
+            var tree = await _menuService.GetMenuTreeAsync(currentUser);
 
             var finalResult = new MenuResponse();
 
             // 預設首頁入口
-            finalResult.Pages["index.html"] = new PageFolderViewModel
+            finalResult.MenuList["index.html"] = new PageFolderViewModel
             {
                 Title = "首頁",
                 Url = "index.html",
-                ImgIcon = "", // 首頁本身通常沒圖標，或可給預設值
+                ImgIcon = "",
                 Tiles = tree.Select((node, index) => new TileViewModel
                 {
                     Sid = node.Id,
@@ -44,9 +53,17 @@ namespace DCMATEH5API.Areas.Menu.Controllers
             };
 
             // 遞迴將樹狀平鋪到 Dictionary 中
-            FillPagesDictionary(tree, finalResult.Pages);
+            FillPagesDictionary(tree, finalResult.MenuList);
 
-            return Ok(new MenuResult { Success = true, Data = finalResult, Message = "查詢成功" });
+            // --- 修正：回傳真實的 user 與 LV ---
+            return Ok(new MenuResult
+            {
+                Success = true,
+                Data = finalResult,
+                Message = "查詢成功",
+                User = currentUser, // 回傳登入帳號
+                LV = currentLv      // 回傳資料庫撈出的 LV
+            });
         }
 
         private void FillPagesDictionary(List<MenuNavigationViewModel> nodes, Dictionary<string, PageFolderViewModel> pages, string backUrl = "index.html")
@@ -87,13 +104,6 @@ namespace DCMATEH5API.Areas.Menu.Controllers
                 }
                 FillPagesDictionary(node.Children, pages, key);
             }
-        }
-
-        private string CombineUrl(string? url, string? parameter)
-        {
-            var cleanUrl = url?.Trim() ?? "";
-            if (string.IsNullOrEmpty(parameter)) return cleanUrl;
-            return cleanUrl.Contains("?") ? $"{cleanUrl}&{parameter}" : $"{cleanUrl}?{parameter}";
         }
     }
 }

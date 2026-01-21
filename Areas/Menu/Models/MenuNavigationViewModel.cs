@@ -1,4 +1,5 @@
 using System.Collections.Generic;
+using System.ComponentModel.DataAnnotations.Schema;
 using System.Text.Json.Serialization;
 
 namespace DCMATEH5API.Areas.Menu.Models
@@ -6,8 +7,11 @@ namespace DCMATEH5API.Areas.Menu.Models
     // 1. 最外層容器：對應 JSON 的 "pages"
     public class MenuResponse
     {
-        [JsonPropertyName("pages")]
-        public Dictionary<string, PageFolderViewModel> Pages { get; set; } = new();
+        // 將原本的 public Dictionary<string, PageFolderViewModel> Pages 修改如下
+        public Dictionary<string, PageFolderViewModel> MenuList { get; set; } = new Dictionary<string, PageFolderViewModel>();
+
+        // PageList 通常存放扁平化的頁面清單，用於快速搜尋
+        public List<TileViewModel> PageList { get; set; } = new List<TileViewModel>();
     }
 
     // 2. 舊版單頁結構：對應 "index.html": { ... }
@@ -54,6 +58,7 @@ namespace DCMATEH5API.Areas.Menu.Models
     // 4. 原始資料零件 (接 SQL 用)
     public class MenuNavigationViewModel
     {
+        [Column("ADM_MENU_MODULE_SID")] // 標記資料庫欄位名
         public string Id { get; set; } = string.Empty;
         public string Title { get; set; } = string.Empty;
         public string Url { get; set; } = string.Empty;
@@ -63,8 +68,10 @@ namespace DCMATEH5API.Areas.Menu.Models
         public string? Desc { get; set; }
         public string ImgIcon { get; set; } = string.Empty; // 新增 ImgIcon 接收 SQL 欄位
         [JsonIgnore]
+        [Column("PARENT_ID")]
         public string ParentId { get; set; } = "00000000-0000-0000-0000-000000000000";
         [JsonIgnore]
+        [Column("SEQ")]
         public int SortOrder { get; set; }
         [JsonIgnore]
         public string SourceType { get; set; } = string.Empty; // 用來區分 MENU 或 PAGE

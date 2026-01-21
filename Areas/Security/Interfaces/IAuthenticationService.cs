@@ -20,5 +20,8 @@ namespace DcMateH5Api.Areas.Security.Interfaces
         /// 註冊成功回傳新建筆數（通常是 1）
         /// </summary>
         Task<Result<int>> RegisterAsync(RegisterRequestViewModel request, CancellationToken ct = default);
+
+
+        Task<Result<LoginResponseViewModel>> ExtendSessionAsync();
     }
 }
