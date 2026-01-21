@@ -1,10 +1,6 @@
-using ClassLibrary;
-using DcMateH5Api.Areas.Security.Interfaces;
 using DcMateH5Api.Areas.Security.ViewModels;
 using DcMateH5Api.Helper;
 using DcMateH5Api.Models;
-using Microsoft.AspNetCore.Authentication;
-using Microsoft.AspNetCore.Authentication.Cookies;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 
@@ -20,14 +16,15 @@ namespace DcMateH5Api.Areas.Security.Controllers
     public class LoginController : ControllerBase
     {
         // 使用完整命名空間來避開衝突
-        private readonly DcMateH5Api.Areas.Security.Interfaces.IAuthenticationService _authService;
-        private readonly IHttpContextAccessor _httpContextAccessor; // 新增注入
-        private readonly IConfiguration _config; // 新增注入
+        private readonly Interfaces.IAuthenticationService _authService;
+        private readonly IHttpContextAccessor _httpContextAccessor;
+        private readonly IConfiguration _config;
+        
         /// <summary>
         /// 建構函式注入驗證服務。
         /// </summary>
         /// <param name="authService">驗證服務。</param>
-        public LoginController(DcMateH5Api.Areas.Security.Interfaces.IAuthenticationService authService, IHttpContextAccessor httpContextAccessor,
+        public LoginController(Interfaces.IAuthenticationService authService, IHttpContextAccessor httpContextAccessor,
         IConfiguration config)
         {
             _authService = authService;

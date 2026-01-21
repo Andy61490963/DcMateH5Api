@@ -63,9 +63,9 @@ public class AuthenticationService : Interfaces.IAuthenticationService
 
         var claims = new List<Claim>
         {
-            new Claim(ClaimTypes.Name, user.Account),
-            new Claim("UserId", user.Id.ToString()),
-            new Claim("UserLV", userLv)
+            new (ClaimTypes.Name, user.Account),
+            new ("UserId", user.Id.ToString()),
+            new ("UserLV", userLv)
         };
 
         var claimsIdentity = new ClaimsIdentity(claims, CookieAuthenticationDefaults.AuthenticationScheme);

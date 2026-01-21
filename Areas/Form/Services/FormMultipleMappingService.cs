@@ -537,8 +537,8 @@ WHERE [{header.MAPPING_PK_COLUMN}] IN @Ids
         ValidateColumnName(header.MAPPING_BASE_FK_COLUMN);
         ValidateColumnName(header.MAPPING_DETAIL_FK_COLUMN);
         
-        ValidateColumnName(header.MAPPING_BASE_COLUMN_NAME);
-        ValidateColumnName(header.MAPPING_DETAIL_COLUMN_NAME);
+        // ValidateColumnName(header.MAPPING_BASE_COLUMN_NAME);
+        // ValidateColumnName(header.MAPPING_DETAIL_COLUMN_NAME);
 
         EnsureColumnExists(header.MAPPING_TABLE_NAME!, header.MAPPING_BASE_FK_COLUMN!, "關聯表缺少指向主表的外鍵欄位", tx);
         EnsureColumnExists(header.MAPPING_TABLE_NAME!, header.MAPPING_DETAIL_FK_COLUMN!, "關聯表缺少指向明細表的外鍵欄位", tx);
