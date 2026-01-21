@@ -595,11 +595,11 @@ WHERE b.[{header.MAPPING_BASE_FK_COLUMN}] = @BaseId;";
         const string DetailPrefix  = "d__";
 
         var baseDisplayColumn = header.MAPPING_BASE_COLUMN_NAME;
-        var detailDisplayColumn = header.MAPPING_DETAIL_COLUMN_NAME;
 
-        if (string.IsNullOrWhiteSpace(baseDisplayColumn) || string.IsNullOrWhiteSpace(detailDisplayColumn))
-            throw new InvalidOperationException("多對多設定檔缺少顯示欄位（MAPPING_BASE_COLUMN_NAME / MAPPING_DETAIL_COLUMN_NAME）。");
-        
+        // baseDisplayColumn 仍必填（要顯示 Base 的文字）
+        if (string.IsNullOrWhiteSpace(baseDisplayColumn))
+            throw new InvalidOperationException("多對多設定檔缺少 Base 顯示欄位（MAPPING_BASE_COLUMN_NAME）。");
+
         // 欄位清單（白名單）
         var mappingColumns = _schemaService.GetFormFieldMaster(header.MAPPING_TABLE_NAME!, tx)
             .Distinct(StringComparer.OrdinalIgnoreCase)
@@ -674,13 +674,13 @@ WHERE b.[{header.MAPPING_BASE_FK_COLUMN}] = @BaseId;";
             tableAlias: "m",
             paramPrefix: "mLike"
         );
-        
+        // 直接用 PK 當 DetailDisplayText（不依賴任何 detailDisplayColumn）
         var sql = $@"/**/
     SELECT
         {mappingSelect},
         {detailSelect},
-        b.[{baseDisplayColumn}]   AS [{DisplayAlias.Base}],
-        d.[{detailDisplayColumn}] AS [{DisplayAlias.Detail}]
+        b.[{baseDisplayColumn}] AS [{DisplayAlias.Base}],
+        CONVERT(nvarchar(200), d.[{detailPkName}]) AS [{DisplayAlias.Detail}]
     FROM [{header.MAPPING_TABLE_NAME}] AS m
     JOIN [{header.DETAIL_TABLE_NAME}]  AS d
       ON m.[{header.MAPPING_DETAIL_FK_COLUMN}] = d.[{detailPkName}]
@@ -691,7 +691,7 @@ WHERE b.[{header.MAPPING_BASE_FK_COLUMN}] = @BaseId;";
     {orderBySql};";
 
         filterParams.Add("BaseId", basePkValue);
-        
+
         var rows = _con.Query(sql, filterParams, transaction: tx)
             .Cast<IDictionary<string, object?>>()
             .ToList();
@@ -708,18 +708,23 @@ WHERE b.[{header.MAPPING_BASE_FK_COLUMN}] = @BaseId;";
             {
                 if (kv.Key.StartsWith(MappingPrefix, StringComparison.OrdinalIgnoreCase))
                     mappingFields[kv.Key.Substring(MappingPrefix.Length)] = kv.Value;
-
                 else if (kv.Key.StartsWith(DetailPrefix, StringComparison.OrdinalIgnoreCase))
                     detailFields[kv.Key.Substring(DetailPrefix.Length)] = kv.Value;
             }
 
             detailFields.TryGetValue(detailPkName, out var pkVal);
+            var pkText = pkVal?.ToString() ?? string.Empty;
+
+            // DetailDisplayText 永遠用 PK（這裡其實等於 pkText，但保留從 SQL 取值也 OK）
+            var detailDisplayText = detailTextObj?.ToString();
+            if (string.IsNullOrWhiteSpace(detailDisplayText))
+                detailDisplayText = pkText;
 
             return new MultipleMappingItemViewModel
             {
-                DetailPk = pkVal?.ToString() ?? string.Empty,
+                DetailPk = pkText,
                 BaseDisplayText = baseTextObj?.ToString(),
-                DetailDisplayText = detailTextObj?.ToString(),
+                DetailDisplayText = detailDisplayText,
                 DetailToRelationDefaultColumn = detailToRelationDefaultColumnMap,
                 MappingFields = mappingFields,
                 DetailFields = detailFields
@@ -737,10 +742,6 @@ WHERE b.[{header.MAPPING_BASE_FK_COLUMN}] = @BaseId;";
     {
         const string DetailPrefix = "d__";
 
-        var detailDisplayColumn = header.MAPPING_DETAIL_COLUMN_NAME;
-        if (string.IsNullOrWhiteSpace(detailDisplayColumn))
-            throw new InvalidOperationException("多對多設定檔缺少顯示欄位（MAPPING_DETAIL_COLUMN_NAME）。");
-
         var detailColumns = _schemaService.GetFormFieldMaster(header.DETAIL_TABLE_NAME!, tx)
             .Distinct(StringComparer.OrdinalIgnoreCase)
             .ToList();
@@ -752,7 +753,7 @@ WHERE b.[{header.MAPPING_BASE_FK_COLUMN}] = @BaseId;";
         var mappingColumns = _schemaService.GetFormFieldMaster(header.MAPPING_TABLE_NAME!, tx)
             .Distinct(StringComparer.OrdinalIgnoreCase)
             .ToList();
-        
+
         #region detail 因為要從 detail 表塞值到 mapping表 ，需要設定那個要塞的mapping表的欄位
         var configRows = _formFieldConfigService.GetFormFieldConfig(header.DETAIL_TABLE_ID);
 
@@ -762,7 +763,6 @@ WHERE b.[{header.MAPPING_BASE_FK_COLUMN}] = @BaseId;";
             .GroupBy(r => r.COLUMN_NAME.Trim(), StringComparer.OrdinalIgnoreCase)
             .Select(g =>
             {
-                // 同一個 COLUMN_NAME 多筆時，確保 DETAIL_TO_RELATION_DEFAULT_COLUMN 不會出現衝突
                 var values = g.Select(x => x.DETAIL_TO_RELATION_DEFAULT_COLUMN?.Trim())
                     .Where(v => !string.IsNullOrWhiteSpace(v))
                     .Distinct(StringComparer.OrdinalIgnoreCase)
@@ -774,7 +774,6 @@ WHERE b.[{header.MAPPING_BASE_FK_COLUMN}] = @BaseId;";
                         $"FORM_FIELD_CONFIG 欄位 '{g.Key}' 的 DETAIL_TO_RELATION_DEFAULT_COLUMN 設定不唯一：{string.Join(", ", values)}，請先清理資料。");
                 }
 
-                // 沒設定就不回傳給前端（避免前端收到一堆 null/空字串）
                 return new
                 {
                     DetailColumnName = g.Key,
@@ -799,7 +798,7 @@ WHERE b.[{header.MAPPING_BASE_FK_COLUMN}] = @BaseId;";
             }
         }
         #endregion
-        
+
         var detailSelect = string.Join(",\n    ",
             detailColumns.Select(c => $"d.[{c}] AS [{DetailPrefix}{c}]"));
 
@@ -809,11 +808,12 @@ WHERE b.[{header.MAPPING_BASE_FK_COLUMN}] = @BaseId;";
             tableAlias: "d",
             paramPrefix: "dLike"
         );
-        
+
+        // ✅ DetailDisplayText 直接用 PK（不依賴 MAPPING_DETAIL_COLUMN_NAME）
         var sql = $@"/**/
     SELECT
         {detailSelect},
-        d.[{detailDisplayColumn}] AS [{DisplayAlias.Detail}]
+        CONVERT(nvarchar(200), d.[{detailPkName}]) AS [{DisplayAlias.Detail}]
     FROM [{header.DETAIL_TABLE_NAME}] d
     WHERE 1 = 1
     {filterSql}
@@ -825,6 +825,7 @@ WHERE b.[{header.MAPPING_BASE_FK_COLUMN}] = @BaseId;";
       );";
 
         filterParams.Add("BaseId", basePkValue);
+
         var rows = _con.Query(sql, filterParams, transaction: tx)
             .Cast<IDictionary<string, object?>>()
             .ToList();
@@ -841,14 +842,20 @@ WHERE b.[{header.MAPPING_BASE_FK_COLUMN}] = @BaseId;";
             }
 
             detailFields.TryGetValue(detailPkName, out var pkVal);
+            var pkText = pkVal?.ToString() ?? string.Empty;
+
+            // ✅ 若 DetailDisplay 取不到（理論上不會），fallback 用 pkText
+            var detailDisplayText = detailTextObj?.ToString();
+            if (string.IsNullOrWhiteSpace(detailDisplayText))
+                detailDisplayText = pkText;
 
             return new MultipleMappingItemViewModel
             {
-                DetailPk = pkVal?.ToString() ?? string.Empty,
+                DetailPk = pkText,
                 BaseDisplayText = baseDisplayText,
-                DetailDisplayText = detailTextObj?.ToString(),
+                DetailDisplayText = detailDisplayText,
                 DetailToRelationDefaultColumn = detailToRelationDefaultColumnMap,
-                MappingFields = new Dictionary<string, object?>(StringComparer.OrdinalIgnoreCase), // unlinked 沒 mapping
+                MappingFields = new Dictionary<string, object?>(StringComparer.OrdinalIgnoreCase),
                 DetailFields = detailFields
             };
         }).ToList();
