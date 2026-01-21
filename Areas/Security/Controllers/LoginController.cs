@@ -46,31 +46,5 @@ namespace DcMateH5Api.Areas.Security.Controllers
             
             return Unauthorized(result);
         }
-        
-        /// <summary>
-        /// 註冊新帳號。
-        /// </summary>
-        /// <param name="request">帳號、密碼、角色。</param>
-        [HttpPost("register")]
-        [ProducesResponseType(typeof(Result<int>), StatusCodes.Status201Created)]
-        [ProducesResponseType(typeof(Result<int>), StatusCodes.Status409Conflict)]
-        [ProducesResponseType(typeof(Result<int>), StatusCodes.Status500InternalServerError)]
-        public async Task<IActionResult> Register([FromBody] RegisterRequestViewModel request, CancellationToken ct)
-        {
-            var result  = await _authService.RegisterAsync(request, ct);
-
-            if (result.IsSuccess)
-            {
-                return StatusCode(StatusCodes.Status201Created, result);
-            }
-            
-            if (result.Code == nameof(AuthenticationErrorCode.AccountAlreadyExists))
-            {
-                return Conflict(result);
-            }
-
-            return StatusCode(StatusCodes.Status500InternalServerError, result);
-        }
-
     }
 }

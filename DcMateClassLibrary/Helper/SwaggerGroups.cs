@@ -14,8 +14,6 @@ public static class SwaggerGroups
     public const string FormWithMultipleMapping = nameof(FormWithMultipleMapping);
     public const string Log = nameof(Log);
     
-    public const string RouteOperation = nameof(RouteOperation);
-    
     public static readonly Dictionary<string, string> DisplayNames = new()
     {
         { ApiStatus, "Api 狀態" },
@@ -26,7 +24,5 @@ public static class SwaggerGroups
         { FormWithMasterDetail, "主明細維護" },
         { FormWithMultipleMapping, "多對多維護" },
         { Log, "系統紀錄" },
-        
-        { RouteOperation, "流程工作站設定" }
     };
 }

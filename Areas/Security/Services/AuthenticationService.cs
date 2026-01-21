@@ -2,7 +2,6 @@ using ClassLibrary;
 using DcMateH5Api.Areas.Security.Models;
 using DcMateH5Api.Areas.Security.Interfaces;
 using DcMateH5Api.Areas.Security.ViewModels;
-using DcMateH5Api.Areas.Security.Mappers;
 using DcMateH5Api.SqlHelper;
 using DcMateH5Api.Models;
 
@@ -46,30 +45,5 @@ public class AuthenticationService : IAuthenticationService
         var vm = new LoginResponseViewModel(user, tokenResult);
 
         return Result<LoginResponseViewModel>.Ok(vm);
-    }
-
-    public async Task<Result<int>> RegisterAsync(RegisterRequestViewModel request, CancellationToken ct = default)
-    {
-        var where = new WhereBuilder<UserAccount>()
-            .AndEq(x => x.Account, request.Account)
-            .AndNotDeleted();
-
-        var user = await _sqlHelper.SelectFirstOrDefaultAsync(where, ct);
-        if (user != null)
-        {
-            return Result<int>.Fail(AuthenticationErrorCode.AccountAlreadyExists, AuthenticationErrorCode.AccountAlreadyExists.GetDescription());
-        }
-
-        var salt = _passwordHasher.GenerateSalt();
-        var model = UserAccountMapper.MapperRegisterAndDto(request, salt, _passwordHasher);
-
-        var rows = await _sqlHelper.InsertAsync(model, ct);
-
-        if (rows > 0)
-        {
-            return Result<int>.Ok(rows);
-        }
-        
-        return Result<int>.Fail(AuthenticationErrorCode.RegisterFailed, AuthenticationErrorCode.RegisterFailed.GetDescription(), new { rows });
     }
 }

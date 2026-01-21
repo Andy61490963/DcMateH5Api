@@ -17,8 +17,6 @@ using DcMateH5Api.Areas.Log.Interfaces;
 using DcMateH5Api.Areas.Log.Services;
 using DcMateH5Api.Areas.Permission.Interfaces;
 using DcMateH5Api.Areas.Permission.Services;
-using DcMateH5Api.Areas.RouteOperation.Interfaces;
-using DcMateH5Api.Areas.RouteOperation.Services;
 using DcMateH5Api.Areas.Security.Interfaces;
 using DcMateH5Api.Areas.Security.Models;
 using DcMateH5Api.Areas.Security.Services;
@@ -88,12 +86,6 @@ builder.Services.AddScoped<IFormMultipleMappingService, FormMultipleMappingServi
 builder.Services.AddScoped<IDropdownSqlSyncService, DropdownSqlSyncService>();
 builder.Services.AddScoped<IPermissionService, PermissionService>();
 
-// 工作站
-builder.Services.AddScoped<IBasRouteService, BasRouteService>();
-builder.Services.AddScoped<IBasOperationService, BasOperationService>();
-builder.Services.AddScoped<IBasConditionService, BasConditionService>();
-builder.Services.AddScoped<IRouteOperationService, RouteOperationService>();
-
 // 交易
 builder.Services.AddScoped<ITransactionService, TransactionService>();
 
@@ -154,8 +146,7 @@ var swaggerGroups = new[]
     SwaggerGroups.Security,
     SwaggerGroups.Enum,
     SwaggerGroups.ApiStatus,
-    SwaggerGroups.Log,
-    SwaggerGroups.RouteOperation
+    SwaggerGroups.Log
 };
 
 builder.Services.AddEndpointsApiExplorer();
