@@ -6,29 +6,29 @@ namespace DcMateH5Api.Helper;
 public static class SwaggerGroups
 {
     public const string ApiStatus = nameof(ApiStatus);
-    public const string Security = nameof(Security);
-    public const string Menu = nameof(Menu);
-    public const string Permission = nameof(Permission);
     public const string Enum = nameof(Enum);
+    public const string Log = nameof(Log);
+    
     public const string Form = nameof(Form);
     public const string FormWithMasterDetail = nameof(FormWithMasterDetail);
     public const string FormWithMultipleMapping = nameof(FormWithMultipleMapping);
-    public const string Log = nameof(Log);
     
-    public const string RouteOperation = nameof(RouteOperation);
+    public const string Security = nameof(Security);
+    public const string Menu = nameof(Menu);
+
+    
     
     public static readonly Dictionary<string, string> DisplayNames = new()
     {
         { ApiStatus, "Api 狀態" },
-        { Security, "登入、測試 API 權限" },
-        { Permission, "群組、功能、權限設定" },
         { Enum, "列舉" },
+        { Log, "系統紀錄" },
+        
         { Form, "主檔維護" },
         { FormWithMasterDetail, "主明細維護" },
         { FormWithMultipleMapping, "多對多維護" },
-        { Log, "系統紀錄" },
         
-        { Menu, "群組、功能、權限設定" },
-        { RouteOperation, "流程工作站設定" }
+        { Security, "登入、測試 API 權限" },
+        { Menu, "群組、功能、權限設定" }
     };
 }

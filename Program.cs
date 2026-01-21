@@ -204,9 +204,9 @@ builder.Services.AddHealthChecks().AddCheck("self", () => HealthCheckResult.Heal
 // -------------------- Swagger --------------------
 var swaggerGroups = new[]
 {
+    SwaggerGroups.ApiStatus, SwaggerGroups.Enum, SwaggerGroups.Log,
+    SwaggerGroups.Security, SwaggerGroups.Menu,
     SwaggerGroups.Form, SwaggerGroups.FormWithMasterDetail, SwaggerGroups.FormWithMultipleMapping,
-    SwaggerGroups.Menu, SwaggerGroups.Permission, SwaggerGroups.Security,
-    SwaggerGroups.Enum, SwaggerGroups.ApiStatus, SwaggerGroups.Log, SwaggerGroups.RouteOperation
 };
 
 builder.Services.AddEndpointsApiExplorer();
