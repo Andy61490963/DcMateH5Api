@@ -7,7 +7,7 @@ namespace DcMateH5Api.Areas.Security.Models
     /// <summary>
     /// 使用者帳號資訊
     /// </summary>
-    [Table("SEC_USER")]
+    [Table("ADM_USER")]
     public class UserAccount
     {
         /// <summary>
