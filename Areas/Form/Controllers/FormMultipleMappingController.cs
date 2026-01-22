@@ -28,8 +28,57 @@ public class FormMultipleMappingController : ControllerBase
         _service = service;
     }
 
+        
     /// <summary>
-    /// 取得多對多維護的資料列表，回傳 baseTable內容
+    /// 取得多對多設定檔清單，供前端呈現可選的維護方案。
+    /// </summary>
+    [HttpGet("masters")]
+    [ProducesResponseType(typeof(IEnumerable<MultipleMappingConfigViewModel>), StatusCodes.Status200OK)]
+    public ActionResult<IEnumerable<MultipleMappingConfigViewModel>> GetFormMasters(CancellationToken ct)
+    {
+        var masters = _service.GetFormMasters(ct);
+        return Ok(masters);
+    }
+    
+    /// <summary>
+    /// 取得多對多維護的資料列表，回傳 baseTable 內容
+    /// </summary>
+    /// <remarks>
+    /// ### 範例輸入
+    /// ```json
+    /// [
+    ///   {
+    ///     "column": "STATUS_CALCD_TIME",
+    ///     "ConditionType": 3,
+    ///     "value": "2024-12-31",
+    ///     "value2": "2025-01-02",
+    ///     "dataType": "datetime"
+    ///   }
+    /// ]
+    /// ```
+    /// </remarks>
+    /// <param name="request">查詢條件與分頁設定</param>
+    /// <returns>查詢結果</returns>
+    [HttpPost("searchBase")]
+    [ProducesResponseType(typeof(FormListDataViewModel), StatusCodes.Status200OK)]
+    [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status400BadRequest)]
+    public IActionResult GetForms([FromBody] FormSearchRequest? request)
+    {
+        if (request == null)
+        {
+            return BadRequest(new
+            {
+                Error = "Request body is null",
+                Hint  = "請確認傳入的 JSON 是否正確，至少需要提供查詢條件或分頁參數"
+            });
+        }
+        
+        var vm = _formService.GetFormList( _funcType, request, true );
+        return Ok(vm);
+    }
+    
+    /// <summary>
+    /// 取得多對多維護的資料列表，回傳 viewTable 內容
     /// </summary>
     /// <remarks>
     /// ### 範例輸入
@@ -50,40 +99,6 @@ public class FormMultipleMappingController : ControllerBase
     [HttpPost("searchView")]
     [ProducesResponseType(typeof(FormListDataViewModel), StatusCodes.Status200OK)]
     [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status400BadRequest)]
-    public IActionResult GetForms([FromBody] FormSearchRequest? request)
-    {
-        if (request == null)
-        {
-            return BadRequest(new
-            {
-                Error = "Request body is null",
-                Hint  = "請確認傳入的 JSON 是否正確，至少需要提供查詢條件或分頁參數"
-            });
-        }
-        
-        var vm = _formService.GetFormList( _funcType, request, true );
-        return Ok(vm);
-    }
-    
-    /// <summary>
-    /// 取得多對多設定檔清單，供前端呈現可選的維護方案。
-    /// </summary>
-    [HttpGet("masters")]
-    [ProducesResponseType(typeof(IEnumerable<MultipleMappingConfigViewModel>), StatusCodes.Status200OK)]
-    public ActionResult<IEnumerable<MultipleMappingConfigViewModel>> GetFormMasters(CancellationToken ct)
-    {
-        var masters = _service.GetFormMasters(ct);
-        return Ok(masters);
-    }
-
-    /// <summary>
-    /// 取得多對多維護可用的主檔資料清單，前端透過FormMasterId 呼叫 GetForms
-    /// </summary>
-    /// <param name="request">查詢條件與分頁設定，需帶入多對多設定檔 FormMasterId。</param>
-    /// <param name="ct">取消工作，避免長時間查詢阻塞。</param>
-    [HttpPost("search")]
-    [ProducesResponseType(typeof(FormListDataViewModel), StatusCodes.Status200OK)]
-    [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status400BadRequest)]
     public IActionResult GetForms([FromBody] FormSearchRequest? request, CancellationToken ct)
     {
         if (request == null)
@@ -98,7 +113,7 @@ public class FormMultipleMappingController : ControllerBase
         var vm = _service.GetForms(request, ct);
         return Ok(vm);
     }
-
+    
     /// <summary>
     /// 依設定檔與主表主鍵取得清單（已關聯 / 未關聯），查詢欄位前端動態解析。
     /// </summary>
