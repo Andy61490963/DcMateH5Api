@@ -56,61 +56,55 @@ jobs:
           $target  = $env:IIS_PHYSICAL_PATH
           $pool    = $env:IIS_APP_POOL
           $offline = Join-Path $target "app_offline.htm"
-          $dllPath = Join-Path $target "DcMateH5Api.dll"
 
           if (!(Test-Path $target)) { New-Item -ItemType Directory -Path $target | Out-Null }
 
           try {
-            # 1) offline：先擋站 + 觸發 IIS 卸載
+            # 1) 下線：擋站 + 觸發 IIS 卸載
             "Deploying... Please wait." | Out-File -FilePath $offline -Encoding utf8 -Force
 
-            # 2) Stop AppPool：已停止也不要讓 pipeline 炸（吞掉 already stopped）
-            try {
-              Stop-WebAppPool -Name $pool -ErrorAction Stop
-            }
-            catch {
-              Write-Host "Stop-WebAppPool skipped: $($_.Exception.Message)"
-            }
+            # 2) 停 AppPool（已停止也不要炸）
+            Stop-WebAppPool -Name $pool -ErrorAction SilentlyContinue | Out-Null
 
-            # 3) 等 dll 解鎖（比盲等更穩）
-            $maxWaitSec = 30
-            $sw = [Diagnostics.Stopwatch]::StartNew()
-            while ($sw.Elapsed.TotalSeconds -lt $maxWaitSec) {
+            # 3) 只殺「此 AppPool」的 w3wp（IIS 官方方式拿 PID）
+            $pids = @()
+            try {
+              $state = Get-WebAppPoolState -Name $pool -ErrorAction Stop
+              if ($null -ne $state.WorkerProcesses) {
+                $pids = $state.WorkerProcesses | Select-Object -ExpandProperty ProcessId
+              }
+            } catch {
+              # 有些環境 Get-WebAppPoolState 拿不到 WorkerProcesses，就走 IIS:\AppPools 方式
               try {
-                if (Test-Path $dllPath) {
-                  $fs = [System.IO.File]::Open($dllPath, 'Open', 'ReadWrite', 'None')
-                  $fs.Close()
+                $appPoolItem = Get-Item "IIS:\AppPools\$pool" -ErrorAction Stop
+                if ($null -ne $appPoolItem.WorkerProcesses) {
+                  $pids = $appPoolItem.WorkerProcesses | Select-Object -ExpandProperty ProcessId
                 }
-                break
               } catch {
-                Start-Sleep -Seconds 1
+                Write-Host "Could not resolve worker process PIDs for app pool: $pool"
               }
             }
-            if ($sw.Elapsed.TotalSeconds -ge $maxWaitSec) {
-              throw "Timeout: DcMateH5Api.dll still locked after $maxWaitSec seconds."
+
+            foreach ($pid in $pids) {
+              Write-Host "Killing w3wp pid=$pid for pool=$pool"
+              Stop-Process -Id $pid -Force -ErrorAction SilentlyContinue
             }
 
-            # 4) Robocopy：重試拉高 + 排除 SecurityKeys（避免被 /MIR 砍掉）
-            robocopy "$publish" "$target" /MIR /R:10 /W:2 /NFL /NDL /NP /XF "*.pdb" /XD "SecurityKeys"
+            # 4) 同步檔案（保留 SecurityKeys，不要被 /MIR 清掉）
+            robocopy "$publish" "$target" /MIR /R:5 /W:1 /NFL /NDL /NP /XF "*.pdb" /XD "SecurityKeys"
             $rc = $LASTEXITCODE
             if ($rc -ge 8) { throw "Robocopy failed. ExitCode=$rc" }
 
+            # Robocopy 1~7 代表有差異/有複製，GitHub Actions 會當成失敗，所以歸零
             $global:LASTEXITCODE = 0
 
-            # 5) remove offline
-            if (Test-Path $offline) { Remove-Item $offline -Force }
-
-            # 6) Start AppPool：已啟動也不要炸
-            try {
-              Start-WebAppPool -Name $pool -ErrorAction Stop
-            }
-            catch {
-              Write-Host "Start-WebAppPool skipped: $($_.Exception.Message)"
-            }
+            # 5) 上線
+            Remove-Item $offline -Force -ErrorAction SilentlyContinue
+            Start-WebAppPool -Name $pool -ErrorAction SilentlyContinue | Out-Null
 
             Write-Host "Deploy done."
           }
           finally {
             # 失敗也不要卡 offline
-            if (Test-Path $offline) { Remove-Item $offline -Force -ErrorAction SilentlyContinue }
+            Remove-Item $offline -Force -ErrorAction SilentlyContinue
           }
