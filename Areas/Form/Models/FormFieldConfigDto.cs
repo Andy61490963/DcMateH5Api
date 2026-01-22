@@ -20,6 +20,9 @@ public class FormFieldConfigDto
     [Column("COLUMN_NAME")]
     public string COLUMN_NAME { get; set; } = string.Empty;
     
+    [Column("COLUMN_IS_NULLABLE")]
+    public bool COLUMN_IS_NULLABLE { get; set; }
+    
     [Column("DISPLAY_NAME")]
     public string DISPLAY_NAME { get; set; } = string.Empty;
     

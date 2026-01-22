@@ -29,6 +29,8 @@ public class FormFieldViewModel
     /// </summary>
     public string TableName { get; set; } = string.Empty;
     
+    public bool IsNullable { get; set; }
+    
     /// <summary>
     /// 欄位名稱
     /// </summary>

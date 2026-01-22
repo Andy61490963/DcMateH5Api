@@ -621,6 +621,7 @@ ORDER BY
         {
             var columnName = col.COLUMN_NAME;
             var dataType   = col.DATA_TYPE;
+            var isNullable   = col.SourceIsNullable;
 
             // 4-1) 取對應設定（有就用設定 ID，沒有就產新的暫時 ID）
             var hasCfg  = configs.TryGetValue(columnName, out var cfg);
@@ -636,6 +637,7 @@ ORDER BY
                 FORM_FIELD_DROPDOWN_ID = dropdownId == Guid.Empty ? null : dropdownId,
 
                 TableName = tableName,
+                IsNullable = isNullable,
                 COLUMN_NAME = columnName,
                 DISPLAY_NAME = cfg?.DISPLAY_NAME ?? columnName,
                 DATA_TYPE = dataType,
@@ -959,10 +961,39 @@ WHERE c.FORM_FIELD_MASTER_ID = @MasterId
                 EnsureDropdownCreated(field.ID, null, null);
             }
         }
+        
+        await SyncSourceNullabilityAsync(tableName, masterId, columns);
 
         return result;
     }
     
+    private async Task SyncSourceNullabilityAsync(
+        string tableName,
+        Guid masterId,
+        IReadOnlyList<DbColumnInfo> columns)
+    {
+        const string sql = @"
+/**/
+UPDATE dbo.FORM_FIELD_CONFIG
+SET COLUMN_IS_NULLABLE = @COLUMN_IS_NULLABLE,
+    EDIT_TIME = GETDATE()
+WHERE FORM_FIELD_MASTER_ID = @MasterId
+  AND TABLE_NAME = @TableName
+  AND COLUMN_NAME = @ColumnName
+  AND IS_DELETE = 0
+  AND (COLUMN_IS_NULLABLE <> @COLUMN_IS_NULLABLE);";
+
+        var rows = columns.Select(c => new
+        {
+            MasterId = masterId,
+            TableName = tableName,
+            ColumnName = c.COLUMN_NAME,
+            COLUMN_IS_NULLABLE = c.SourceIsNullable
+        });
+
+        await _con.ExecuteAsync(new CommandDefinition(sql, rows));
+    }
+
     /// <summary>
     /// 將「資料表 schema 已不存在」的欄位設定標記為 Inactive（不刪除，可復原）。
     /// </summary>
@@ -1020,6 +1051,7 @@ WHERE c.FORM_FIELD_MASTER_ID = @MasterId
             ID = model.ID == Guid.Empty ? Guid.NewGuid() : model.ID,
             FORM_FIELD_MASTER_ID = formMasterId,
             TABLE_NAME = model.TableName,
+            COLUMN_IS_NULLABLE = model.IsNullable,
             model.COLUMN_NAME,
             model.DISPLAY_NAME,
             model.DATA_TYPE,
@@ -2211,7 +2243,7 @@ AND SCHEMA_TYPE = @SchemaType";
 
         // 20250814，主檔可以和主檔本身自我關聯
         public const string TableSchemaSelect = @"/**/
-SELECT COLUMN_NAME, DATA_TYPE, ORDINAL_POSITION
+SELECT COLUMN_NAME, DATA_TYPE, ORDINAL_POSITION, IS_NULLABLE
 FROM INFORMATION_SCHEMA.COLUMNS
 WHERE TABLE_NAME = @TableName
 ORDER BY ORDINAL_POSITION";
@@ -2403,15 +2435,16 @@ WHEN MATCHED THEN
         QUERY_CONDITION = @QUERY_CONDITION,
         CAN_QUERY      = @CAN_QUERY,
         DETAIL_TO_RELATION_DEFAULT_COLUMN = @DETAIL_TO_RELATION_DEFAULT_COLUMN,
+        COLUMN_IS_NULLABLE = @COLUMN_IS_NULLABLE,    
         EDIT_TIME      = GETDATE()
 WHEN NOT MATCHED THEN
     INSERT (
         ID, FORM_FIELD_MASTER_ID, TABLE_NAME, COLUMN_NAME, DISPLAY_NAME, DATA_TYPE,
-        CONTROL_TYPE, IS_REQUIRED, IS_EDITABLE, QUERY_DEFAULT_VALUE, FIELD_ORDER, QUERY_COMPONENT, QUERY_CONDITION, CAN_QUERY, DETAIL_TO_RELATION_DEFAULT_COLUMN, CREATE_TIME, IS_DELETE
+        CONTROL_TYPE, IS_REQUIRED, IS_EDITABLE, QUERY_DEFAULT_VALUE, FIELD_ORDER, QUERY_COMPONENT, QUERY_CONDITION, CAN_QUERY, DETAIL_TO_RELATION_DEFAULT_COLUMN, CREATE_TIME, IS_DELETE, COLUMN_IS_NULLABLE
     )
     VALUES (
         @ID, @FORM_FIELD_MASTER_ID, @TABLE_NAME, @COLUMN_NAME, @DISPLAY_NAME, @DATA_TYPE,
-        @CONTROL_TYPE, @IS_REQUIRED, @IS_EDITABLE, @QUERY_DEFAULT_VALUE, @FIELD_ORDER, @QUERY_COMPONENT, @QUERY_CONDITION, @CAN_QUERY, @DETAIL_TO_RELATION_DEFAULT_COLUMN, GETDATE(), 0
+        @CONTROL_TYPE, @IS_REQUIRED, @IS_EDITABLE, @QUERY_DEFAULT_VALUE, @FIELD_ORDER, @QUERY_COMPONENT, @QUERY_CONDITION, @CAN_QUERY, @DETAIL_TO_RELATION_DEFAULT_COLUMN, GETDATE(), 0, @COLUMN_IS_NULLABLE
     );";
 
         public const string CheckFieldExists         = @"/**/
