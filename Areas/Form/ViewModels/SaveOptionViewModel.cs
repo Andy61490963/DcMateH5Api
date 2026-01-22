@@ -14,11 +14,6 @@ public class ReplaceDropdownOptionsViewModel
 
 public class DropdownOptionItemViewModel
 {
-    /// <summary>
-    /// 選項 ID；null/Empty 表示新增
-    /// </summary>
-    public Guid? Id { get; set; }
-
     [Required(ErrorMessage = "選項文字不可為空")]
     public string OptionText { get; set; } = "";
 
