@@ -56,29 +56,56 @@ jobs:
           $target  = $env:IIS_PHYSICAL_PATH
           $pool    = $env:IIS_APP_POOL
           $offline = Join-Path $target "app_offline.htm"
+          $dllPath = Join-Path $target "DcMateH5Api.dll"
 
           if (!(Test-Path $target)) { New-Item -ItemType Directory -Path $target | Out-Null }
 
           try {
-            # 1) offline 先擋站 + 逼 In-Process 放掉鎖
-            "Deploying... Please wait." | Out-File -FilePath $offline -Encoding utf8
+            # 1) offline：先擋站 + 觸發 IIS 卸載
+            "Deploying... Please wait." | Out-File -FilePath $offline -Encoding utf8 -Force
 
-            # 2) stop app pool
-            Stop-WebAppPool -Name $pool -ErrorAction SilentlyContinue
+            # 2) Stop AppPool：已停止也不要讓 pipeline 炸（吞掉 already stopped）
+            try {
+              Stop-WebAppPool -Name $pool -ErrorAction Stop
+            }
+            catch {
+              Write-Host "Stop-WebAppPool skipped: $($_.Exception.Message)"
+            }
 
-            # 3) robocopy（/MIR：同步；成功 exit code 1~7 也算成功）
-            robocopy "$publish" "$target" /MIR /R:2 /W:2 /NFL /NDL /NP /XF "*.pdb"
+            # 3) 等 dll 解鎖（比盲等更穩）
+            $maxWaitSec = 30
+            $sw = [Diagnostics.Stopwatch]::StartNew()
+            while ($sw.Elapsed.TotalSeconds -lt $maxWaitSec) {
+              try {
+                if (Test-Path $dllPath) {
+                  $fs = [System.IO.File]::Open($dllPath, 'Open', 'ReadWrite', 'None')
+                  $fs.Close()
+                }
+                break
+              } catch {
+                Start-Sleep -Seconds 1
+              }
+            }
+            if ($sw.Elapsed.TotalSeconds -ge $maxWaitSec) {
+              throw "Timeout: DcMateH5Api.dll still locked after $maxWaitSec seconds."
+            }
+
+            # 4) Robocopy：重試拉高 + 排除 SecurityKeys（避免被 /MIR 砍掉）
+            robocopy "$publish" "$target" /MIR /R:10 /W:2 /NFL /NDL /NP /XF "*.pdb" /XD "SecurityKeys"
             $rc = $LASTEXITCODE
             if ($rc -ge 8) { throw "Robocopy failed. ExitCode=$rc" }
 
-            # robocopy 可能回 1~7（代表有複製/有差異），但 Actions 會視為 step fail，所以要歸零
-            $global:LASTEXITCODE = 0
-
-            # 4) remove offline
+            # 5) remove offline
             if (Test-Path $offline) { Remove-Item $offline -Force }
 
-            # 5) start app pool
-            Start-WebAppPool -Name $pool
+            # 6) Start AppPool：已啟動也不要炸
+            try {
+              Start-WebAppPool -Name $pool -ErrorAction Stop
+            }
+            catch {
+              Write-Host "Start-WebAppPool skipped: $($_.Exception.Message)"
+            }
+
             Write-Host "Deploy done."
           }
           finally {
