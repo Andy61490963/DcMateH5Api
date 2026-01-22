@@ -1456,68 +1456,71 @@ WHERE FORM_FIELD_MASTER_ID = @MasterId
             .ExecuteAsync(ct);
     }
     
-    public ValidateSqlResultViewModel ValidateDropdownSql( string sql )
+    public ValidateSqlResultViewModel ValidateDropdownSql(string sql)
     {
         var result = new ValidateSqlResultViewModel();
 
         try
         {
-            if ( string.IsNullOrWhiteSpace( sql ) )
+            if (string.IsNullOrWhiteSpace(sql))
             {
                 result.Success = false;
-                result.Message = "SQL 不可為空。";
+                result.Message = "SQL must not be empty.";
                 return result;
             }
 
-            if ( Regex.IsMatch(sql, 
-                    @"\b(insert|update|delete|drop|alter|truncate|exec|merge)\b", RegexOptions.IgnoreCase ) )
+            if (Regex.IsMatch(
+                    sql,
+                    @"\b(insert|update|delete|drop|alter|truncate|exec|merge)\b",
+                    RegexOptions.IgnoreCase))
             {
                 result.Success = false;
-                result.Message = "僅允許查詢類 SQL。";
+                result.Message = "Only SELECT statements are allowed.";
                 return result;
             }
 
             var wasClosed = _con.State != System.Data.ConnectionState.Open;
-            if ( wasClosed ) _con.Open();
+            if (wasClosed) _con.Open();
 
-            using var cmd = new SqlCommand( sql, _con );
+            using var cmd = new SqlCommand(sql, _con);
             using var reader = cmd.ExecuteReader();
 
             var columns = reader.GetColumnSchema();
-            if ( columns.Count < 2 )
+            if (columns.Count < 2)
             {
                 result.Success = false;
-                result.Message = "SQL 必須回傳至少兩個欄位，SELECT A AS ID, B AS NAME";
+                result.Message = "SQL must return at least two columns, e.g. SELECT A AS ID, B AS NAME.";
                 return result;
             }
 
-            // 檢查第一個欄位是否包含任一個 _excludeColumns 關鍵字
-            if ( !_excludeColumns.Any(ex =>
-                    columns[0].ColumnName.Contains( ex, StringComparison.OrdinalIgnoreCase) ) )
+            // Validate first column name
+            if (!_excludeColumns.Any(ex =>
+                    columns[0].ColumnName.Contains(ex, StringComparison.OrdinalIgnoreCase)))
             {
                 result.Success = false;
-                result.Message = $"第一個欄位必須包含任一關鍵字：{ string.Join (", ", _excludeColumns ) }";
+                result.Message =
+                    $"The first column name must contain one of the following keywords: {string.Join(", ", _excludeColumns)}.";
                 return result;
             }
 
             var rows = new List<Dictionary<string, object>>();
-            while ( reader.Read() )
+            while (reader.Read())
             {
                 var row = new Dictionary<string, object>();
-                for ( int i = 0; i < reader.FieldCount; i++ )
+                for (int i = 0; i < reader.FieldCount; i++)
                 {
-                    row[columns[i].ColumnName] = reader.GetValue( i );
+                    row[columns[i].ColumnName] = reader.GetValue(i);
                 }
                 rows.Add(row);
             }
 
             result.Success = true;
             result.RowCount = rows.Count;
-            result.Rows = rows.Take(10).ToList(); // 最多回傳前 10 筆
+            result.Rows = rows.Take(10).ToList(); // Return at most 10 preview rows
 
-            if ( wasClosed ) _con.Close();
+            if (wasClosed) _con.Close();
         }
-        catch ( Exception ex )
+        catch (Exception ex)
         {
             result.Success = false;
             result.Message = ex.Message;
