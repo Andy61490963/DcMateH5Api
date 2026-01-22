@@ -95,6 +95,8 @@ jobs:
             $rc = $LASTEXITCODE
             if ($rc -ge 8) { throw "Robocopy failed. ExitCode=$rc" }
 
+            $global:LASTEXITCODE = 0
+
             # 5) remove offline
             if (Test-Path $offline) { Remove-Item $offline -Force }
 
