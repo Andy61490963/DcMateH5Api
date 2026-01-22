@@ -9,6 +9,6 @@ namespace DCMATEH5API.Areas.Menu.Services
         // 取得原始樹狀資料的方法
         Task<List<MenuNavigationViewModel>> GetMenuTreeAsync(string userId);
 
-        Task<MenuResponse> GetFullMenuByLvAsync(int lv);
+        Task<MenuResponse> GetFullMenuByLvAsync(string userId);
     }
 }

@@ -98,7 +98,7 @@ public class AuthenticationService : Interfaces.IAuthenticationService
         string expiresTo = authProperties.ExpiresUtc?.ToLocalTime().ToString("yyyy-MM-dd HH:mm:ss") ?? "";
 
         // �I�s���A�� (���]�z�� IMenuService �^�Ǫ��N�O MenuResponse)
-        var menuData = await _menuService.GetFullMenuByLvAsync(user.LV ?? 0);
+        var menuData = await _menuService.GetFullMenuByLvAsync(user.Account);
 
         // --- 4. �ʸ˨æ^�� ---
         return Result<LoginResponseViewModel>.Ok(new LoginResponseViewModel

@@ -19,39 +19,60 @@ namespace DCMATEH5API.Areas.Menu.Services
         {
             // 這裡已將 H5_ 移除，並對齊最新的欄位名稱
             string sql = @"
-                -- 1. 來自選單節點 (目錄架構)
-                SELECT 
-                    CAST(ADM_MENU_MODULE_SID AS VARCHAR(36)) AS Id, 
-                    CAST(PARENT_ID AS VARCHAR(36)) AS ParentId, 
-                    ADM_MENU_MODULE_NAME AS Title, 
-                    URL AS Url, 
-                    PARAMETER AS Parameter, 
-                    [DESC] AS [Desc], 
-                    0 AS Lv, 
-                    SEQ AS SortOrder,
-                    'MENU' AS SourceType,
-                    IMGICON AS ImgIcon
-                FROM ADM_MENU_MODULE
+        -- 1. 使用 CTE 遞迴找出該帳號授權的所有目錄層級
+        WITH UserAllowedMenus AS (
+            -- 錨點：從群組權限表抓出該使用者的起始選單
+            SELECT M.*
+            FROM ADM_MENU_MODULE M
+            INNER JOIN ADM_USERGROUP_MENU_LIST GML ON M.ADM_MENU_MODULE_SID = GML.ADM_MENU_MODULE_SID
+            INNER JOIN ADM_USERGROUP_USER_LIST GUL ON GML.GROUP_SID = GUL.GROUP_SID
+            INNER JOIN ADM_USER U ON GUL.USER_SID = U.USER_SID
+            WHERE U.ACCOUNT_NO = @Account  -- 對應傳入的 userId
 
-                UNION ALL
+            UNION ALL
 
-                -- 2. 來自頁面模組 (實際磁磚內容)
-                SELECT 
-                    CAST(P.ADM_PAGE_MODULE_SID AS VARCHAR(36)) AS Id, 
-                    CAST(L.ADM_MENU_MODULE_SID AS VARCHAR(36)) AS ParentId, 
-                    P.TITLE AS Title, 
-                    P.URL AS Url, 
-                    P.PARAMETER AS Parameter, 
-                    P.[DESC] AS [Desc], 
-                    P.LV AS Lv, 
-                    P.SEQ AS SortOrder,
-                    'PAGE' AS SourceType,
-                    P.IMGICON AS ImgIcon
-                FROM ADM_PAGE_MODULE P
-                JOIN ADM_MENU_PAGE_LINK L ON P.ADM_PAGE_MODULE_SID = L.ADM_PAGE_MODULE_SID";
+            -- 遞迴：找出這些目錄下方的所有子目錄
+            SELECT M.*
+            FROM ADM_MENU_MODULE M
+            INNER JOIN UserAllowedMenus Parent ON M.PARENT_ID = Parent.ADM_MENU_MODULE_SID
+        )
 
-            // 執行查詢
-            var rawData = await _db.QueryAsync<MenuNavigationViewModel>(sql, new { UserId = userId });
+        -- 2. 合併目錄與頁面
+        -- A. 撈出所有遞迴找到的目錄 (MENU)
+        SELECT 
+            CAST(ADM_MENU_MODULE_SID AS VARCHAR(36)) AS Id, 
+            CAST(PARENT_ID AS VARCHAR(36)) AS ParentId, 
+            ADM_MENU_MODULE_NAME AS Title, 
+            URL AS Url, 
+            PARAMETER AS Parameter, 
+            [DESC] AS [Desc], 
+            0 AS Lv, 
+            SEQ AS SortOrder,
+            'MENU' AS SourceType,
+            IMGICON AS ImgIcon
+        FROM UserAllowedMenus
+
+        UNION ALL
+
+        -- B. 撈出所有掛在這些目錄下的頁面 (PAGE)
+        SELECT 
+            CAST(P.ADM_PAGE_MODULE_SID AS VARCHAR(36)) AS Id, 
+            CAST(L.ADM_MENU_MODULE_SID AS VARCHAR(36)) AS ParentId, 
+            P.TITLE AS Title, 
+            P.URL AS Url, 
+            P.PARAMETER AS Parameter, 
+            P.[DESC] AS [Desc], 
+            P.LV AS Lv, 
+            L.SEQ AS SortOrder, 
+            'PAGE' AS SourceType, 
+            P.IMGICON AS ImgIcon
+        FROM ADM_PAGE_MODULE P
+        INNER JOIN ADM_MENU_PAGE_LINK L ON P.ADM_PAGE_MODULE_SID = L.ADM_PAGE_MODULE_SID
+        INNER JOIN UserAllowedMenus M ON L.ADM_MENU_MODULE_SID = M.ADM_MENU_MODULE_SID";
+
+            // 執行查詢，將 userId 對應到 SQL 的 @Account
+            var rawData = await _db.QueryAsync<MenuNavigationViewModel>(sql, new { Account = userId });
+
 
             // 根節點 GUID 預設值
             string rootGuid = "00000000-0000-0000-0000-000000000000";
@@ -76,9 +97,9 @@ namespace DCMATEH5API.Areas.Menu.Services
         /// <summary>
         /// 取得前端專用格式的 MenuList 與 PageList
         /// </summary>
-        public async Task<MenuResponse> GetFullMenuByLvAsync(int lv)
+        public async Task<MenuResponse> GetFullMenuByLvAsync(string userId)
         {
-            var tree = await GetMenuTreeAsync("");
+            var tree = await GetMenuTreeAsync(userId);
             var response = new MenuResponse();
 
             var rootPage = new PageFolderViewModel
