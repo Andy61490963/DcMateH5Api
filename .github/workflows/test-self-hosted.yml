@@ -1,11 +1,13 @@
 name: Deploy DcMateH5Api to IIS (Self-hosted)
 
 on:
+  workflow_dispatch: {}
   push:
     branches: [ "main" ]
 
 env:
   PROJECT_PATH: "DcMateH5Api.csproj"
+  DEPLOY_ROOT: "C:\\CICDDeploy"
   PUBLISH_DIR: "C:\\CICDDeploy\\publish"
   IIS_PHYSICAL_PATH: "C:\\inetpub\\wwwroot\\測試"
   IIS_APP_POOL: "DcMateH5Api"
@@ -15,30 +17,100 @@ jobs:
     runs-on: [self-hosted, Windows, iis, dcmate]
 
     steps:
-      - uses: actions/checkout@v4
+      - name: Checkout
+        uses: actions/checkout@v4
 
-      - name: Publish
+      - name: Ensure folders
         shell: powershell
         run: |
           $ErrorActionPreference = 'Stop'
+          foreach ($p in @($env:DEPLOY_ROOT, $env:PUBLISH_DIR, $env:IIS_PHYSICAL_PATH)) {
+            if (!(Test-Path $p)) { New-Item -ItemType Directory -Path $p | Out-Null }
+          }
+          Write-Host "PUBLISH_DIR: $env:PUBLISH_DIR"
+          Write-Host "IIS_PATH   : $env:IIS_PHYSICAL_PATH"
+
+      - name: Publish (Release)
+        shell: powershell
+        run: |
+          $ErrorActionPreference = 'Stop'
+
+          dotnet --info
           dotnet restore "$env:PROJECT_PATH"
-          dotnet publish "$env:PROJECT_PATH" -c Release -o "$env:PUBLISH_DIR"
+          dotnet build "$env:PROJECT_PATH" -c Release --no-restore
 
-      - name: Deploy
+          Remove-Item "$env:PUBLISH_DIR\*" -Recurse -Force -ErrorAction SilentlyContinue
+          dotnet publish "$env:PROJECT_PATH" -c Release -o "$env:PUBLISH_DIR" --no-build
+
+          if (!(Test-Path "$env:PUBLISH_DIR")) {
+            throw "Publish folder not found: $env:PUBLISH_DIR"
+          }
+
+      - name: Deploy to IIS
         shell: powershell
         run: |
           $ErrorActionPreference = 'Stop'
-          Import-Module WebAdministration
+          Import-Module WebAdministration -ErrorAction Stop
 
+          $publish = $env:PUBLISH_DIR
           $target  = $env:IIS_PHYSICAL_PATH
+          $pool    = $env:IIS_APP_POOL
           $offline = Join-Path $target "app_offline.htm"
+          $dllPath = Join-Path $target "DcMateH5Api.dll"
 
-          "Deploying..." | Out-File $offline -Encoding utf8 -Force
-          Stop-WebAppPool -Name $env:IIS_APP_POOL -ErrorAction SilentlyContinue
+          if (!(Test-Path $target)) { New-Item -ItemType Directory -Path $target | Out-Null }
 
-          robocopy "$env:PUBLISH_DIR" "$target" /MIR /R:2 /W:2 /XF "*.pdb" /XD "SecurityKeys"
-          if ($LASTEXITCODE -ge 8) { throw "Robocopy failed: $LASTEXITCODE" }
-          $global:LASTEXITCODE = 0
+          try {
+            # 1) offline：先擋站 + 觸發 IIS 卸載
+            "Deploying... Please wait." | Out-File -FilePath $offline -Encoding utf8 -Force
 
-          Remove-Item $offline -Force -ErrorAction SilentlyContinue
-          Start-WebAppPool -Name $env:IIS_APP_POOL -ErrorAction SilentlyContinue
+            # 2) Stop AppPool：已停止也不要讓 pipeline 炸（吞掉 already stopped）
+            try {
+              Stop-WebAppPool -Name $pool -ErrorAction Stop
+            }
+            catch {
+              Write-Host "Stop-WebAppPool skipped: $($_.Exception.Message)"
+            }
+
+            # 3) 等 dll 解鎖（比盲等更穩）
+            $maxWaitSec = 30
+            $sw = [Diagnostics.Stopwatch]::StartNew()
+            while ($sw.Elapsed.TotalSeconds -lt $maxWaitSec) {
+              try {
+                if (Test-Path $dllPath) {
+                  $fs = [System.IO.File]::Open($dllPath, 'Open', 'ReadWrite', 'None')
+                  $fs.Close()
+                }
+                break
+              } catch {
+                Start-Sleep -Seconds 1
+              }
+            }
+            if ($sw.Elapsed.TotalSeconds -ge $maxWaitSec) {
+              throw "Timeout: DcMateH5Api.dll still locked after $maxWaitSec seconds."
+            }
+
+            # 4) Robocopy：重試拉高 + 排除 SecurityKeys（避免被 /MIR 砍掉）
+            robocopy "$publish" "$target" /MIR /R:10 /W:2 /NFL /NDL /NP /XF "*.pdb" /XD "SecurityKeys"
+            $rc = $LASTEXITCODE
+            if ($rc -ge 8) { throw "Robocopy failed. ExitCode=$rc" }
+
+            $global:LASTEXITCODE = 0
+
+            # 5) remove offline
+            if (Test-Path $offline) { Remove-Item $offline -Force }
+
+            # 6) Start AppPool：已啟動也不要炸
+            try {
+              Start-WebAppPool -Name $pool -ErrorAction Stop
+            }
+            catch {
+              Write-Host "Start-WebAppPool skipped: $($_.Exception.Message)"
+            }
+
+            Write-Host "Deploy done."
+          }
+          finally {
+            # 失敗也不要卡 offline
+            if (Test-Path $offline) { Remove-Item $offline -Force -ErrorAction SilentlyContinue }
+          }
