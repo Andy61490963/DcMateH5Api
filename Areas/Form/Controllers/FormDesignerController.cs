@@ -361,24 +361,14 @@ public class FormDesignerController : BaseController
     /// <summary>
     /// 取得下拉選單設定（不存在則自動建立）
     /// </summary>
-    /// <param name="fieldId">FORM_FIELD_CONFIG 的ID</param>
+    /// <param name="dropdownId">FORM_FIELD_DROPDOWN 的ID</param>
     /// <returns></returns>
-    [HttpGet("fields/{fieldId:guid}/dropdown")]
+    [HttpGet("dropdowns/{dropdownId:guid}")]
     [ProducesResponseType(typeof(DropDownViewModel), StatusCodes.Status200OK)]
     [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status400BadRequest)]
-    public async Task<IActionResult> GetDropdownSetting( Guid fieldId )
+    public async Task<IActionResult> GetDropdownSetting( Guid dropdownId )
     {
-        var field = await _formDesignerService.GetFieldById( fieldId );
-        if ( field == null )
-        {
-            return BadRequest( "查無此設定檔，請確認ID是否正確。" );
-        }
-        // if (field.SchemaType != TableSchemaQueryType.OnlyTable)
-        // {
-        //     return BadRequest( "下拉選單設定只支援主擋。" );
-        // }
-        _formDesignerService.EnsureDropdownCreated( fieldId );
-        var setting = await _formDesignerService.GetDropdownSetting( fieldId );
+        var setting = await _formDesignerService.GetDropdownSetting( dropdownId );
         return Ok( setting );
     }
 
@@ -404,7 +394,7 @@ public class FormDesignerController : BaseController
     /// <param name="dropdownId">FORM_FIELD_DROPDOWN 的ID</param>
     /// <param name="ct"></param>
     /// <returns></returns>
-    [HttpPost("dropdowns/{dropdownId:guid}")]
+    [HttpPost("dropdowns/{dropdownId:guid}/options")]
     [ProducesResponseType(typeof(List<FormFieldDropdownOptionsDto>), StatusCodes.Status200OK)]
     [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status400BadRequest)]
     public async Task<IActionResult> GetDropdownOption( Guid dropdownId, CancellationToken ct )
@@ -478,7 +468,7 @@ public class FormDesignerController : BaseController
     }
 
     /// <summary>
-    /// 以「前端送來的完整清單」覆蓋下拉選項（Replace All）
+    /// 使用者自訂的下拉選項，以「前端送來的完整清單」覆蓋下拉選項（Replace All）
     /// </summary>
     /// <remarks>
     /// </remarks>

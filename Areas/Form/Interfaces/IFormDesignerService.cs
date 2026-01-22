@@ -68,7 +68,7 @@ public interface IFormDesignerService
     
     void EnsureDropdownCreated(Guid fieldId, bool? isUseSql = false, string? sql = null);
 
-    Task<DropDownViewModel> GetDropdownSetting( Guid fieldId, CancellationToken ct = default );
+    Task<DropDownViewModel> GetDropdownSetting( Guid dropdownId, CancellationToken ct = default );
 
     Task<List<FormFieldDropdownOptionsDto>> GetDropdownOptions( Guid dropDownId, CancellationToken ct = default );
 

@@ -1359,18 +1359,18 @@ WHERE c.FORM_FIELD_MASTER_ID = @MasterId
         _con.Execute(Sql.EnsureDropdownExists, new { fieldId, isUseSql, sql });
     }
     
-    public async Task<DropDownViewModel> GetDropdownSetting( Guid fieldId, CancellationToken ct = default )
+    public async Task<DropDownViewModel> GetDropdownSetting( Guid dropdownId, CancellationToken ct = default )
     {
         var model = new DropDownViewModel();
         var where = new WhereBuilder<FormDropDownDto>()
-            .AndEq(x => x.FORM_FIELD_CONFIG_ID, fieldId)
+            .AndEq(x => x.ID, dropdownId)
             .AndNotDeleted();
         
         var dropDown = await _sqlHelper.SelectFirstOrDefaultAsync( where, ct );
         if(dropDown == null) throw new Exception("查無下拉選單設定，且確認傳入的id是否正確");
         
         model.FormDropDown = dropDown;
-        var optionTexts = GetDropdownOptions( dropDown.ID, ct );
+        var optionTexts = await GetDropdownOptions( dropDown.ID, ct );
         model.OPTION_TEXT = optionTexts;
 
         return model;
