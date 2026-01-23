@@ -1556,66 +1556,6 @@ WHERE FORM_FIELD_MASTER_ID = @MasterId
             Success = true
         };
     }
-    
-    /// <summary>
-    /// 從 SQL 匯入下拉選項：要求結果欄位別名為 ID 與 NAME
-    /// 1) 先 Validate SQL
-    /// 2) 解析來源表名（optionTable）
-    /// 3) 使用交易確保全有/全無
-    /// 4) 強型別讀取，明確檢查 NULL/空字串，錯誤時回傳第 N 筆
-    /// 5) 安全的參數化寫入（忽略重複）
-    /// </summary>
-    public ValidateSqlResultViewModel ImportDropdownOptionsFromSql(string sql, Guid dropdownId)
-    {
-        var validation = ValidateDropdownSql( sql );
-        if ( !validation.Success )
-            return validation;
-
-        var wasClosed = _con.State != System.Data.ConnectionState.Open;
-        if ( wasClosed )
-            _con.Open();
-
-        using var tx = _con.BeginTransaction();
-        try
-        {
-            _con.Execute( Sql.UpdateDropdownSql, new { DropdownId = dropdownId, Sql = sql }, tx );
-
-            var syncResult = _dropdownSqlSyncService.Sync( dropdownId, sql, tx );
-
-            tx.Commit();
-
-            return new ValidateSqlResultViewModel
-            {
-                Success = true,
-                Message = "匯入完成。",
-                RowCount = syncResult.RowCount,
-                Rows = syncResult.PreviewRows
-            };
-        }
-        catch ( DropdownSqlSyncException ex )
-        {
-            tx.Rollback();
-            return new ValidateSqlResultViewModel
-            {
-                Success = false,
-                Message = ex.Message
-            };
-        }
-        catch ( Exception ex )
-        {
-            tx.Rollback();
-            return new ValidateSqlResultViewModel
-            {
-                Success = false,
-                Message = $"匯入失敗：{ex.Message}"
-            };
-        }
-        finally
-        {
-            if ( wasClosed )
-                _con.Close();
-        }
-    }
 
     /// <summary>
     /// 匯入先前查詢的下拉選單設定（只儲存 SQL；解析時才執行 SQL 取 NAME）。
@@ -1623,7 +1563,7 @@ WHERE FORM_FIELD_MASTER_ID = @MasterId
     /// <param name="sql">僅允許 SELECT 的 SQL 語句</param>
     /// <param name="dropdownId">FORM_FIELD_DROPDOWN 的ID</param>
     /// <returns>匯入結果</returns>
-    public PreviousQueryDropdownImportResultViewModel ImportPreviousQueryDropdownValues(string sql, Guid dropdownId)
+    public PreviousQueryDropdownImportResultViewModel ImportPreviousQueryDropdownValues(string sql, Guid dropdownId, bool isQueryDropdwon)
     {
         var validation = ValidatePreviousQueryDropdownSql(sql);
         if (!validation.Success)
@@ -1639,7 +1579,7 @@ WHERE FORM_FIELD_MASTER_ID = @MasterId
             // 只存 SQL（不在這裡跑查詢）
             _con.Execute(
                 Sql.UpdatePreviousQueryDropdownSourceSql,
-                new { DropdownId = dropdownId, Sql = sql },
+                new { DropdownId = dropdownId, Sql = sql, isQueryDropdwon },
                 tx);
 
             tx.Commit();
@@ -2509,7 +2449,7 @@ WHERE ID = @DropdownId;";
 UPDATE FORM_FIELD_DROPDOWN
 SET DROPDOWNSQL = @Sql,
     ISUSESQL = 1,
-    IS_QUERY_DROPDOWN = 1
+    IS_QUERY_DROPDOWN = @isQueryDropdwon
 WHERE ID = @DropdownId;";
         
         public const string UpsertDropdownOption = @"/**/

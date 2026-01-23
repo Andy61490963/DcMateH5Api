@@ -382,24 +382,6 @@ public class FormDesignerMasterDetailController : ControllerBase
     }
 
     /// <summary>
-    /// 匯入下拉選單選項（由 SQL 查詢）
-    /// </summary>
-    /// <param name="dropdownId">FORM_FIELD_DROPDOWN 的ID</param>
-    /// <param name="dto"></param>
-    /// <returns></returns>
-    [HttpPost("dropdowns/{dropdownId:guid}/import-options")]
-    [ProducesResponseType(StatusCodes.Status200OK)]
-    [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status400BadRequest)]
-    public async Task<IActionResult> ImportDropdownOptions( Guid dropdownId, [FromBody] ImportOptionViewModel dto )
-    {
-        var res = _formDesignerService.ImportDropdownOptionsFromSql( dto.Sql, dropdownId );
-        if ( !res.Success ) return BadRequest( res.Message );
-
-        var options = await _formDesignerService.GetDropdownOptions( dropdownId );
-        return Ok( options );
-    }
-
-    /// <summary>
     /// 以「前端送來的完整清單」覆蓋下拉選項（Replace All）
     /// </summary>
     /// <remarks>

@@ -451,14 +451,15 @@ public class FormDesignerController : BaseController
     /// 匯入先前查詢的下拉選單值（僅允許 SELECT，結果需使用 AS NAME）。
     /// </summary>
     /// <param name="dropdownId">FORM_FIELD_DROPDOWN 的ID</param>
+    /// <param name="isQueryDropdwon">區分是否為查詢</param>
     /// <param name="dto">SQL 匯入資料</param>
     /// <returns>匯入結果</returns>
     [HttpPost("dropdowns/{dropdownId:guid}/import-previous-query-values")]
     [ProducesResponseType(typeof(PreviousQueryDropdownImportResultViewModel), StatusCodes.Status200OK)]
     [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status400BadRequest)]
-    public IActionResult ImportPreviousQueryDropdownValues(Guid dropdownId, [FromBody] ImportOptionViewModel dto)
+    public IActionResult ImportPreviousQueryDropdownValues(Guid dropdownId, bool isQueryDropdwon, [FromBody] ImportOptionViewModel dto)
     {
-        var res = _formDesignerService.ImportPreviousQueryDropdownValues(dto.Sql, dropdownId);
+        var res = _formDesignerService.ImportPreviousQueryDropdownValues(dto.Sql, dropdownId, isQueryDropdwon);
         if (!res.Success)
         {
             return BadRequest(res.Message);
