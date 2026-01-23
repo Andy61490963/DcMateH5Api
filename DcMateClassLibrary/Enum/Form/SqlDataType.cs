@@ -32,4 +32,7 @@ public enum SqlDataType
     
     /// <summary>文字（char）</summary>
     Char,
+    
+    /// <summary>Guid</summary>
+    Uniqueidentifier
 }

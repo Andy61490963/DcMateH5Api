@@ -56,6 +56,8 @@ public static class FormFieldHelper
         // 長文字欄位
         { SqlDataType.Text,     new() { FormControlType.Textarea, FormControlType.Text } },
 
+        { SqlDataType.Uniqueidentifier,  new() { FormControlType.Text, FormControlType.Dropdown } },
+        
         // 無法辨識型別時的保守預設
         { SqlDataType.Unknown,  new() { FormControlType.Text } }
     };
@@ -162,6 +164,7 @@ public static class FormFieldHelper
             "char" => SqlDataType.Char,
             "datetime" => SqlDataType.DateTime,
             "text" => SqlDataType.Text,
+            "uniqueidentifier" => SqlDataType.Uniqueidentifier,
             _ => SqlDataType.Unknown
         };
     }
