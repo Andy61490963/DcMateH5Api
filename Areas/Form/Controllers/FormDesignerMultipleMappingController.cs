@@ -187,6 +187,107 @@ public class FormDesignerMultipleMappingController : ControllerBase
     }
 
     /// <summary>
+    /// 匯入先前查詢的下拉選單值（僅允許 SELECT，結果需使用 AS NAME）。
+    /// </summary>
+    /// <param name="dropdownId">FORM_FIELD_DROPDOWN 的ID</param>
+    /// <param name="dto">SQL 匯入資料</param>
+    /// <returns>匯入結果</returns>
+    [HttpPost("dropdowns/{dropdownId:guid}/import-previous-query-values")]
+    [ProducesResponseType(typeof(PreviousQueryDropdownImportResultViewModel), StatusCodes.Status200OK)]
+    [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status400BadRequest)]
+    public IActionResult ImportPreviousQueryDropdownValues(Guid dropdownId, [FromBody] ImportOptionViewModel dto)
+    {
+        var res = _formDesignerService.ImportPreviousQueryDropdownValues(dto.Sql, dropdownId);
+        if (!res.Success)
+        {
+            return BadRequest(res.Message);
+        }
+
+        return Ok(res);
+    }
+
+    // ────────── Dropdown ──────────
+
+    /// <summary>
+    /// 取得下拉選單設定（不存在則自動建立）
+    /// </summary>
+    /// <param name="dropdownId">FORM_FIELD_DROPDOWN 的ID</param>
+    /// <returns></returns>
+    [HttpGet("dropdowns/{dropdownId:guid}")]
+    [ProducesResponseType(typeof(DropDownViewModel), StatusCodes.Status200OK)]
+    [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status400BadRequest)]
+    public async Task<IActionResult> GetDropdownSetting( Guid dropdownId )
+    {
+        var setting = await _formDesignerService.GetDropdownSetting( dropdownId );
+        return Ok( setting );
+    }
+
+    /// <summary>
+    /// 設定下拉選單資料來源模式（SQL/設定檔）
+    /// </summary>
+    /// <param name="dropdownId">FORM_FIELD_DROPDOWN 的ID</param>
+    /// <param name="isUseSql">是否使用Sql當作下拉選單的條件</param>
+    /// <param name="ct"></param>
+    /// <returns></returns>
+    [HttpPut("dropdowns/{dropdownId:guid}/mode")]
+    [ProducesResponseType(StatusCodes.Status200OK)]
+    [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status400BadRequest)]
+    public async Task<IActionResult> SetDropdownMode( Guid dropdownId, [FromQuery] bool isUseSql, CancellationToken ct )
+    {
+        await _formDesignerService.SetDropdownMode( dropdownId, isUseSql, ct );
+        return Ok();
+    }
+    
+    /// <summary>
+    /// 取得所有下拉選單選項
+    /// </summary>
+    /// <param name="dropdownId">FORM_FIELD_DROPDOWN 的ID</param>
+    /// <param name="ct"></param>
+    /// <returns></returns>
+    [HttpPost("dropdowns/{dropdownId:guid}/options")]
+    [ProducesResponseType(typeof(List<FormFieldDropdownOptionsDto>), StatusCodes.Status200OK)]
+    [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status400BadRequest)]
+    public async Task<IActionResult> GetDropdownOption( Guid dropdownId, CancellationToken ct )
+    {
+        var options = await _formDesignerService.GetDropdownOptions( dropdownId, ct );
+        return Ok( options );
+    }
+    
+    /// <summary>
+    /// 驗證下拉 SQL 語法
+    /// </summary>
+    [HttpPost("dropdowns/validate-sql")]
+    [ProducesResponseType(typeof(ValidateSqlResultViewModel), StatusCodes.Status200OK)]
+    [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status400BadRequest)]
+    public IActionResult ValidateDropdownSql( [FromBody] string sql )
+    {
+        var res = _formDesignerService.ValidateDropdownSql( sql );
+        return Ok(res);
+    }
+    
+    /// <summary>
+    /// 使用者自訂的下拉選項，以「前端送來的完整清單」覆蓋下拉選項（Replace All）
+    /// </summary>
+    /// <remarks>
+    /// </remarks>
+    [HttpPut("dropdowns/{dropdownId:guid}/options:replace")]
+    [ProducesResponseType(typeof(List<FormFieldDropdownOptionsDto>), StatusCodes.Status200OK)]
+    [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status400BadRequest)]
+    public async Task<IActionResult> ReplaceDropdownOptions(
+        Guid dropdownId,
+        [FromBody] List<DropdownOptionItemViewModel> options,
+        CancellationToken ct)
+    {
+        if (!ModelState.IsValid)
+            return ValidationProblem(ModelState);
+
+        await _formDesignerService.ReplaceDropdownOptionsAsync(dropdownId, options, ct);
+
+        var latestOptions = await _formDesignerService.GetDropdownOptions(dropdownId, ct);
+        return Ok(latestOptions);
+    }
+    
+    /// <summary>
     /// 移動表單欄位的顯示順序（使用 分數索引排序 演算法）。
     /// </summary>
     /// <remarks>

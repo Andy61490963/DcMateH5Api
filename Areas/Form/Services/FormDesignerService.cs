@@ -954,7 +954,7 @@ WHERE c.FORM_FIELD_MASTER_ID = @MasterId
         // - 因為主檔維護功能，更新主檔可能會需要自訂下拉選單
         // - 預設為所有欄位建立 Dropdown 設定
         // - IS_USE_SQL 等設定可為 null，後續由使用者調整
-        if (schemaType == TableSchemaQueryType.OnlyTable)
+        if (schemaType == TableSchemaQueryType.OnlyTable || schemaType == TableSchemaQueryType.OnlyMapping)
         {
             foreach (var field in result.Fields)
             {
