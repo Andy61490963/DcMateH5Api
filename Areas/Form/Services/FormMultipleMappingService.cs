@@ -637,96 +637,84 @@ WHERE b.[{header.MAPPING_BASE_FK_COLUMN}] = @BaseId;";
         Dictionary<string, string>? filters,
         SqlTransaction? tx = null)
     {
-        // ===== 1. 基本檢查 =====
         if (string.IsNullOrWhiteSpace(header.MAPPING_BASE_COLUMN_NAME))
             throw new InvalidOperationException("缺少 Base 顯示欄位設定");
 
-        // ===== 2. 欄位清單 =====
-        var mappingColumns = _schemaService
-            .GetFormFieldMaster(header.MAPPING_TABLE_NAME!, tx)
-            .ToList();
+        var mappingColumns = _schemaService.GetFormFieldMaster(header.MAPPING_TABLE_NAME!, tx).ToList();
+        var detailColumns  = _schemaService.GetFormFieldMaster(header.DETAIL_TABLE_NAME!, tx).ToList();
 
-        var detailColumns = _schemaService
-            .GetFormFieldMaster(header.DETAIL_TABLE_NAME!, tx)
-            .ToList();
-
-        if (!detailColumns.Contains(detailPkName))
+        if (!detailColumns.Contains(detailPkName, StringComparer.OrdinalIgnoreCase))
             throw new InvalidOperationException("Detail PK 不存在");
 
-        // ===== 3. 給前端用的 default mapping 設定 =====
         var defaultMap = GetDetailToRelationDefaultColumnMap(
             header.DETAIL_TABLE_ID,
             header.MAPPING_TABLE_NAME!,
             mappingColumns);
 
-        // ===== 4. SQL SELECT 欄位 =====
-        var mappingSelect = string.Join(", ",
-            mappingColumns.Select(c => $"m.[{c}] AS [m__{c}]"));
+        // mapping 的 dropdown meta（你現在最需要的是這個）
+        var mappingDropdownMeta = BuildDropdownMetaMap(
+            header.MAPPING_TABLE_ID,
+            TableSchemaQueryType.OnlyMapping,
+            header.MAPPING_TABLE_NAME!);
 
-        var detailSelect = string.Join(", ",
-            detailColumns.Select(c => $"d.[{c}] AS [d__{c}]"));
+        // （可選）如果 detail 欄位也需要 dropdown
+        // var detailDropdownMeta = BuildDropdownMetaMap(header.DETAIL_TABLE_ID, TableSchemaQueryType.OnlyDetail, header.DETAIL_TABLE_NAME!);
 
-        var (filterSql, param) = BuildLikeWhere(
-            filters,
-            mappingColumns,
-            "m",
-            "mLike");
+        var mappingSelect = string.Join(", ", mappingColumns.Select(c => $"m.[{c}] AS [m__{c}]"));
+        var detailSelect  = string.Join(", ", detailColumns.Select(c => $"d.[{c}] AS [d__{c}]"));
 
-        var sql = $@"
+        var (filterSql, param) = BuildLikeWhere(filters, mappingColumns, "m", "mLike");
+        param.Add("BaseId", basePkValue);
+
+        var sql = $@"/**/
     SELECT
         {mappingSelect},
         {detailSelect},
-        b.[{header.MAPPING_BASE_COLUMN_NAME}] AS BaseText,
-        CONVERT(nvarchar(200), d.[{detailPkName}]) AS DetailText
+        b.[{header.MAPPING_BASE_COLUMN_NAME}] AS BaseText
     FROM [{header.MAPPING_TABLE_NAME}] m
     JOIN [{header.DETAIL_TABLE_NAME}] d
       ON m.[{header.MAPPING_DETAIL_FK_COLUMN}] = d.[{detailPkName}]
     JOIN [{header.BASE_TABLE_NAME}] b
       ON m.[{header.MAPPING_BASE_FK_COLUMN}] = b.[{header.MAPPING_BASE_FK_COLUMN}]
     WHERE m.[{header.MAPPING_BASE_FK_COLUMN}] = @BaseId
-    {filterSql};
-    ";
+    {filterSql};";
 
-        param.Add("BaseId", basePkValue);
-
-        // ===== 5. Query =====
         var rows = _con.Query(sql, param, transaction: tx)
             .Cast<IDictionary<string, object?>>()
             .ToList();
 
-        // ===== 6. 組 ViewModel =====
-        var result = new List<MultipleMappingItemViewModel>();
+        var result = new List<MultipleMappingItemViewModel>(rows.Count);
 
         foreach (var row in rows)
         {
-            var mappingFields = new Dictionary<string, object?>();
-            var detailFields  = new Dictionary<string, object?>();
+            var mappingRaw = new Dictionary<string, object?>(StringComparer.OrdinalIgnoreCase);
+            var detailRaw  = new Dictionary<string, object?>(StringComparer.OrdinalIgnoreCase);
 
-            foreach (var kv in row)
+            foreach (var (k, v) in row)
             {
-                if (kv.Key.StartsWith("m__"))
-                    mappingFields[kv.Key[3..]] = kv.Value;
-                else if (kv.Key.StartsWith("d__"))
-                    detailFields[kv.Key[3..]] = kv.Value;
+                if (k.StartsWith("m__", StringComparison.OrdinalIgnoreCase)) mappingRaw[k[3..]] = v;
+                else if (k.StartsWith("d__", StringComparison.OrdinalIgnoreCase)) detailRaw[k[3..]] = v;
             }
 
-            var pkText = detailFields[detailPkName]?.ToString() ?? "";
+            var pkText = detailRaw.TryGetValue(detailPkName, out var pkVal) ? pkVal?.ToString() ?? "" : "";
 
             result.Add(new MultipleMappingItemViewModel
             {
                 DetailPk = pkText,
                 BaseDisplayText = row["BaseText"]?.ToString(),
-                DetailDisplayText = pkText, // 規則：永遠用 PK
+                DetailDisplayText = pkText,
                 DetailToRelationDefaultColumn = defaultMap,
-                MappingFields = mappingFields,
-                DetailFields = detailFields
+
+                // 不再覆蓋資料，而是同時回 Value/Options
+                MappingFields = BuildFieldValueDict(mappingRaw, mappingDropdownMeta),
+                DetailFields  = BuildFieldValueDict(detailRaw, null) // 你要 detail dropdown 再補 meta
             });
         }
 
         return result;
     }
-
-    private List<MultipleMappingItemViewModel> LoadUnlinkedRows(
+    
+        private List<MultipleMappingItemViewModel> LoadUnlinkedRows(
         FormFieldMasterDto header,
         string detailPkName,
         object basePkValue,
@@ -734,32 +722,28 @@ WHERE b.[{header.MAPPING_BASE_FK_COLUMN}] = @BaseId;";
         Dictionary<string, string>? filters,
         SqlTransaction? tx = null)
     {
-        var detailColumns = _schemaService
-            .GetFormFieldMaster(header.DETAIL_TABLE_NAME!, tx)
-            .ToList();
-
-        var mappingColumns = _schemaService
-            .GetFormFieldMaster(header.MAPPING_TABLE_NAME!, tx)
-            .ToList();
+        var detailColumns  = _schemaService.GetFormFieldMaster(header.DETAIL_TABLE_NAME!, tx).ToList();
+        var mappingColumns = _schemaService.GetFormFieldMaster(header.MAPPING_TABLE_NAME!, tx).ToList();
 
         var defaultMap = GetDetailToRelationDefaultColumnMap(
             header.DETAIL_TABLE_ID,
             header.MAPPING_TABLE_NAME!,
             mappingColumns);
 
-        var detailSelect = string.Join(", ",
-            detailColumns.Select(c => $"d.[{c}] AS [d__{c}]"));
+        // 這個就算 unlinked 也能讓前端知道 mapping 欄位有哪些 dropdown options
+        var mappingDropdownMeta = BuildDropdownMetaMap(
+            header.MAPPING_TABLE_ID,
+            TableSchemaQueryType.OnlyMapping,
+            header.MAPPING_TABLE_NAME!);
 
-        var (filterSql, param) = BuildLikeWhere(
-            filters,
-            detailColumns,
-            "d",
-            "dLike");
+        var detailSelect = string.Join(", ", detailColumns.Select(c => $"d.[{c}] AS [d__{c}]"));
 
-        var sql = $@"
+        var (filterSql, param) = BuildLikeWhere(filters, detailColumns, "d", "dLike");
+        param.Add("BaseId", basePkValue);
+
+        var sql = $@"/**/
     SELECT
-        {detailSelect},
-        CONVERT(nvarchar(200), d.[{detailPkName}]) AS DetailText
+        {detailSelect}
     FROM [{header.DETAIL_TABLE_NAME}] d
     WHERE 1 = 1
     {filterSql}
@@ -768,28 +752,25 @@ WHERE b.[{header.MAPPING_BASE_FK_COLUMN}] = @BaseId;";
         FROM [{header.MAPPING_TABLE_NAME}] m
         WHERE m.[{header.MAPPING_BASE_FK_COLUMN}] = @BaseId
           AND m.[{header.MAPPING_DETAIL_FK_COLUMN}] = d.[{detailPkName}]
-    );
-    ";
-
-        param.Add("BaseId", basePkValue);
+    );";
 
         var rows = _con.Query(sql, param, transaction: tx)
             .Cast<IDictionary<string, object?>>()
             .ToList();
 
-        var result = new List<MultipleMappingItemViewModel>();
+        var result = new List<MultipleMappingItemViewModel>(rows.Count);
 
         foreach (var row in rows)
         {
-            var detailFields = new Dictionary<string, object?>();
+            var detailRaw = new Dictionary<string, object?>(StringComparer.OrdinalIgnoreCase);
 
-            foreach (var kv in row)
+            foreach (var (k, v) in row)
             {
-                if (kv.Key.StartsWith("d__"))
-                    detailFields[kv.Key[3..]] = kv.Value;
+                if (k.StartsWith("d__", StringComparison.OrdinalIgnoreCase))
+                    detailRaw[k[3..]] = v;
             }
 
-            var pkText = detailFields[detailPkName]?.ToString() ?? "";
+            var pkText = detailRaw.TryGetValue(detailPkName, out var pkVal) ? pkVal?.ToString() ?? "" : "";
 
             result.Add(new MultipleMappingItemViewModel
             {
@@ -797,22 +778,83 @@ WHERE b.[{header.MAPPING_BASE_FK_COLUMN}] = @BaseId;";
                 BaseDisplayText = baseDisplayText,
                 DetailDisplayText = pkText,
                 DetailToRelationDefaultColumn = defaultMap,
-                MappingFields = new Dictionary<string, object?>(),
-                DetailFields = detailFields
+
+                // unlinked 沒有 mapping row，所以 fields 先空
+                MappingFields = new Dictionary<string, FieldValueViewModel>(StringComparer.OrdinalIgnoreCase),
+                DetailFields  = BuildFieldValueDict(detailRaw, null)
             });
         }
 
         return result;
     }
-
-    private static MultipleMappingItemViewModel ToItem(string pkName, IDictionary<string, object?> row)
+    
+    private static Dictionary<string, FieldValueViewModel> BuildFieldValueDict(
+        IReadOnlyDictionary<string, object?> raw,
+        IReadOnlyDictionary<string, DropdownMeta>? dropdownMeta)
     {
-        row.TryGetValue(pkName, out var pkVal);
-        return new MultipleMappingItemViewModel
+        var dict = new Dictionary<string, FieldValueViewModel>(StringComparer.OrdinalIgnoreCase);
+
+        foreach (var (col, val) in raw)
         {
-            DetailPk = pkVal?.ToString() ?? string.Empty,
-            DetailFields = row.ToDictionary(k => k.Key, v => v.Value)
-        };
+            IReadOnlyList<DropdownOptionViewModel>? options = null;
+
+            if (dropdownMeta != null && dropdownMeta.TryGetValue(col, out var meta))
+            {
+                options = meta.Options;
+            }
+
+            dict[col] = new FieldValueViewModel
+            {
+                Value = val,
+                Options = options
+            };
+        }
+
+        return dict;
+    }
+
+    private sealed class DropdownMeta
+    {
+        public IReadOnlyList<DropdownOptionViewModel> Options { get; init; } = Array.Empty<DropdownOptionViewModel>();
+        public IReadOnlyDictionary<string, string> ValueToText { get; init; }
+            = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+    }
+
+    private Dictionary<string, DropdownMeta> BuildDropdownMetaMap(
+        Guid? masterId,
+        TableSchemaQueryType schemaType,
+        string tableName)
+    {
+        var templates = _formService.GetFieldTemplates(masterId, schemaType, tableName);
+
+        return templates
+            .Where(t => !string.IsNullOrWhiteSpace(t.Column))
+            // .Where(t => t.CONTROL_TYPE == FormControlType.Dropdown) // 用你們的 enum 判斷
+            .Where(t => t.OptionList is { Count: > 0 })
+            .ToDictionary(
+                t => t.Column,
+                t =>
+                {
+                    var options = t.OptionList
+                        .Where(o => !string.IsNullOrWhiteSpace(o.OPTION_VALUE))
+                        .Select(o => new DropdownOptionViewModel
+                        {
+                            Value = o.OPTION_VALUE.Trim(),
+                            Text = (o.OPTION_TEXT ?? string.Empty).Trim()
+                        })
+                        .ToList();
+
+                    var map = options
+                        .GroupBy(x => x.Value, StringComparer.OrdinalIgnoreCase)
+                        .ToDictionary(g => g.Key, g => g.First().Text, StringComparer.OrdinalIgnoreCase);
+
+                    return new DropdownMeta
+                    {
+                        Options = options,
+                        ValueToText = map
+                    };
+                },
+                StringComparer.OrdinalIgnoreCase);
     }
 
     private static void ValidateUpsertRequest(MultipleMappingUpsertViewModel request)

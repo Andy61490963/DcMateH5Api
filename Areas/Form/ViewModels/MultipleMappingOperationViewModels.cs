@@ -77,15 +77,26 @@ public class MultipleMappingItemViewModel
     public IReadOnlyDictionary<string, string> DetailToRelationDefaultColumn { get; set; }
         = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
     
-    /// <summary>
-    /// 關聯表的資料欄位（key value）
-    /// </summary>
-    public Dictionary<string, object?> MappingFields { get; set; } = new();
-    
-    /// <summary>
-    /// 明細資料的欄位與目前值。
-    /// </summary>
-    public Dictionary<string, object?> DetailFields { get; set; } = new();
+    public Dictionary<string, FieldValueViewModel> MappingFields { get; set; }
+        = new(StringComparer.OrdinalIgnoreCase);
+
+    public Dictionary<string, FieldValueViewModel> DetailFields { get; set; }
+        = new(StringComparer.OrdinalIgnoreCase);
+}
+
+public sealed class DropdownOptionViewModel
+{
+    public string Value { get; init; } = string.Empty;
+    public string Text  { get; init; } = string.Empty;
+}
+
+public sealed class FieldValueViewModel
+{
+    /// <summary>資料庫原值（提交時用這個）</summary>
+    public object? Value { get; init; }
+
+    /// <summary>下拉選項（只有 dropdown 才有）</summary>
+    public IReadOnlyList<DropdownOptionViewModel>? Options { get; init; }
 }
 
 /// <summary>

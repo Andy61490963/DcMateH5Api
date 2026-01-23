@@ -929,6 +929,14 @@ FROM (
             .ToHashSet(StringComparer.OrdinalIgnoreCase);
     }
 
+    public List<FormFieldInputViewModel> GetFieldTemplates(
+        Guid? masterId,
+        TableSchemaQueryType schemaType,
+        string tableName)
+    {
+        return GetFields(masterId, schemaType, tableName);
+    }
+
 private static class Sql
     {
         public const string UpsertDropdownAnswer = @"

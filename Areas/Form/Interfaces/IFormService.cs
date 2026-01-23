@@ -44,4 +44,9 @@ public interface IFormService
     /// <param name="input">前端送出的表單資料</param>
     /// <param name="tx">資料庫交易物件</param>
     object SubmitForm(FormSubmissionInputModel input, SqlTransaction tx);
+    
+    List<FormFieldInputViewModel> GetFieldTemplates(
+        Guid? masterId,
+        TableSchemaQueryType schemaType,
+        string tableName);
 }
