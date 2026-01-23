@@ -962,6 +962,8 @@ WHERE c.FORM_FIELD_MASTER_ID = @MasterId
             }
         }
         
+        result = await GetFieldsByTableName(tableName, masterId, schemaType);
+        
         await SyncSourceNullabilityAsync(tableName, masterId, columns);
 
         return result;
