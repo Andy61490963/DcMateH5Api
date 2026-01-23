@@ -11,6 +11,8 @@ env:
   PUBLISH_DIR: "C:\\CICDDeploy\\publish"
   IIS_PHYSICAL_PATH: "C:\\inetpub\\wwwroot\\測試"
   IIS_APP_POOL: "DcMateH5Api"
+  # 你的 API dll 名稱（若不同就改這裡）
+  IIS_DLL_NAME: "DcMateH5Api.dll"
 
 jobs:
   deploy:
@@ -24,11 +26,16 @@ jobs:
         shell: powershell
         run: |
           $ErrorActionPreference = 'Stop'
+
           foreach ($p in @($env:DEPLOY_ROOT, $env:PUBLISH_DIR, $env:IIS_PHYSICAL_PATH)) {
             if (!(Test-Path $p)) { New-Item -ItemType Directory -Path $p | Out-Null }
           }
-          Write-Host "PUBLISH_DIR: $env:PUBLISH_DIR"
-          Write-Host "IIS_PATH   : $env:IIS_PHYSICAL_PATH"
+
+          Write-Host "PROJECT_PATH : $env:PROJECT_PATH"
+          Write-Host "PUBLISH_DIR  : $env:PUBLISH_DIR"
+          Write-Host "IIS_PATH     : $env:IIS_PHYSICAL_PATH"
+          Write-Host "IIS_APP_POOL : $env:IIS_APP_POOL"
+          Write-Host "IIS_DLL_NAME : $env:IIS_DLL_NAME"
 
       - name: Publish (Release)
         shell: powershell
@@ -52,59 +59,134 @@ jobs:
           $ErrorActionPreference = 'Stop'
           Import-Module WebAdministration -ErrorAction Stop
 
+          function Stop-AppPoolIfRunning {
+            param([Parameter(Mandatory=$true)][string]$Name)
+
+            $state = (Get-WebAppPoolState -Name $Name).Value
+            Write-Host "AppPool [$Name] state: $state"
+
+            if ($state -ne 'Stopped') {
+              Stop-WebAppPool -Name $Name -ErrorAction Stop
+              Write-Host "AppPool [$Name] stop requested."
+            }
+            else {
+              Write-Host "AppPool [$Name] already stopped. skip."
+            }
+          }
+
+          function Start-AppPoolIfStopped {
+            param([Parameter(Mandatory=$true)][string]$Name)
+
+            $state = (Get-WebAppPoolState -Name $Name).Value
+            Write-Host "AppPool [$Name] state: $state"
+
+            if ($state -ne 'Started') {
+              Start-WebAppPool -Name $Name -ErrorAction Stop
+              Write-Host "AppPool [$Name] start requested."
+            }
+            else {
+              Write-Host "AppPool [$Name] already started. skip."
+            }
+          }
+
+          function Wait-AppPoolState {
+            param(
+              [Parameter(Mandatory=$true)][string]$Name,
+              [Parameter(Mandatory=$true)][string]$Expected,
+              [int]$TimeoutSec = 30
+            )
+
+            $sw = [Diagnostics.Stopwatch]::StartNew()
+            while ($sw.Elapsed.TotalSeconds -lt $TimeoutSec) {
+              $state = (Get-WebAppPoolState -Name $Name).Value
+              if ($state -eq $Expected) {
+                Write-Host "AppPool [$Name] reached state: $Expected"
+                return
+              }
+              Start-Sleep -Milliseconds 500
+            }
+
+            throw "Timeout: AppPool [$Name] not in state [$Expected] after $TimeoutSec sec."
+          }
+
+          function Wait-FileUnlocked {
+            param(
+              [Parameter(Mandatory=$true)][string]$Path,
+              [int]$TimeoutSec = 30
+            )
+
+            if (!(Test-Path $Path)) {
+              Write-Host "File not found (skip unlock wait): $Path"
+              return
+            }
+
+            $sw = [Diagnostics.Stopwatch]::StartNew()
+            while ($sw.Elapsed.TotalSeconds -lt $TimeoutSec) {
+              try {
+                $fs = [System.IO.File]::Open($Path, 'Open', 'ReadWrite', 'None')
+                $fs.Close()
+                Write-Host "File unlocked: $Path"
+                return
+              }
+              catch {
+                Start-Sleep -Seconds 1
+              }
+            }
+
+            throw "Timeout: File still locked after $TimeoutSec seconds: $Path"
+          }
+
           $publish = $env:PUBLISH_DIR
           $target  = $env:IIS_PHYSICAL_PATH
           $pool    = $env:IIS_APP_POOL
           $offline = Join-Path $target "app_offline.htm"
+          $dllPath = Join-Path $target $env:IIS_DLL_NAME
 
           if (!(Test-Path $target)) { New-Item -ItemType Directory -Path $target | Out-Null }
 
           try {
-            # 1) 下線：擋站 + 觸發 IIS 卸載
+            # 1) 先放 offline，避免進站請求 + 觸發 IIS 卸載
             "Deploying... Please wait." | Out-File -FilePath $offline -Encoding utf8 -Force
+            Write-Host "Created app_offline: $offline"
 
-            # 2) 停 AppPool（已停止也不要炸）
-            Stop-WebAppPool -Name $pool -ErrorAction SilentlyContinue | Out-Null
+            # 2) Stop AppPool（idempotent）
+            Stop-AppPoolIfRunning -Name $pool
+            Wait-AppPoolState -Name $pool -Expected 'Stopped' -TimeoutSec 30
 
-            # 3) 只殺「此 AppPool」的 w3wp（IIS 官方方式拿 PID）
-            $pids = @()
-            try {
-              $state = Get-WebAppPoolState -Name $pool -ErrorAction Stop
-              if ($null -ne $state.WorkerProcesses) {
-                $pids = $state.WorkerProcesses | Select-Object -ExpandProperty ProcessId
-              }
-            } catch {
-              # 有些環境 Get-WebAppPoolState 拿不到 WorkerProcesses，就走 IIS:\AppPools 方式
-              try {
-                $appPoolItem = Get-Item "IIS:\AppPools\$pool" -ErrorAction Stop
-                if ($null -ne $appPoolItem.WorkerProcesses) {
-                  $pids = $appPoolItem.WorkerProcesses | Select-Object -ExpandProperty ProcessId
-                }
-              } catch {
-                Write-Host "Could not resolve worker process PIDs for app pool: $pool"
-              }
-            }
+            # 3) 等 dll 解鎖
+            Wait-FileUnlocked -Path $dllPath -TimeoutSec 30
 
-            foreach ($pid in $pids) {
-              Write-Host "Killing w3wp pid=$pid for pool=$pool"
-              Stop-Process -Id $pid -Force -ErrorAction SilentlyContinue
-            }
-
-            # 4) 同步檔案（保留 SecurityKeys，不要被 /MIR 清掉）
-            robocopy "$publish" "$target" /MIR /R:5 /W:1 /NFL /NDL /NP /XF "*.pdb" /XD "SecurityKeys"
+            # 4) Robocopy 同步檔案
+            #    /MIR：鏡像同步（會刪除 target 多餘檔案）
+            #    /R /W：重試策略
+            #    /XF：排除 pdb
+            #    /XD：排除 SecurityKeys 資料夾（避免被鏡像刪掉）
+            robocopy "$publish" "$target" /MIR /R:10 /W:2 /NFL /NDL /NP /XF "*.pdb" /XD "SecurityKeys"
             $rc = $LASTEXITCODE
+
+            # robocopy exit code 規則：0~7 都算成功（含複製/差異/額外檔案），>=8 才是失敗
             if ($rc -ge 8) { throw "Robocopy failed. ExitCode=$rc" }
 
-            # Robocopy 1~7 代表有差異/有複製，GitHub Actions 會當成失敗，所以歸零
+            # 把 robocopy 的 exit code 0~7 歸零，避免 Actions 誤判失敗
             $global:LASTEXITCODE = 0
+            Write-Host "Robocopy success. ExitCode=$rc"
 
-            # 5) 上線
-            Remove-Item $offline -Force -ErrorAction SilentlyContinue
-            Start-WebAppPool -Name $pool -ErrorAction SilentlyContinue | Out-Null
+            # 5) 移除 offline
+            if (Test-Path $offline) {
+              Remove-Item $offline -Force
+              Write-Host "Removed app_offline."
+            }
+
+            # 6) Start AppPool（idempotent）
+            Start-AppPoolIfStopped -Name $pool
+            Wait-AppPoolState -Name $pool -Expected 'Started' -TimeoutSec 30
 
             Write-Host "Deploy done."
           }
           finally {
             # 失敗也不要卡 offline
-            Remove-Item $offline -Force -ErrorAction SilentlyContinue
+            if (Test-Path $offline) {
+              Remove-Item $offline -Force -ErrorAction SilentlyContinue
+              Write-Host "Cleanup: removed app_offline."
+            }
           }

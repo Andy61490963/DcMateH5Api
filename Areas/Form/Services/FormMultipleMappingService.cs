@@ -102,7 +102,7 @@ SELECT ID AS Id,
             // linked 套 mapping filters
             linkedItems = LoadLinkedDetailRows(header, detailPkName, basePkValue!, filters);
         }
-        else // mode == false
+        else 
         {
             // unlinked 套 detail filters
             unlinkedItems = LoadUnlinkedRows(header, detailPkName, basePkValue!, baseDisplayText, filters);
