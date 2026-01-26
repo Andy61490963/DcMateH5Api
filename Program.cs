@@ -8,7 +8,6 @@ using DcMateH5Api.Areas.Form.Services.Transaction;
 using DcMateH5Api.Areas.Log.Interfaces;
 using DcMateH5Api.Areas.Log.Services;
 using DcMateH5Api.Areas.Security.Interfaces;
-using DcMateH5Api.Areas.Security.Models;
 using DcMateH5Api.Areas.Security.Services;
 using DcMateH5Api.Authorization;
 using DcMateH5Api.DbExtensions;
@@ -21,10 +20,12 @@ using Microsoft.AspNetCore.DataProtection;
 using Microsoft.AspNetCore.HttpOverrides;
 using Microsoft.Data.SqlClient;
 using Microsoft.Extensions.Diagnostics.HealthChecks;
-using Microsoft.IdentityModel.Tokens;
 using Microsoft.OpenApi.Models;
 using System.Reflection;
-using System.Text;
+using DcMateH5Api.Services.Cache.Redis.Interfaces;
+using DcMateH5Api.Services.Cache.Redis.Services;
+using DcMateH5Api.Services.CurrentUser.Interfaces;
+using DcMateH5Api.Services.CurrentUser.Services;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -62,10 +63,7 @@ builder.WebHost.UseUrls("http://0.0.0.0:5000");
 // -------------------- Config 讀取 --------------------
 var config = builder.Configuration;
 var redisConn = config.GetValue<string>("Redis:Connection");
-var jwt = config.GetSection("JwtSettings").Get<JwtSettings>()
-          ?? throw new InvalidOperationException("JwtSettings missing.");
 
-builder.Services.Configure<JwtSettings>(config.GetSection("JwtSettings"));
 builder.Services.Configure<CacheOptions>(config.GetSection("Cache"));
 builder.Services.Configure<DbOptions>(config.GetSection("ConnectionStrings"));
 builder.Services.Configure<FormSettings>(config.GetSection("FormSettings"));
@@ -87,6 +85,7 @@ builder.Services.AddScoped<SqlConnection, SqlConnection>(_ =>
 
 // -------------------- 基礎服務 --------------------
 builder.Services.AddHttpContextAccessor(); // 僅保留這一次註冊
+builder.Services.AddScoped<ICurrentUserAccessor, HttpCurrentUserAccessor>();
 
 // Db 工具
 builder.Services.AddSingleton<ISqlConnectionFactory, SqlConnectionFactory>();
@@ -97,7 +96,6 @@ builder.Services.AddScoped<SQLGenerateHelper>();
 builder.Services.AddScoped<ILogService, LogService>();
 builder.Services.AddScoped<IFormDesignerService, FormDesignerService>();
 builder.Services.AddScoped<IAuthenticationService, AuthenticationService>();
-builder.Services.AddScoped<ITokenGenerator, JwtTokenGenerator>();
 builder.Services.AddScoped<IPasswordHasher, PasswordHasher>();
 builder.Services.AddScoped<IFormFieldMasterService, FormFieldMasterService>();
 builder.Services.AddScoped<ISchemaService, SchemaService>();
@@ -173,21 +171,6 @@ builder.Services
                 return Task.CompletedTask;
             }
         };
-    })
-    .AddJwtBearer(options =>
-    {
-        options.MapInboundClaims = false;
-        options.TokenValidationParameters = new TokenValidationParameters
-        {
-            ValidateIssuer = true,
-            ValidateAudience = true,
-            ValidateLifetime = true,
-            ValidateIssuerSigningKey = true,
-            ValidIssuer = jwt.Issuer,
-            ValidAudience = jwt.Audience,
-            IssuerSigningKey = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(jwt.SecretKey)),
-            ClockSkew = TimeSpan.Zero
-        };
     });
 
 builder.Services.AddAuthorization();
@@ -221,17 +204,7 @@ builder.Services.AddSwaggerGen(options =>
     var xml = $"{Assembly.GetExecutingAssembly().GetName().Name}.xml";
     var xmlPath = Path.Combine(AppContext.BaseDirectory, xml);
     if (File.Exists(xmlPath)) options.IncludeXmlComments(xmlPath);
-
-    options.AddSecurityDefinition("Bearer", new OpenApiSecurityScheme
-    {
-        In = ParameterLocation.Header,
-        Description = "在此輸入 JWT：Bearer {token}",
-        Name = "Authorization",
-        Type = SecuritySchemeType.Http,
-        Scheme = "bearer",
-        BearerFormat = "JWT"
-    });
-
+    
     // 1. 加入您的 ManualToken 定義
     options.AddSecurityDefinition("ManualToken", new OpenApiSecurityScheme
     {
@@ -248,24 +221,8 @@ builder.Services.AddSwaggerGen(options =>
                 Reference = new OpenApiReference { Type = ReferenceType.SecurityScheme, Id = "ManualToken" }
             },
             Array.Empty<string>()
-        },
-        {
-            new OpenApiSecurityScheme {
-                Reference = new OpenApiReference { Type = ReferenceType.SecurityScheme, Id = "Bearer" }
-            },
-            Array.Empty<string>()
         }
     });
-
-    //options.AddSecurityRequirement(new OpenApiSecurityRequirement {
-    //    {
-    //        new OpenApiSecurityScheme {
-    //            Reference = new OpenApiReference { Type = ReferenceType.SecurityScheme, Id = "Bearer" }
-    //        },
-    //        Array.Empty<string>()
-    //    }
-    //});
-
     options.DocInclusionPredicate((doc, api) => doc == "v1" || string.Equals(api.GroupName, doc, StringComparison.OrdinalIgnoreCase));
 });
 

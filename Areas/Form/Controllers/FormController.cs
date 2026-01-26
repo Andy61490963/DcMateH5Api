@@ -2,6 +2,7 @@ using ClassLibrary;
 using DcMateH5Api.Areas.Form.Models;
 using DcMateH5Api.Areas.Form.Interfaces;
 using DcMateH5Api.Areas.Form.ViewModels;
+using DcMateH5Api.Controllers;
 using Microsoft.AspNetCore.Mvc;
 using DcMateH5Api.Helper;
 
@@ -14,16 +15,14 @@ namespace DcMateH5Api.Areas.Form.Controllers;
 [ApiController]
 [ApiExplorerSettings(GroupName = SwaggerGroups.Form)]
 [Route("[area]/[controller]")]
-public class FormController : ControllerBase
+public class FormController : BaseController
 {
     private readonly IFormService _formService;
-    private readonly IFormDeleteGuardService _formDeleteGuardService;
     private readonly FormFunctionType _funcType = FormFunctionType.MasterMaintenance;
     
     public FormController(IFormService formService, IFormDeleteGuardService formDeleteGuardService)
     {
         _formService = formService;
-        _formDeleteGuardService = formDeleteGuardService;
     }
     
     /// <summary>
@@ -85,7 +84,7 @@ public class FormController : ControllerBase
     /// <remarks>
     /// - 先依 FormFieldMasterId 撈 Guard 規則並逐條驗證
     /// - 任一規則不允許刪除 → 回 409 Conflict + BlockedByRule
-    /// - 通過後才會刪除 Base Table 資料列，並同步清除 FORM_FIELD_DROPDOWN_ANSWER
+    /// - 通過後才會刪除 Base Table 資料列
     /// </remarks>
     /// <param name="request">Guard 驗證參數</param>
     /// <param name="ct">取消權杖</param>

@@ -6,6 +6,7 @@ using System.IdentityModel.Tokens.Jwt;
 using System.Linq.Expressions;
 using System.Reflection;
 using Dapper;
+using DcMateH5Api.Services.CurrentUser.Interfaces;
 using Microsoft.AspNetCore.Http;
 using Microsoft.Data.SqlClient;
 
@@ -36,10 +37,13 @@ namespace DcMateH5Api.SqlHelper
     public sealed class SQLGenerateHelper
     {
         private readonly IDbExecutor _db;
-        private readonly IHttpContextAccessor _http;
-
-        public SQLGenerateHelper(IDbExecutor db, IHttpContextAccessor http)
-        { _db = db; _http = http; }
+        private readonly ICurrentUserAccessor _currentUser;
+        
+        public SQLGenerateHelper(IDbExecutor db, ICurrentUserAccessor currentUser)
+        { 
+            _db = db;
+            _currentUser = currentUser; 
+        }
 
         /// <summary>
         /// 是否在 INSERT/UPDATE 自動寫入審計欄位（固定欄位名：CREATE_USER/CREATE_TIME/EDIT_USER/EDIT_TIME/IS_DELETE）。
@@ -63,10 +67,10 @@ namespace DcMateH5Api.SqlHelper
         private const string P_IS_DELETE   = "IsDelete";
 
         // 目前登入者（JWT sub），抓不到回 Guid.Empty
-        private Guid CurrentUserIdOrEmpty()
+        private Guid GetCurrentUserId()
         {
-            var raw = _http.HttpContext?.User?.FindFirst(JwtRegisteredClaimNames.Sub)?.Value;
-            return Guid.TryParse(raw, out var gid) ? gid : Guid.Empty;
+            var user = _currentUser.Get();
+            return user.Id;
         }
 
         private Task<DateTime> GetDbNowAsync(CancellationToken ct)
@@ -146,7 +150,7 @@ namespace DcMateH5Api.SqlHelper
 
             if (EnableAuditColumns)
             {
-                var id = CurrentUserIdOrEmpty();
+                var id = GetCurrentUserId();
                 var now = await GetDbNowAsync(ct);
                 AddAuditForInsert(cols, vals, dp, id, now);
             }
@@ -171,7 +175,7 @@ namespace DcMateH5Api.SqlHelper
 
             if (EnableAuditColumns)
             {
-                var uid = CurrentUserIdOrEmpty();
+                var uid = GetCurrentUserId();
                 var now = await GetDbNowInTxAsync(conn, tx, ct);
                 AddAuditForInsert(cols, vals, dp, uid, now);
             }
@@ -191,7 +195,7 @@ namespace DcMateH5Api.SqlHelper
 
             if (enableAuditColumns)
             {
-                var uid = CurrentUserIdOrEmpty();
+                var uid = GetCurrentUserId();
                 var now = await GetDbNowAsync(ct);
                 AddAuditForInsert(cols, vals, dp, uid, now);
             }
@@ -217,7 +221,7 @@ namespace DcMateH5Api.SqlHelper
 
             if (enableAuditColumns)
             {
-                var uid = CurrentUserIdOrEmpty();
+                var uid = GetCurrentUserId();
                 var now = await GetDbNowInTxAsync(conn, tx, ct);
                 AddAuditForInsert(cols, vals, dp, uid, now);
             }
@@ -265,7 +269,7 @@ namespace DcMateH5Api.SqlHelper
 
             if (enableAuditColumns)
             {
-                var uid = CurrentUserIdOrEmpty();
+                var uid = GetCurrentUserId();
                 var now = await GetDbNowAsync(ct);
                 AddAuditForUpdate(sets, dp, uid, now);
             }
@@ -301,7 +305,7 @@ namespace DcMateH5Api.SqlHelper
 
             if (enableAuditColumns)
             {
-                var uid = CurrentUserIdOrEmpty();
+                var uid = GetCurrentUserId();
                 var now = await GetDbNowInTxAsync(conn, tx, ct);
                 AddAuditForUpdate(sets, dp, uid, now);
             }
@@ -470,6 +474,7 @@ namespace DcMateH5Api.SqlHelper
         }
 
         #endregion
+        
         // -------------------- Fluent Update Builder --------------------
 
         public sealed class UpdateByIdBuilder<T>
@@ -534,7 +539,7 @@ namespace DcMateH5Api.SqlHelper
 
                 if (_audit)
                 {
-                    var uid = _h.CurrentUserIdOrEmpty();
+                    var uid = _h.GetCurrentUserId();
                     var now = await _h.GetDbNowAsync(ct);
                     AddAuditForUpdate(sets, dp, uid, now);
                 }
@@ -588,7 +593,7 @@ namespace DcMateH5Api.SqlHelper
 
                 if (_audit)
                 {
-                    var uid = _h.CurrentUserIdOrEmpty();
+                    var uid = _h.GetCurrentUserId();
                     var now = await _h.GetDbNowInTxAsync(conn, tx, ct);
                     AddAuditForUpdate(sets, dp, uid, now);
                 }

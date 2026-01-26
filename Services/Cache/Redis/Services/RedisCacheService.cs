@@ -1,12 +1,9 @@
-using System;
 using System.Text.Json;
-using System.Threading;
-using System.Threading.Tasks;
+using DcMateH5Api.Services.Cache.Redis.Interfaces;
 using Microsoft.Extensions.Caching.Distributed;
-using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 
-namespace DcMateH5Api.Services.Cache
+namespace DcMateH5Api.Services.Cache.Redis.Services
 {
     /// <summary>使用 Redis 實作的快取服務</summary> // 透過 IDistributedCache 與 Redis 溝通
     public class RedisCacheService : ICacheService 

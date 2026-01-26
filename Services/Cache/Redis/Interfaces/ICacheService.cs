@@ -2,7 +2,7 @@ using System;
 using System.Threading;
 using System.Threading.Tasks;
 
-namespace DcMateH5Api.Services.Cache 
+namespace DcMateH5Api.Services.Cache.Redis.Interfaces
 {
     /// <summary>定義快取服務介面</summary> // 所有快取操作必須遵循的介面
     public interface ICacheService

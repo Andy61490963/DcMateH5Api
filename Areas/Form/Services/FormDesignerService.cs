@@ -585,7 +585,7 @@ ORDER BY
             DETAIL_TABLE_ID = HasValue(model.DETAIL_TABLE_NAME) ? insertId : (Guid?)null,
             MAPPING_TABLE_ID = HasValue(model.MAPPING_TABLE_NAME) ? insertId : (Guid?)null,
 
-            FUNCTION_TYPE = model.FUNCTION_TYPE,
+            model.FUNCTION_TYPE,
         });
 
         return insertId;

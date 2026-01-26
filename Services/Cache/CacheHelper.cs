@@ -1,3 +1,5 @@
+using DcMateH5Api.Services.Cache.Redis.Interfaces;
+
 namespace DcMateH5Api.Services.Cache
 {
     /// <summary>

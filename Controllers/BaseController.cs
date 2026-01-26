@@ -1,5 +1,5 @@
-﻿using System.IdentityModel.Tokens.Jwt;
-using System.Security.Claims;
+﻿using System.Security.Claims;
+using DcMateH5Api.Models;
 using Microsoft.AspNetCore.Mvc;
 
 namespace DcMateH5Api.Controllers
@@ -17,19 +17,30 @@ namespace DcMateH5Api.Controllers
 
     /// <summary>
     /// 代表「目前登入使用者」的簡化快照物件
-    /// 
-    /// 這個類別的目的不是存完整 User 資料，
-    /// 而是快速判斷：
+    ///
+    /// 快速判斷：
     /// 1. 使用者是否已登入
     /// 2. 使用者的唯一識別碼（UserId）
     /// </summary>
     public sealed class CurrentUserSnapshot
     {
         /// <summary>
-        /// 使用者的唯一識別碼（來自 JWT 的 sub Claim）
+        /// 使用者帳號
+        /// 若未登入，則為 Guid.Empty
+        /// </summary>
+        public string Account { get; private init; } = string.Empty;
+        
+        /// <summary>
+        /// 使用者的唯一識別碼
         /// 若未登入，則為 Guid.Empty
         /// </summary>
         public Guid Id { get; private init; }
+        
+        /// <summary>
+        /// 使用者的唯一識別碼
+        /// 若未登入，則為 Guid.Empty
+        /// </summary>
+        public string Lv { get; private init; } = string.Empty;
 
         /// <summary>
         /// 是否為已通過驗證的使用者
@@ -43,27 +54,24 @@ namespace DcMateH5Api.Controllers
         /// <returns>CurrentUserSnapshot</returns>
         public static CurrentUserSnapshot From(ClaimsPrincipal? user)
         {
-            // 沒有使用者，或尚未通過驗證
-            if (user == null || user.Identity == null || !user.Identity.IsAuthenticated)
+            if (user?.Identity?.IsAuthenticated != true)
             {
-                return new CurrentUserSnapshot
-                {
-                    IsAuthenticated = false,
-                    Id = Guid.Empty
-                };
+                return new CurrentUserSnapshot { IsAuthenticated = false, Id = Guid.Empty };
             }
 
-            // 從 JWT 的 sub Claim 取得使用者 Id
-            var idValue = user.FindFirst(JwtRegisteredClaimNames.Sub)?.Value;
-
-            // 嘗試轉成 Guid，失敗會得到 Guid.Empty (通常為未登入情況)
-            Guid.TryParse(idValue, out var userId);
+            var account = user.FindFirst(AppClaimTypes.Account)?.Value;
+            var id = user.FindFirst(AppClaimTypes.UserId)?.Value;
+            var lv = user.FindFirst(AppClaimTypes.UserLv)?.Value;
+            Guid.TryParse(id, out var userId);
 
             return new CurrentUserSnapshot
             {
+                Account = account,
                 Id = userId,
+                Lv = lv,
                 IsAuthenticated = userId != Guid.Empty
             };
         }
+
     }
 }

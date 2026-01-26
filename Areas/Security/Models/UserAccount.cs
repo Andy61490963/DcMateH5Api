@@ -15,7 +15,7 @@ namespace DcMateH5Api.Areas.Security.Models
         /// </summary>
         [Key]
         [Column("USER_SID")]
-        public decimal Id { get; set; }
+        public Guid Id { get; set; }
 
         /// <summary>
         /// 登入帳號

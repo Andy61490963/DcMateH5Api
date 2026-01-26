@@ -7,10 +7,11 @@ using DCMATEH5API.Areas.Menu.Models;
 
 public class LoginResponseViewModel
 {
+    public Guid Sid { get; set; }
+    
     public string User { get; set; } = string.Empty;
     public string LV { get; set; } = string.Empty;
     public string Token { get; set; } = string.Empty;
-    public string Sid { get; set; } = string.Empty;
 
     // 新增：起始時間
     public string ExpiresFrom { get; set; }
@@ -26,7 +27,7 @@ public class LoginResponseViewModel
     {
         this.User = user.Account;
         this.LV = user.LV?.ToString() ?? "0"; // 建議這裡改為動取抓取 user.LV，不要寫死 "2"
-        this.Sid = user.Id.ToString();
+        this.Sid = user.Id;
         this.Token = token?.Token ?? "";
     }
 }
