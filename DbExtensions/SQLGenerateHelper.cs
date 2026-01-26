@@ -390,6 +390,35 @@ namespace DcMateH5Api.SqlHelper
         }
 
         /// <summary>
+        /// 判斷是否存在符合條件的資料（短連線）。
+        /// </summary>
+        public async Task<bool> ExistsAsync<T>(WhereBuilder<T> where, CancellationToken ct = default)
+        {
+            var (table, _, _, _, _) = Reflect<T>();
+            var (w, param) = where.Build();
+            var sql = $"SELECT TOP (1) 1 FROM {table} {w};";
+            var res = await _db.ExecuteScalarAsync<int?>(sql, param, ct: ct);
+            return res.HasValue;
+        }
+
+        /// <summary>
+        /// 判斷是否存在符合條件的資料（交易內版本）。
+        /// </summary>
+        public async Task<bool> ExistsInTxAsync<T>(
+            SqlConnection conn,
+            SqlTransaction tx,
+            WhereBuilder<T> where,
+            int? timeoutSeconds = null,
+            CancellationToken ct = default)
+        {
+            var (table, _, _, _, _) = Reflect<T>();
+            var (w, param) = where.Build();
+            var sql = $"SELECT TOP (1) 1 FROM {table} {w};";
+            var res = await _db.ExecuteScalarInTxAsync<int?>(conn, tx, sql, param, timeoutSeconds: timeoutSeconds, commandType: CommandType.Text, ct: ct);
+            return res.HasValue;
+        }
+
+        /// <summary>
         /// 軟刪除（IS_DELETE = 1）。
         /// 本方法不會自動加上 IS_DELETE = 0 條件，
         ///    若需要「只刪除未刪除資料」請自行在 where 加上 AndNotDeleted()。

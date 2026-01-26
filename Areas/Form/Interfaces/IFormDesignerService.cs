@@ -17,7 +17,10 @@ public interface IFormDesignerService
     
     List<string> SearchTables( string? tableName, TableQueryType queryType );
     
-    Guid GetOrCreateFormMasterId( FormFieldMasterDto model );
+    /// <summary>
+    /// 取得或建立 FORM_FIELD_MASTER 主鍵（非交易版）。
+    /// </summary>
+    Task<Guid> GetOrCreateFormMasterIdAsync(FormFieldMasterDto model, CancellationToken ct = default);
 
     Task<FormFieldListViewModel?> EnsureFieldsSaved( string tableName, Guid? formMasterId, TableSchemaQueryType schemaType, CancellationToken ct );
     
@@ -30,7 +33,10 @@ public interface IFormDesignerService
     /// <returns>若找到欄位則回傳 <see cref="FormFieldViewModel"/>；否則回傳 null。</returns>
     Task<FormFieldViewModel?> GetFieldById(Guid fieldId);
 
-    void UpsertField(FormFieldViewModel model, Guid formMasterId);
+    /// <summary>
+    /// 新增或更新欄位設定（非交易版）。
+    /// </summary>
+    Task UpsertFieldAsync(FormFieldViewModel model, Guid formMasterId, CancellationToken ct = default);
 
     /// <summary>
     /// 排序

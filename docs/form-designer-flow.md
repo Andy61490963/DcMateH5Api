@@ -10,7 +10,8 @@
    - 依 `FUNCTION_TYPE` 分流，與既有單表/主明細一致，透過 `GetFormMasters`、`UpdateFormName`、`Delete` 等 API。 【F:Areas/Form/Controllers/FormDesignerMultipleMappingController.cs†L10-L105】
 
 2. **欄位設定**
-   - `EnsureFieldsSaved` 會在查詢欄位時自動建立草稿設定，支援 `TableSchemaQueryType.OnlyMapping`，並套用與主表相同的查詢/編輯策略。 【F:Areas/Form/Services/FormDesignerService.cs†L437-L519】
+   - `EnsureFieldsSaved` 會在查詢欄位時自動建立草稿設定，支援 `TableSchemaQueryType.OnlyMapping`，並套用與主表相同的查詢/編輯策略。 【F:Areas/Form/Services/FormDesignerService.cs†L437-L579】
+   - 內部以單一 `TxAsync` 包住整段流程：Schema 讀取、缺欄位補齊、孤兒欄位標記、Dropdown 初始化、Nullable 同步與結果回傳全部共用同一個 `conn/tx`，避免混用連線造成不一致。 【F:Areas/Form/Services/FormDesignerService.cs†L845-L1036】
 
 3. **設計入口**
    - `GetFormDesignerIndexViewModel` 依 `FUNCTION_TYPE` 組合 Base/Detail/Mapping/View 欄位：  

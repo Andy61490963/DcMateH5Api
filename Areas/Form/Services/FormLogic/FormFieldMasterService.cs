@@ -2,18 +2,23 @@ using ClassLibrary;
 using Dapper;
 using DcMateH5Api.Areas.Form.Models;
 using DcMateH5Api.Areas.Form.Interfaces.FormLogic;
+using DcMateH5Api.SqlHelper;
 using Microsoft.Data.SqlClient;
 using System.Collections.Generic;
+using System.Threading;
+using System.Threading.Tasks;
 
 namespace DcMateH5Api.Areas.Form.Services.FormLogic;
 
 public class FormFieldMasterService : IFormFieldMasterService
 {
     private readonly SqlConnection _con;
+    private readonly SQLGenerateHelper _sqlHelper;
 
-    public FormFieldMasterService(SqlConnection connection)
+    public FormFieldMasterService(SqlConnection connection, SQLGenerateHelper sqlHelper)
     {
         _con = connection;
+        _sqlHelper = sqlHelper;
     }
 
     public FormFieldMasterDto? GetFormFieldMaster(TableSchemaQueryType type)
@@ -28,6 +33,107 @@ public class FormFieldMasterService : IFormFieldMasterService
         return _con.QueryFirst<FormFieldMasterDto>(
             "/**/SELECT * FROM FORM_FIELD_MASTER WHERE ID = @id",
             new { id }, transaction: tx);
+    }
+
+    /// <summary>
+    /// 依主鍵取得 FORM_FIELD_MASTER（非交易版）。
+    /// </summary>
+    public Task<FormFieldMasterDto?> GetFormFieldMasterFromIdAsync(Guid? id, CancellationToken ct = default)
+    {
+        if (id == null) return Task.FromResult<FormFieldMasterDto?>(null);
+
+        var where = new WhereBuilder<FormFieldMasterDto>()
+            .AndEq(x => x.ID, id.Value);
+
+        return _sqlHelper.SelectFirstOrDefaultAsync(where, ct);
+    }
+
+    /// <summary>
+    /// 依主鍵取得 FORM_FIELD_MASTER（交易內版）。
+    /// </summary>
+    public Task<FormFieldMasterDto?> GetFormFieldMasterFromIdInTxAsync(
+        SqlConnection conn,
+        SqlTransaction tx,
+        Guid? id,
+        CancellationToken ct = default)
+    {
+        if (id == null) return Task.FromResult<FormFieldMasterDto?>(null);
+
+        var where = new WhereBuilder<FormFieldMasterDto>()
+            .AndEq(x => x.ID, id.Value);
+
+        return _sqlHelper.SelectFirstOrDefaultInTxAsync(conn, tx, where, ct: ct);
+    }
+
+    /// <summary>
+    /// 取得或建立 FORM_FIELD_MASTER（非交易版）。
+    /// </summary>
+    public Task<Guid> GetOrCreateAsync(FormFieldMasterDto model, CancellationToken ct = default)
+    {
+        return _sqlHelper.TxAsync((conn, tx, ct) => GetOrCreateInTxAsync(conn, tx, model, ct), ct: ct);
+    }
+
+    /// <summary>
+    /// 取得或建立 FORM_FIELD_MASTER（交易內版）。
+    /// - 以 UPDLOCK/HOLDLOCK 避免併發競態，確保同一筆只插入一次。
+    /// </summary>
+    public async Task<Guid> GetOrCreateInTxAsync(
+        SqlConnection conn,
+        SqlTransaction tx,
+        FormFieldMasterDto model,
+        CancellationToken ct = default)
+    {
+        var id = model.ID == Guid.Empty ? Guid.NewGuid() : model.ID;
+
+        // 使用 UPDLOCK/HOLDLOCK 在交易內鎖定同一筆 Key，避免併發重複插入
+        var existing = await conn.QueryFirstOrDefaultAsync<Guid?>(
+            new CommandDefinition(
+                "/**/SELECT TOP (1) ID FROM FORM_FIELD_MASTER WITH (UPDLOCK, HOLDLOCK) WHERE ID = @id",
+                new { id },
+                tx,
+                cancellationToken: ct));
+
+        if (existing.HasValue)
+        {
+            return existing.Value;
+        }
+
+        static bool HasValue(string? s) => !string.IsNullOrWhiteSpace(s);
+
+        // 同一交易內寫入主檔，確保建立與後續操作一致
+        var command = new CommandDefinition(
+            @"
+        INSERT INTO FORM_FIELD_MASTER
+    (ID, FORM_NAME, STATUS, SCHEMA_TYPE,
+     BASE_TABLE_NAME, VIEW_TABLE_NAME, DETAIL_TABLE_NAME, MAPPING_TABLE_NAME,
+     BASE_TABLE_ID,  VIEW_TABLE_ID,  DETAIL_TABLE_ID, MAPPING_TABLE_ID,
+     FUNCTION_TYPE, IS_DELETE, CREATE_TIME, EDIT_TIME)
+    VALUES
+    (@ID, @FORM_NAME, @STATUS, @SCHEMA_TYPE,
+     @BASE_TABLE_NAME, @VIEW_TABLE_NAME, @DETAIL_TABLE_NAME, @MAPPING_TABLE_NAME,
+     @BASE_TABLE_ID, @VIEW_TABLE_ID,  @DETAIL_TABLE_ID, @MAPPING_TABLE_ID,
+     @FUNCTION_TYPE, 0, GETDATE(), GETDATE());",
+            new
+            {
+                ID = id,
+                model.FORM_NAME,
+                model.STATUS,
+                model.SCHEMA_TYPE,
+                model.BASE_TABLE_NAME,
+                model.VIEW_TABLE_NAME,
+                model.DETAIL_TABLE_NAME,
+                model.MAPPING_TABLE_NAME,
+                BASE_TABLE_ID = HasValue(model.BASE_TABLE_NAME) ? id : (Guid?)null,
+                VIEW_TABLE_ID = HasValue(model.VIEW_TABLE_NAME) ? id : (Guid?)null,
+                DETAIL_TABLE_ID = HasValue(model.DETAIL_TABLE_NAME) ? id : (Guid?)null,
+                MAPPING_TABLE_ID = HasValue(model.MAPPING_TABLE_NAME) ? id : (Guid?)null,
+                model.FUNCTION_TYPE
+            },
+            tx,
+            cancellationToken: ct);
+
+        await conn.ExecuteAsync(command);
+        return id;
     }
 
     public List<(FormFieldMasterDto Master, List<FormFieldConfigDto> FieldConfigs)> GetFormMetaAggregates( FormFunctionType funcType, TableSchemaQueryType type )
