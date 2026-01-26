@@ -59,7 +59,7 @@ OUTPUT INSERTED.ID;                          -- 把 ID 回傳給 Dapper
             throw new DropdownSqlSyncException("SQL 不可為空白。");
 
         var optionTable = TryExtractTableName(sql)
-                         ?? throw new DropdownSqlSyncException("無法解析來源表名稱（請使用單一 FROM，避免子查詢或多表 JOIN）。");
+                         ?? "自訂的下拉選單";
 
         var ownTransaction = transaction is null;
         var shouldCloseConnection = false;
