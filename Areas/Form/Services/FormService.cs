@@ -332,59 +332,42 @@ public class FormService : IFormService
     
     /// <summary>
     /// 根據表單設定抓取主表欄位與現有資料（編輯時用）
-    /// 只對主表進行欄位組裝，Dropdown 顯示選項答案
+    /// 僅處理主表欄位，Dropdown 不再額外查 Answer 表
     /// </summary>
     public FormSubmissionViewModel GetFormSubmission(Guid? formMasterId, string? pk = null)
     {
         // 1. 查主設定
         var master = _formFieldMasterService.GetFormFieldMasterFromId(formMasterId)
-            ?? throw new InvalidOperationException($"FORM_FIELD_MASTER {formMasterId} not found");
+                     ?? throw new InvalidOperationException($"FORM_FIELD_MASTER {formMasterId} not found");
 
-        // 2. 依據 SchemaType 解析目標表資訊
+        // 2. 解析目標表
         var (targetId, targetTable, schemaType) = ResolveTargetTable(master);
 
         // 3. 取得欄位設定
         var fields = GetFields(targetId, schemaType, targetTable);
 
-        // 4. 撈實際資料（如果是編輯模式）
+        // 4. 撈主表資料（僅編輯模式）
         IDictionary<string, object?>? dataRow = null;
-        Dictionary<Guid, Guid>? dropdownAnswers = null;
 
         if (!string.IsNullOrWhiteSpace(pk))
         {
-            // 4.1 取得主鍵名稱/型別/值
             var (pkName, pkType, pkValue) = _schemaService.ResolvePk(targetTable, pk);
 
-            // 4.2 查詢主表資料（參數化防注入）
             var sql = $"SELECT * FROM [{targetTable}] WHERE [{pkName}] = @id";
-            dataRow = _con.QueryFirstOrDefault(sql, new { id = pkValue }) as IDictionary<string, object?>;
-
-            // 4.3 如果有 Dropdown 欄位，再查一次答案
-            if (fields.Any(f => f.CONTROL_TYPE == FormControlType.Dropdown))
-            {
-                dropdownAnswers = _con.Query<(Guid FieldId, Guid OptionId)>(
-                    @"/**/SELECT FORM_FIELD_CONFIG_ID AS FieldId, FORM_FIELD_DROPDOWN_OPTIONS_ID AS OptionId
-                      FROM FORM_FIELD_DROPDOWN_ANSWER WHERE ROW_ID = @Pk",
-                    new { Pk = pk })
-                    .ToDictionary(x => x.FieldId, x => x.OptionId);
-            }
+            dataRow = _con.QueryFirstOrDefault(sql, new { id = pkValue })
+                as IDictionary<string, object?>;
         }
 
-        // 5. 組裝欄位現值
+        // 5. 將主表資料套回欄位
         foreach (var field in fields)
         {
-            if (field.CONTROL_TYPE == FormControlType.Dropdown && dropdownAnswers?.TryGetValue(field.FieldConfigId, out var optId) == true)
-            {
-                field.CurrentValue = optId;
-            }
-            else if (dataRow?.TryGetValue(field.Column, out var val) == true)
+            if (dataRow?.TryGetValue(field.Column, out var val) == true)
             {
                 field.CurrentValue = val;
             }
-            // else 預設 null（新增模式或沒有資料）
         }
 
-        // 6. 回傳組裝後 ViewModel
+        // 6. 回傳 ViewModel
         return new FormSubmissionViewModel
         {
             FormId = master.ID,
@@ -649,7 +632,7 @@ FROM (
             transaction: tx).ToDictionary(x => x.ID);
 
         // 1. 欄位 mapping & 型別處理
-        var (normalFields, dropdownAnswers) = MapInputFields(input.InputFields, configs);
+        var normalFields = MapInputFields(input.InputFields, configs);
 
         // 2. Insert/Update 決策
         var (pkName, pkType, typedRowId) = _schemaService.ResolvePk(targetTable, input.Pk, tx);
@@ -662,51 +645,32 @@ FROM (
         else
             UpdateRow(targetTable, pkName, normalFields, realRowId, tx);
 
-        // 3. Dropdown Upsert
-        foreach (var (configId, optionId) in dropdownAnswers)
-        {
-            _con.Execute(Sql.UpsertDropdownAnswer, new { configId, RowId = realRowId, optionId }, transaction: tx);
-        }
-
         return realRowId;
     }
     
-    private (List<(string Column, object? Value)> NormalFields,
-        List<(Guid ConfigId, Guid OptionId)> DropdownAnswers)
-        MapInputFields(IEnumerable<FormInputField> inputFields,
-            IReadOnlyDictionary<Guid, FormFieldConfigDto> configs)
+    private List<(string Column, object? Value)> MapInputFields(
+        IEnumerable<FormInputField> inputFields,
+        IReadOnlyDictionary<Guid, FormFieldConfigDto> configs)
     {
-        var normal = new List<(string Column, object? Value)>();
-        var ddAns  = new List<(Guid ConfigId, Guid OptionId)>();
+        var normalFields = new List<(string Column, object? Value)>();
 
         foreach (var field in inputFields)
         {
+            // 找不到欄位設定，直接忽略（避免前端亂送）
             if (!configs.TryGetValue(field.FieldConfigId, out var cfg))
-                continue;                               // 找不到設定直接忽略
+                continue;
 
-            // 欄位若設定為不可編輯，直接忽略以防止未授權修改
+            // 欄位若不可編輯，直接忽略，避免未授權修改
             if (!cfg.IS_EDITABLE)
                 continue;
 
-            // // --- 必填檢查 ---
-            // if (cfg.IS_REQUIRED && string.IsNullOrWhiteSpace(field.Value))
-            //     throw new ValidationException($"欄位「{cfg.COLUMN_NAME}」為必填。");
-            //
-            // if (string.IsNullOrEmpty(field.Value))
-            //     continue;
+            // 空值處理：交由 Convert Helper 統一轉型（避免每層自己判斷）
+            var value = ConvertToColumnTypeHelper.Convert(cfg.DATA_TYPE, field.Value);
 
-            if (cfg.CONTROL_TYPE == FormControlType.Dropdown)
-            {
-                if (Guid.TryParse(field.Value, out var optId))
-                    ddAns.Add((cfg.ID, optId));
-            }
-            else
-            {
-                var val = ConvertToColumnTypeHelper.Convert(cfg.DATA_TYPE, field.Value);
-                normal.Add((cfg.COLUMN_NAME, val));
-            }
+            normalFields.Add((cfg.COLUMN_NAME, value));
         }
-        return (normal, ddAns);
+
+        return normalFields;
     }
 
     /// <summary>
