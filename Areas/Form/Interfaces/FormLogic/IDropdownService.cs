@@ -9,8 +9,6 @@ public interface IDropdownService
         IEnumerable<IDictionary<string, object?>> rawRows,
         string pkColumn,
         out List<object> rowIds);
-
-    List<DropdownAnswerDto> GetAnswers(IEnumerable<object> rowIds);
     
     Dictionary<Guid, string> GetOptionTextMap(IEnumerable<DropdownAnswerDto> answers);
 

@@ -189,22 +189,6 @@ public class FormService : IFormService
             );
 
             // --------------------------------------------------------
-            // 4. Dropdown 處理
-            // --------------------------------------------------------
-            if (rowIds.Any())
-            {
-                var dropdownAnswers = _dropdownService.GetAnswers(rowIds);
-                var optionTextMap = _dropdownService.GetOptionTextMap(dropdownAnswers);
-
-                _dropdownService.ReplaceDropdownIdsWithTexts(
-                    rows,
-                    fieldConfigs,
-                    dropdownAnswers,
-                    optionTextMap
-                );
-            }
-
-            // --------------------------------------------------------
             // 5. 取得欄位模板（依 schemaQueryType）
             // --------------------------------------------------------
             var fieldTemplates = GetFields(
@@ -834,12 +818,6 @@ FROM (
                 };
             }
 
-            // 4) 先刪 dropdown answer（限定 baseTableId 範圍避免撞號誤刪）
-            await _con.ExecuteAsync(
-                Sql.DeleteDropdownAnswersByBaseTableIdAndRowId,
-                new { BaseTableId = baseTableId, RowId = typedPk },
-                transaction: tx);
-
             // 5) 再刪 Base Table row
             var deleteSql = $@"
     DELETE FROM [{tableName}]
@@ -899,27 +877,5 @@ FROM (
         string tableName)
     {
         return GetFields(masterId, schemaType, tableName);
-    }
-
-private static class Sql
-    {
-        public const string UpsertDropdownAnswer = @"
-MERGE FORM_FIELD_DROPDOWN_ANSWER AS target
-USING (SELECT @ConfigId AS FORM_FIELD_CONFIG_ID, @RowId AS ROW_ID) AS src
-    ON target.FORM_FIELD_CONFIG_ID = src.FORM_FIELD_CONFIG_ID AND target.ROW_ID = src.ROW_ID
-WHEN MATCHED THEN
-    UPDATE SET FORM_FIELD_DROPDOWN_OPTIONS_ID = @OptionId
-WHEN NOT MATCHED THEN
-    INSERT (ID, FORM_FIELD_CONFIG_ID, FORM_FIELD_DROPDOWN_OPTIONS_ID, ROW_ID)
-    VALUES (NEWID(), src.FORM_FIELD_CONFIG_ID, @OptionId, src.ROW_ID);";
-        
-        public const string DeleteDropdownAnswersByBaseTableIdAndRowId = @"
-/**/
-DELETE ans
-FROM FORM_FIELD_DROPDOWN_ANSWER ans
-JOIN FORM_FIELD_CONFIG cfg
-  ON cfg.ID = ans.FORM_FIELD_CONFIG_ID
-WHERE cfg.FORM_FIELD_MASTER_ID = @BaseTableId
-  AND ans.ROW_ID = @RowId;";
     }
 }

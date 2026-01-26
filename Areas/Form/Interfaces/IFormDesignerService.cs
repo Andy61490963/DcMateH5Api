@@ -18,8 +18,8 @@ public interface IFormDesignerService
     List<string> SearchTables( string? tableName, TableQueryType queryType );
     
     Guid GetOrCreateFormMasterId( FormFieldMasterDto model );
-    
-    Task<FormFieldListViewModel?> EnsureFieldsSaved( string tableName, Guid? formMasterId, TableSchemaQueryType type );
+
+    Task<FormFieldListViewModel?> EnsureFieldsSaved( string tableName, Guid? formMasterId, TableSchemaQueryType schemaType, CancellationToken ct );
     
     Task<FormFieldListViewModel> GetFieldsByTableName( string tableName, Guid? formMasterId, TableSchemaQueryType schemaType );
 

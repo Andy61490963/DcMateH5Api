@@ -128,15 +128,16 @@ public class FormDesignerMultipleMappingController : ControllerBase
     /// <param name="tableName">名稱</param>
     /// <param name="formMasterId">FORM_FIELD_MASTER 的ID</param>
     /// <param name="schemaType">列舉類型</param>
+    /// <param name="ct"></param>
     /// <returns></returns>
     [HttpGet(Routes.TableFields)]
     [ProducesResponseType(typeof(List<FormFieldViewModel>), StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status404NotFound)]
     [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status400BadRequest)]
     [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status500InternalServerError)]
-    public async Task<IActionResult> GetFields( string tableName, Guid? formMasterId, [FromQuery] TableSchemaQueryType schemaType )
+    public async Task<IActionResult> GetFields( string tableName, Guid? formMasterId, [FromQuery] TableSchemaQueryType schemaType, CancellationToken ct )
     {
-        var result = await _formDesignerService.EnsureFieldsSaved( tableName, formMasterId, schemaType );
+        var result = await _formDesignerService.EnsureFieldsSaved( tableName, formMasterId, schemaType, ct );
         return Ok( result );
     }
     

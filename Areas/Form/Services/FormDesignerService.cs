@@ -842,137 +842,148 @@ WHERE c.FORM_FIELD_MASTER_ID = @MasterId
     /// 包含最新欄位設定的 FormFieldListViewModel；
     /// 若資料表不存在或無欄位，回傳 null
     /// </returns>
-    public async Task <FormFieldListViewModel?> EnsureFieldsSaved(string tableName, Guid? formMasterId, TableSchemaQueryType schemaType)
+    public async Task<FormFieldListViewModel?> EnsureFieldsSaved(
+        string tableName, Guid? formMasterId, TableSchemaQueryType schemaType, CancellationToken ct)
     {
-        // 1) 取得資料表 Schema 欄位資訊
-        // - 從資料庫實際結構取得欄位名稱與型別
-        // - 作為「欄位設定是否齊全」的依據
-        var columns = GetTableSchema(tableName);
+        ct.ThrowIfCancellationRequested();
 
-        // 若查無欄位（例如表不存在），直接回 null
+        var columns = GetTableSchema(tableName);
         if (columns.Count == 0) return null;
 
-        // 2) 檢查必要欄位是否存在
-        // - 僅針對實體表（Base / Detail / Mapping）進行檢查
-        // - View 因為可能是 join 結果，不強制必要欄位
-        var missingColumns = _requiredColumns
+        EnsureRequiredColumns(columns, schemaType);
+
+        var masterId = ResolveMasterId(tableName, formMasterId, schemaType);
+
+        var configs = await GetFieldConfigs(tableName, masterId).ConfigureAwait(false);
+
+        await UpsertMissingConfigsAsync(tableName, masterId, schemaType, columns, configs, ct);
+        await MarkOrphanConfigsInactiveAsync(tableName, masterId, schemaType, columns, ct);
+
+        if (schemaType is TableSchemaQueryType.OnlyTable or TableSchemaQueryType.OnlyMapping)
+            await EnsureDropdownsBulkAsync(masterId, tableName, ct);
+
+        await SyncSourceNullabilityAsync(tableName, masterId, columns, ct);
+        
+        return await GetFieldsByTableName(tableName, masterId, schemaType);
+    }
+    
+    private void EnsureRequiredColumns(
+        IReadOnlyList<DbColumnInfo> columns,
+        TableSchemaQueryType schemaType)
+    {
+        if (schemaType is not (TableSchemaQueryType.OnlyTable or TableSchemaQueryType.OnlyDetail or TableSchemaQueryType.OnlyMapping))
+            return;
+
+        var missing = _requiredColumns
             .Where(req => !columns.Any(c => c.COLUMN_NAME.Equals(req, StringComparison.OrdinalIgnoreCase)))
             .ToList();
-        
-        if (missingColumns.Count > 0 &&
-            (schemaType == TableSchemaQueryType.OnlyTable ||
-             schemaType == TableSchemaQueryType.OnlyDetail ||
-             schemaType == TableSchemaQueryType.OnlyMapping))
-            throw new Exception(
-                $"缺少必要欄位：{string.Join(", ", missingColumns)}");
 
-        // 3) 建立暫時用的 FormFieldMaster 設定
-        // - 若後續無法從現有設定推斷 MasterId，會用此物件建立新主檔
+        if (missing.Count > 0)
+            throw new InvalidOperationException($"缺少必要欄位：{string.Join(", ", missing)}");
+    }
+
+    private Guid ResolveMasterId(string tableName, Guid? formMasterId, TableSchemaQueryType schemaType)
+    {
+        if (formMasterId.HasValue) return formMasterId.Value;
+
         var master = new FormFieldMasterDto
         {
             FORM_NAME = string.Empty,
             STATUS = (int)TableStatusType.Draft,
             SCHEMA_TYPE = schemaType,
-            
-            // 僅依 schemaType 指定對應的表名，其餘維持 null
-            BASE_TABLE_NAME   = null,
-            DETAIL_TABLE_NAME = null,
-            VIEW_TABLE_NAME   = null,
-            MAPPING_TABLE_NAME = null
+            BASE_TABLE_NAME = schemaType == TableSchemaQueryType.OnlyTable ? tableName : null,
+            VIEW_TABLE_NAME = schemaType == TableSchemaQueryType.OnlyView ? tableName : null,
+            DETAIL_TABLE_NAME = schemaType == TableSchemaQueryType.OnlyDetail ? tableName : null,
+            MAPPING_TABLE_NAME = schemaType == TableSchemaQueryType.OnlyMapping ? tableName : null
         };
 
-        switch (schemaType)
-        {
-            case TableSchemaQueryType.OnlyTable:
-                master.BASE_TABLE_NAME = tableName;
-                break;
-            case TableSchemaQueryType.OnlyView:
-                master.VIEW_TABLE_NAME = tableName;
-                break;
-            case TableSchemaQueryType.OnlyDetail:
-                master.DETAIL_TABLE_NAME = tableName;
-                break;
-            case TableSchemaQueryType.OnlyMapping:
-                master.MAPPING_TABLE_NAME = tableName;
-                break;
-        }
-        
-        // 決定最終使用的 FORM_FIELD_MASTER_ID：
-        // 1. 優先使用呼叫端傳入的 formMasterId
-        // 2. 否則從既有欄位設定中推斷
-        // 3. 若仍不存在，則建立新的 FormMaster
-        // TODO: 之後需要釐清是否需要configs.Values.FirstOrDefault()?.FORM_FIELD_MASTER_ID
-        var masterId = formMasterId ?? GetOrCreateFormMasterId(master);
-        
-        // 4) 取得目前已存在的欄位設定（若有）
-        // - formMasterId 代表「這次操作所屬的主檔」
-        // - 若為 null，代表可能是第一次進入，需要從現有設定或建立新主檔
-        var configs = await GetFieldConfigs(tableName, masterId);
-        
-        // 5) 計算欄位排序起始值
-        // - 既有欄位保留原排序
-        // - 新欄位接在最後
-        var maxOrder = configs.Values.Any()
-            ? configs.Values.Max(x => x.FIELD_ORDER)
-            : 0;
-
-        var order = maxOrder;
-
-        // 6) 補齊尚未建立設定的欄位
-        // - 僅針對「資料表實際存在，但設定檔中沒有」的欄位
-        // - 不覆蓋既有設定，避免破壞使用者自訂內容
-        foreach (var col in columns)
-        {
-            if (!configs.ContainsKey(col.COLUMN_NAME))
-            {
-                order += 1000;
-
-                var vm = CreateDefaultFieldConfig(
-                    col.COLUMN_NAME,
-                    col.DATA_TYPE,
-                    masterId,
-                    tableName,
-                    order,
-                    schemaType);
-
-                UpsertField(vm, masterId);
-            }
-        }
-
-        // 6.5) 將 schema 已不存在的欄位設定標記為 Inactive（OnlyTable/Detail/Mapping 才做）
-        if (schemaType is TableSchemaQueryType.OnlyTable 
-            or TableSchemaQueryType.OnlyDetail 
-            or TableSchemaQueryType.OnlyMapping)
-        {
-            await DeleteOrphanFieldConfigsAsync(tableName, masterId, columns);
-        }
-        
-        // 7) 重新查詢所有欄位設定，確保回傳資料與 DB 同步
-        var result = await GetFieldsByTableName(tableName, masterId, schemaType);
-
-        // 8) 主檔（Base Table）額外處理：
-        // - 因為主檔維護功能，更新主檔可能會需要自訂下拉選單
-        // - 預設為所有欄位建立 Dropdown 設定
-        // - IS_USE_SQL 等設定可為 null，後續由使用者調整
-        if (schemaType == TableSchemaQueryType.OnlyTable || schemaType == TableSchemaQueryType.OnlyMapping)
-        {
-            foreach (var field in result.Fields)
-            {
-                EnsureDropdownCreated(field.ID, null, null);
-            }
-        }
-        
-        result = await GetFieldsByTableName(tableName, masterId, schemaType);
-        
-        await SyncSourceNullabilityAsync(tableName, masterId, columns);
-
-        return result;
+        return GetOrCreateFormMasterId(master);
     }
-    
-    private async Task SyncSourceNullabilityAsync(
+
+    private async Task UpsertMissingConfigsAsync(
         string tableName,
         Guid masterId,
-        IReadOnlyList<DbColumnInfo> columns)
+        TableSchemaQueryType schemaType,
+        IReadOnlyList<DbColumnInfo> columns,
+        IReadOnlyDictionary<string, FormFieldConfigDto> configs,
+        CancellationToken ct)
+    {
+        var maxOrder = configs.Count > 0 ? configs.Values.Max(x => x.FIELD_ORDER) : 0;
+        var order = maxOrder;
+
+        foreach (var col in columns)
+        {
+            ct.ThrowIfCancellationRequested();
+
+            if (configs.ContainsKey(col.COLUMN_NAME)) continue;
+
+            order += 1000;
+
+            var vm = CreateDefaultFieldConfig(
+                col.COLUMN_NAME,
+                col.DATA_TYPE,
+                masterId,
+                tableName,
+                order,
+                schemaType);
+
+            // 保留你原本邏輯：逐筆 upsert（安全、可控）
+            UpsertField(vm, masterId);
+        }
+    }
+
+    private async Task MarkOrphanConfigsInactiveAsync(
+        string tableName,
+        Guid masterId,
+        TableSchemaQueryType schemaType,
+        IReadOnlyList<DbColumnInfo> columns,
+        CancellationToken ct)
+    {
+        if (schemaType is not (TableSchemaQueryType.OnlyTable or TableSchemaQueryType.OnlyDetail or TableSchemaQueryType.OnlyMapping))
+            return;
+
+        var schemaSet = columns
+            .Select(x => x.COLUMN_NAME)
+            .Where(x => !string.IsNullOrWhiteSpace(x))
+            .ToHashSet(StringComparer.OrdinalIgnoreCase);
+
+        var configs = await GetFieldConfigs(tableName, masterId).ConfigureAwait(false); // 這行之後可以改成「從外面傳進來」
+        var orphanIds = configs.Values
+            .Where(cfg => !string.IsNullOrWhiteSpace(cfg.COLUMN_NAME) && !schemaSet.Contains(cfg.COLUMN_NAME))
+            .Select(cfg => cfg.ID)
+            .Distinct()
+            .ToList();
+
+        if (orphanIds.Count == 0) return;
+
+        var where = new WhereBuilder<FormFieldConfigDto>().AndIn(x => x.ID, orphanIds);
+        await _sqlHelper.DeleteWhereAsync(where, ct).ConfigureAwait(false);
+    }
+
+    private Task EnsureDropdownsBulkAsync(Guid masterId, string tableName, CancellationToken ct)
+    {
+        const string sql = @"
+/**/ 
+INSERT INTO FORM_FIELD_DROPDOWN (ID, FORM_FIELD_CONFIG_ID, ISUSESQL, DROPDOWNSQL, IS_QUERY_DROPDOWN, IS_DELETE)
+SELECT NEWID(), c.ID, 0, NULL, 0, 0
+FROM FORM_FIELD_CONFIG c
+LEFT JOIN FORM_FIELD_DROPDOWN d ON d.FORM_FIELD_CONFIG_ID = c.ID AND d.IS_DELETE = 0
+WHERE c.FORM_FIELD_MASTER_ID = @MasterId
+  AND c.TABLE_NAME = @TableName
+  AND c.IS_DELETE = 0
+  AND d.ID IS NULL;";
+
+        return _con.ExecuteAsync(new CommandDefinition(
+            sql,
+            new { MasterId = masterId, TableName = tableName },
+            cancellationToken: ct));
+    }
+    
+    private Task SyncSourceNullabilityAsync(
+        string tableName,
+        Guid masterId,
+        IReadOnlyList<DbColumnInfo> columns,
+        CancellationToken ct)
     {
         const string sql = @"
 /**/
@@ -993,8 +1004,9 @@ WHERE FORM_FIELD_MASTER_ID = @MasterId
             COLUMN_IS_NULLABLE = c.SourceIsNullable
         });
 
-        await _con.ExecuteAsync(new CommandDefinition(sql, rows));
+        return _con.ExecuteAsync(new CommandDefinition(sql, rows, cancellationToken: ct));
     }
+
 
     /// <summary>
     /// 將「資料表 schema 已不存在」的欄位設定標記為 Inactive（不刪除，可復原）。

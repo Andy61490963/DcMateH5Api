@@ -123,11 +123,11 @@ public class FormDesignerController : BaseController
     [ProducesResponseType(StatusCodes.Status404NotFound)]
     [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status400BadRequest)]
     [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status500InternalServerError)]
-    public async Task<IActionResult> GetFields( string tableName, Guid? formMasterId, [FromQuery] TableSchemaQueryType schemaType )
+    public async Task<IActionResult> GetFields( string tableName, Guid? formMasterId, [FromQuery] TableSchemaQueryType schemaType, CancellationToken ct )
     {
         try
         {
-            var result = await _formDesignerService.EnsureFieldsSaved( tableName, formMasterId, schemaType );
+            var result = await _formDesignerService.EnsureFieldsSaved( tableName, formMasterId, schemaType, ct );
 
             if ( result == null ) return NotFound();
             return Ok( result );

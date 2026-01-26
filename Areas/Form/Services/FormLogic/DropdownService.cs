@@ -41,16 +41,6 @@ public class DropdownService : IDropdownService
         return rows;
     }
     
-    public List<DropdownAnswerDto> GetAnswers(IEnumerable<object> rowIds)
-    {
-        var stringIds = rowIds.Select(id => id.ToString()!).ToList();
-        if (!stringIds.Any()) return new();
-        return _con.Query<DropdownAnswerDto>(
-            @"SELECT ROW_ID AS RowId, FORM_FIELD_CONFIG_ID AS FieldId, FORM_FIELD_DROPDOWN_OPTIONS_ID AS OptionId
-              FROM FORM_FIELD_DROPDOWN_ANSWER WHERE ROW_ID IN @RowIds",
-            new { RowIds = stringIds }).ToList();
-    }
-
     public Dictionary<Guid, string> GetOptionTextMap(IEnumerable<DropdownAnswerDto> answers)
     {
         var optionIds = answers.Select(a => a.OptionId).Distinct().ToList();
