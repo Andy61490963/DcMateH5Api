@@ -43,7 +43,7 @@ public class MappingListQuery
 {
     public string BaseId { get; set; } = string.Empty;
     
-    public bool? mode { get; set; }
+    public MappingListType? Type { get; set; }
     
     public Dictionary<string, string> Filters { get; set; }
         = new(StringComparer.OrdinalIgnoreCase);

@@ -75,7 +75,7 @@ SELECT ID AS Id,
     }
 
     /// <inheritdoc />
-    public MultipleMappingListViewModel GetMappingList(Guid formMasterId, string baseId, Dictionary<string, string>? filters, bool? mode, CancellationToken ct = default)
+    public MultipleMappingListViewModel GetMappingList(Guid formMasterId, string baseId, Dictionary<string, string>? filters, MappingListType? type, CancellationToken ct = default)
     {
         ct.ThrowIfCancellationRequested();
 
@@ -92,17 +92,17 @@ SELECT ID AS Id,
         List<MultipleMappingItemViewModel> linkedItems = new();
         List<MultipleMappingItemViewModel> unlinkedItems = new();
 
-        if (mode == null)
+        if (type == MappingListType.All)
         {
             linkedItems = LoadLinkedDetailRows(header, detailPkName, basePkValue!, null);
             unlinkedItems = LoadUnlinkedRows(header, detailPkName, basePkValue!, baseDisplayText, null);
         }
-        else if (mode == true)
+        else if (type == MappingListType.LinkedOnly)
         {
             // linked 套 mapping filters
             linkedItems = LoadLinkedDetailRows(header, detailPkName, basePkValue!, filters);
         }
-        else 
+        else // MappingListType.UnlinkedOnly
         {
             // unlinked 套 detail filters
             unlinkedItems = LoadUnlinkedRows(header, detailPkName, basePkValue!, baseDisplayText, filters);

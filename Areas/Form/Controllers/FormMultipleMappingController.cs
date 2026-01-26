@@ -138,7 +138,7 @@ public class FormMultipleMappingController : ControllerBase
                 formMasterId,
                 query.BaseId,
                 query.Filters,
-                query.mode,
+                query.Type,
                 ct);
 
             return Ok(result);

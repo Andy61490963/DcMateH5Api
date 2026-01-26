@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Threading;
+using ClassLibrary;
 using DcMateH5Api.Areas.Form.Models;
 using DcMateH5Api.Areas.Form.ViewModels;
 using Microsoft.Extensions.Primitives;
@@ -25,7 +26,7 @@ public interface IFormMultipleMappingService
     /// <summary>
     /// 依設定檔與主鍵取得已關聯/未關聯的左右清單。
     /// </summary>
-    MultipleMappingListViewModel GetMappingList(Guid formMasterId, string baseId, Dictionary<string, string>? filters, bool? mode, CancellationToken ct = default);
+    MultipleMappingListViewModel GetMappingList(Guid formMasterId, string baseId, Dictionary<string, string>? filters, MappingListType? type, CancellationToken ct = default);
 
     /// <summary>
     /// 批次新增對應關係（右 → 左）。
