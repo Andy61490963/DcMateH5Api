@@ -453,7 +453,7 @@ public class FormService : IFormService
     }
 
     private List<FormFieldDropdownOptionsDto> ResolveDropdownOptions(
-        FormDropDownDto? dropdown,
+        FormFieldDropDownDto? dropdown,
         FieldConfigData data,
         Dictionary<Guid, List<FormFieldDropdownOptionsDto>> dynamicOptionCache,
         string columnNameForErrorMessage)
@@ -538,7 +538,7 @@ public class FormService : IFormService
     /// </summary>
     /// <param name="dropdown">下拉選單設定主檔</param>
     /// <returns>先前查詢結果的 NAME 值清單</returns>
-    private List<string> GetPreviousQueryList(FormDropDownDto? dropdown)
+    private List<string> GetPreviousQueryList(FormFieldDropDownDto? dropdown)
     {
         if (dropdown is null || !dropdown.IS_QUERY_DROPDOWN)
             return new List<string>();

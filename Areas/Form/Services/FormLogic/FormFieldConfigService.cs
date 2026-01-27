@@ -51,7 +51,7 @@ public class FormFieldConfigService : IFormFieldConfigService
         return new FieldConfigData(
             multi.Read<FormFieldConfigDto>().ToList(),
             multi.Read<FormFieldValidationRuleDto>().ToList(),
-            multi.Read<FormDropDownDto>().ToList(),
+            multi.Read<FormFieldDropDownDto>().ToList(),
             multi.Read<FormFieldDropdownOptionsDto>().ToList());
     }
 }

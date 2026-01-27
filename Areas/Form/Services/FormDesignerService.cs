@@ -303,10 +303,10 @@ public class FormDesignerService : IFormDesignerService
             }
 
             // 2) Dropdown IDs
-            var ddWhere = new WhereBuilder<FormDropDownDto>()
+            var ddWhere = new WhereBuilder<FormFieldDropDownDto>()
                 .AndIn(x => x.FORM_FIELD_CONFIG_ID, configIds);
 
-            var dropdowns = await _sqlHelper.SelectWhereInTxAsync<FormDropDownDto>(
+            var dropdowns = await _sqlHelper.SelectWhereInTxAsync<FormFieldDropDownDto>(
                 conn, tx, ddWhere, timeoutSeconds: TimeoutSeconds, ct: txCt);
 
             var dropdownIds = dropdowns.Select(x => x.ID).Distinct().ToList();
@@ -322,7 +322,7 @@ public class FormDesignerService : IFormDesignerService
             }
 
             // 4) Delete dropdown
-            await _sqlHelper.DeletePhysicalWhereInTxAsync<FormDropDownDto>(
+            await _sqlHelper.DeletePhysicalWhereInTxAsync<FormFieldDropDownDto>(
                 conn, tx, ddWhere, timeoutSeconds: TimeoutSeconds, ct: txCt);
 
             // 5) Delete validation rules
@@ -1571,14 +1571,14 @@ WHERE c.FORM_FIELD_MASTER_ID = @MasterId
     public async Task<DropDownViewModel> GetDropdownSetting( Guid dropdownId, CancellationToken ct = default )
     {
         var model = new DropDownViewModel();
-        var where = new WhereBuilder<FormDropDownDto>()
+        var where = new WhereBuilder<FormFieldDropDownDto>()
             .AndEq(x => x.ID, dropdownId)
             .AndNotDeleted();
         
         var dropDown = await _sqlHelper.SelectFirstOrDefaultAsync( where, ct );
         if(dropDown == null) throw new Exception("查無下拉選單設定，且確認傳入的id是否正確");
         
-        model.FormDropDown = dropDown;
+        model.FormFieldDropDown = dropDown;
         var optionTexts = await GetDropdownOptions( dropDown.ID, ct );
         model.OPTION_TEXT = optionTexts;
 
@@ -1595,7 +1595,7 @@ WHERE c.FORM_FIELD_MASTER_ID = @MasterId
         ct.ThrowIfCancellationRequested();
 
         // 1) dropdown 存在性檢查（避免查一堆 options 但 dropdown 早被刪）
-        var dropdownWhere = new WhereBuilder<FormDropDownDto>()
+        var dropdownWhere = new WhereBuilder<FormFieldDropDownDto>()
             .AndEq(x => x.ID, dropDownId)
             .AndNotDeleted();
 
@@ -1619,7 +1619,7 @@ WHERE c.FORM_FIELD_MASTER_ID = @MasterId
     
     public Task SaveDropdownSql( Guid dropdownId, string sql, CancellationToken ct )
     {
-        return _sqlHelper.UpdateById<FormDropDownDto>(dropdownId)
+        return _sqlHelper.UpdateById<FormFieldDropDownDto>(dropdownId)
             .Set(x => x.ISUSESQL, true)
             .Set(x => x.IS_QUERY_DROPDOWN, false)
             .Set(x => x.DROPDOWNSQL, sql)
@@ -1628,7 +1628,7 @@ WHERE c.FORM_FIELD_MASTER_ID = @MasterId
     
     public Task SetDropdownMode( Guid dropdownId, bool isUseSql, CancellationToken ct )
     {
-        return _sqlHelper.UpdateById<FormDropDownDto>(dropdownId)
+        return _sqlHelper.UpdateById<FormFieldDropDownDto>(dropdownId)
             .Set(x => x.ISUSESQL, isUseSql)
             .ExecuteAsync(ct);
     }
