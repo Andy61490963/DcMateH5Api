@@ -32,7 +32,6 @@ public sealed class FormOrphanCleanupService : IFormOrphanCleanupService
         const string sql = @"
 DECLARE @EditUser UNIQUEIDENTIFIER = @p_EditUser;
 DECLARE @Now DATETIME = GETDATE();
-DECLARE @SafeBefore DATETIME = DATEADD(HOUR, -1, GETDATE());
 DECLARE @Affected INT = 0;
 
 /* 1) Master */
@@ -46,7 +45,7 @@ DECLARE @Affected INT = 0;
         (m.VIEW_TABLE_ID),
         (m.MAPPING_TABLE_ID)
     ) v(UsedId)
-    WHERE m.IS_DELETE = 0
+    WHERE ISNULL(m.IS_DELETE, 0) = 0
       AND m.SCHEMA_TYPE = 5
       AND v.UsedId IS NOT NULL
 ),
@@ -55,17 +54,17 @@ OrphanMasters AS
     SELECT m.ID
     FROM dbo.FORM_FIELD_MASTER m
     LEFT JOIN Schema5UsedIds u ON u.UsedId = m.ID
-    WHERE m.IS_DELETE = 0
+    WHERE ISNULL(m.IS_DELETE, 0) = 0
       AND m.SCHEMA_TYPE <> 5
       AND u.UsedId IS NULL
-      AND ISNULL(m.EDIT_TIME, m.CREATE_TIME) < @SafeBefore
 )
 UPDATE m
 SET m.IS_DELETE = 1,
     m.EDIT_USER = @EditUser,
     m.EDIT_TIME = @Now
 FROM dbo.FORM_FIELD_MASTER m
-JOIN OrphanMasters om ON om.ID = m.ID;
+INNER JOIN OrphanMasters om ON om.ID = m.ID
+WHERE ISNULL(m.IS_DELETE, 0) = 0;
 
 SET @Affected += @@ROWCOUNT;
 
@@ -75,13 +74,12 @@ SET c.IS_DELETE = 1,
     c.EDIT_USER = @EditUser,
     c.EDIT_TIME = @Now
 FROM dbo.FORM_FIELD_CONFIG c
-WHERE c.IS_DELETE = 0
-  AND ISNULL(c.EDIT_TIME, c.CREATE_TIME) < @SafeBefore
+WHERE ISNULL(c.IS_DELETE, 0) = 0
   AND NOT EXISTS (
       SELECT 1
       FROM dbo.FORM_FIELD_MASTER m
       WHERE m.ID = c.FORM_FIELD_MASTER_ID
-        AND m.IS_DELETE = 0
+        AND ISNULL(m.IS_DELETE, 0) = 0
   );
 
 SET @Affected += @@ROWCOUNT;
@@ -92,13 +90,12 @@ SET opt.IS_DELETE = 1,
     opt.EDIT_USER = @EditUser,
     opt.EDIT_TIME = @Now
 FROM dbo.FORM_FIELD_DROPDOWN_OPTIONS opt
-WHERE opt.IS_DELETE = 0
-  AND ISNULL(opt.EDIT_TIME, opt.CREATE_TIME) < @SafeBefore
+WHERE ISNULL(opt.IS_DELETE, 0) = 0
   AND NOT EXISTS (
       SELECT 1
       FROM dbo.FORM_FIELD_DROPDOWN d
       WHERE d.ID = opt.FORM_FIELD_DROPDOWN_ID
-        AND d.IS_DELETE = 0
+        AND ISNULL(d.IS_DELETE, 0) = 0
   );
 
 SET @Affected += @@ROWCOUNT;
@@ -109,13 +106,12 @@ SET d.IS_DELETE = 1,
     d.EDIT_USER = @EditUser,
     d.EDIT_TIME = @Now
 FROM dbo.FORM_FIELD_DROPDOWN d
-WHERE d.IS_DELETE = 0
-  AND ISNULL(d.EDIT_TIME, d.CREATE_TIME) < @SafeBefore
+WHERE ISNULL(d.IS_DELETE, 0) = 0
   AND NOT EXISTS (
       SELECT 1
       FROM dbo.FORM_FIELD_CONFIG c
       WHERE c.ID = d.FORM_FIELD_CONFIG_ID
-        AND c.IS_DELETE = 0
+        AND ISNULL(c.IS_DELETE, 0) = 0
   );
 
 SET @Affected += @@ROWCOUNT;
@@ -126,13 +122,12 @@ SET vr.IS_DELETE = 1,
     vr.EDIT_USER = @EditUser,
     vr.EDIT_TIME = @Now
 FROM dbo.FORM_FIELD_VALIDATION_RULE vr
-WHERE vr.IS_DELETE = 0
-  AND ISNULL(vr.EDIT_TIME, vr.CREATE_TIME) < @SafeBefore
+WHERE ISNULL(vr.IS_DELETE, 0) = 0
   AND NOT EXISTS (
       SELECT 1
       FROM dbo.FORM_FIELD_CONFIG c
       WHERE c.ID = vr.FORM_FIELD_CONFIG_ID
-        AND c.IS_DELETE = 0
+        AND ISNULL(c.IS_DELETE, 0) = 0
   );
 
 SET @Affected += @@ROWCOUNT;
