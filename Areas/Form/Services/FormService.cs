@@ -414,7 +414,7 @@ public class FormService : IFormService
             field.COLUMN_NAME);
 
         var rules = data.ValidationRules
-            .Where(r => r.FIELD_CONFIG_ID == field.ID)
+            .Where(r => r.FORM_FIELD_CONFIG_ID == field.ID)
             .OrderBy(r => r.VALIDATION_ORDER)
             .ToList();
 

@@ -184,9 +184,9 @@ public class FormDesignerMasterDetailController : ControllerBase
                 return Conflict( "已有驗證規則，無法變更控制元件類型" );
 
             var master = new FormFieldMasterDto { ID = model.FORM_FIELD_MASTER_ID };
-            var formMasterId = _formDesignerService.GetOrCreateFormMasterId( master );
+            var formMasterId = await _formDesignerService.GetOrCreateFormMasterIdAsync(master);
 
-            _formDesignerService.UpsertField( model, formMasterId );
+            await _formDesignerService.UpsertFieldAsync(model, formMasterId);
             var fields = await _formDesignerService.GetFieldsByTableName( model.TableName, formMasterId, model.SchemaType );
             return Ok( fields );
         }

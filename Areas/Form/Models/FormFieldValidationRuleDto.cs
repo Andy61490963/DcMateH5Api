@@ -11,8 +11,8 @@ public class FormFieldValidationRuleDto
     [Column("ID")]
     public Guid ID { get; set; }
     
-    [Column("FIELD_CONFIG_ID")]
-    public Guid FIELD_CONFIG_ID { get; set; }
+    [Column("FORM_FIELD_CONFIG_ID")]
+    public Guid FORM_FIELD_CONFIG_ID { get; set; }
     
     [Column("VALIDATION_TYPE")]
     public ValidationType? VALIDATION_TYPE { get; set; } = ValidationType.Regex;
