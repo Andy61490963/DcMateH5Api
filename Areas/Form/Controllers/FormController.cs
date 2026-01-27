@@ -1,3 +1,4 @@
+using System.Net.Mime;
 using ClassLibrary;
 using DcMateH5Api.Areas.Form.Models;
 using DcMateH5Api.Areas.Form.Interfaces;
@@ -135,6 +136,25 @@ public class FormController : BaseController
         }
 
         return NoContent();
+    }
+    
+    /// <summary>
+    /// 匯出 Excel
+    /// </summary>
+    /// <param name="request"></param>
+    /// <returns></returns>
+    [HttpPost("export")]
+    [Produces(MediaTypeNames.Application.Octet)]
+    public IActionResult ExportForms([FromBody] FormSearchRequest? request)
+    {
+        if (request == null)
+        {
+            return BadRequest(new { Detail = "Request body is null" });
+        }
+
+        var file = _formService.ExportFormListToExcel(_funcType, request);
+
+        return File(file.Content, file.ContentType, file.FileName);
     }
     
     /// <summary>

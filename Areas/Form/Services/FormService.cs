@@ -3,8 +3,10 @@ using Dapper;
 using DcMateH5Api.Helper;
 using DcMateH5Api.Areas.Form.Models;
 using DcMateH5Api.Areas.Form.Interfaces;
+using DcMateH5Api.Areas.Form.Interfaces.Excel;
 using DcMateH5Api.Areas.Form.Interfaces.FormLogic;
 using DcMateH5Api.Areas.Form.Interfaces.Transaction;
+using DcMateH5Api.Areas.Form.Models.Excel;
 using DcMateH5Api.Areas.Form.ViewModels;
 using Microsoft.Data.SqlClient;
 
@@ -21,9 +23,10 @@ public class FormService : IFormService
     private readonly IDropdownService _dropdownService;
     private readonly IDropdownSqlSyncService _dropdownSqlSyncService;
     private readonly IFormDeleteGuardService _formDeleteGuardService;
+    private readonly IExcelExportService _excelExportService;
     private readonly IConfiguration _configuration;
     
-    public FormService(SqlConnection connection, ITransactionService txService, IFormFieldMasterService formFieldMasterService, ISchemaService schemaService, IFormFieldConfigService formFieldConfigService, IDropdownService dropdownService, IFormDataService formDataService, IConfiguration configuration, IDropdownSqlSyncService dropdownSqlSyncService, IFormDeleteGuardService formDeleteGuardService)
+    public FormService(SqlConnection connection, ITransactionService txService, IFormFieldMasterService formFieldMasterService, ISchemaService schemaService, IFormFieldConfigService formFieldConfigService, IDropdownService dropdownService, IFormDataService formDataService, IConfiguration configuration, IDropdownSqlSyncService dropdownSqlSyncService, IFormDeleteGuardService formDeleteGuardService, IExcelExportService excelExportService)
     {
         _con = connection;
         _txService = txService;
@@ -34,6 +37,7 @@ public class FormService : IFormService
         _dropdownService = dropdownService;
         _dropdownSqlSyncService = dropdownSqlSyncService;
         _formDeleteGuardService = formDeleteGuardService;
+        _excelExportService = excelExportService;
         _configuration = configuration;
         _excludeColumns = _configuration.GetSection("FormDesignerSettings:RequiredColumns").Get<List<string>>() ?? new();
         _excludeColumnsId = _configuration.GetSection("DropdownSqlSettings:ExcludeColumns").Get<List<string>>() ?? new();
@@ -239,6 +243,7 @@ public class FormService : IFormService
                 results.Add(new FormListDataViewModel
                 {
                     FormMasterId = master.ID,
+                    FormName = master.FORM_NAME,
                     BaseId = master.BASE_TABLE_ID,
                     Pk = row.PkId.ToString(),
                     Fields = rowFields
@@ -838,6 +843,12 @@ FROM (
         }, ct);
     }
 
+    public ExportFileResult ExportFormListToExcel(FormFunctionType funcType, FormSearchRequest request)
+    {
+        var rows = GetFormList(funcType, request);
+        return _excelExportService.ExportFormList(rows);
+    }
+    
     private static void ValidateSqlIdentifier(string identifier)
     {
         if (string.IsNullOrWhiteSpace(identifier))

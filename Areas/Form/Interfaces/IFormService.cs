@@ -1,6 +1,7 @@
 ﻿using DcMateH5Api.Areas.Form.Models;
 using DcMateH5Api.Areas.Form.ViewModels;
 using ClassLibrary;
+using DcMateH5Api.Areas.Form.Models.Excel;
 using Microsoft.Data.SqlClient;
 
 namespace DcMateH5Api.Areas.Form.Interfaces;
@@ -32,6 +33,8 @@ public interface IFormService
     Task<DeleteWithGuardResultViewModel> DeleteWithGuardAsync(
         DeleteWithGuardRequestViewModel request,
         CancellationToken ct);
+    
+    ExportFileResult ExportFormListToExcel(FormFunctionType funcType, FormSearchRequest request);
     
     /// <summary>
     /// 儲存或更新表單資料
