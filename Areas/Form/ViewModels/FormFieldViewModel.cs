@@ -57,6 +57,11 @@ public class FormFieldViewModel
     public bool? IS_REQUIRED { get; set; } = true;
     
     /// <summary>
+    /// 是否顯示
+    /// </summary>
+    public bool? IS_DISPLAYED { get; set; } = true;
+    
+    /// <summary>
     /// 是否有輸入限制條件
     /// </summary>
     public bool? IS_VALIDATION_RULE { get; set; }

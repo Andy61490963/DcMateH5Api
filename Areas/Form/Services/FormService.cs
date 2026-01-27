@@ -224,6 +224,7 @@ public class FormService : IFormService
                         DefaultValue = f.DefaultValue,
                         IS_REQUIRED = f.IS_REQUIRED,
                         IS_EDITABLE = f.IS_EDITABLE,
+                        IS_DISPLAYED = f.IS_DISPLAYED,
                         IS_PK = f.IS_PK,
                         IS_RELATION = f.IS_RELATION,
                         ValidationRules = f.ValidationRules,
@@ -436,7 +437,8 @@ public class FormService : IFormService
             DefaultValue = field.QUERY_DEFAULT_VALUE,
             IS_REQUIRED = field.IS_REQUIRED,
             IS_EDITABLE = field.IS_EDITABLE,
-
+            IS_DISPLAYED = field.IS_DISPLAYED,
+            
             ValidationRules = rules,
             OptionList = finalOptions,
 
