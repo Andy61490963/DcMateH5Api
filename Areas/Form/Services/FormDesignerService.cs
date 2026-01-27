@@ -13,6 +13,7 @@ using DcMateH5Api.SqlHelper;
 using Microsoft.Data.SqlClient;
 using Microsoft.Extensions.Options;
 using System.Text.Json;
+using DcMateH5Api.Services.CurrentUser.Interfaces;
 
 namespace DcMateH5Api.Areas.Form.Services;
 
@@ -21,13 +22,10 @@ public class FormDesignerService : IFormDesignerService
     private readonly SqlConnection _con;
     private readonly IConfiguration _configuration;
     private readonly ISchemaService _schemaService;
-    private readonly ITransactionService _transactionService;
     private readonly SQLGenerateHelper _sqlHelper;
-    private readonly IDbExecutor _db;
+    private readonly ICurrentUserAccessor _currentUser;
     private readonly IFormFieldMasterService _formFieldMasterService;
-    private readonly IDropdownSqlSyncService _dropdownSqlSyncService;
     private readonly IReadOnlyList<string> _relationColumnSuffixes;
-    const int TimeoutSeconds = 30;
     
     public FormDesignerService(
         SQLGenerateHelper sqlHelper,
@@ -35,19 +33,15 @@ public class FormDesignerService : IFormDesignerService
         IConfiguration configuration,
         ISchemaService schemaService,
         IFormFieldMasterService formFieldMasterService,
-        IDropdownSqlSyncService dropdownSqlSyncService,
-        IDbExecutor db,
         IOptions<FormSettings> formSettings,
-        ITransactionService transactionService)
+        ICurrentUserAccessor currentUser)
     {
         _con = connection;
         _configuration = configuration;
         _schemaService = schemaService;
         _sqlHelper = sqlHelper;
         _formFieldMasterService = formFieldMasterService;
-        _dropdownSqlSyncService = dropdownSqlSyncService;
-        _db = db;
-        _transactionService = transactionService;
+        _currentUser = currentUser; 
         
         _excludeColumns = _configuration.GetSection("DropdownSqlSettings:ExcludeColumns").Get<List<string>>() ?? new();
         _requiredColumns = _configuration.GetSection("FormDesignerSettings:RequiredColumns").Get<List<string>>() ?? new();
@@ -57,6 +51,12 @@ public class FormDesignerService : IFormDesignerService
 
     private readonly List<string> _excludeColumns;
     private readonly List<string> _requiredColumns;
+    
+    private Guid GetCurrentUserId()
+    {
+        var user = _currentUser.Get();
+        return user.Id;
+    }
     
     #region Public API
     
@@ -327,7 +327,7 @@ public class FormDesignerService : IFormDesignerService
 
             // 5) Delete validation rules
             var ruleWhere = new WhereBuilder<FormFieldValidationRuleDto>()
-                .AndIn(x => x.FIELD_CONFIG_ID, configIds);
+                .AndIn(x => x.FORM_FIELD_CONFIG_ID, configIds);
 
             await _sqlHelper.DeletePhysicalWhereInTxAsync<FormFieldValidationRuleDto>(
                 conn, tx, ruleWhere, timeoutSeconds: TimeoutSeconds, ct: txCt);
@@ -938,7 +938,7 @@ WHERE c.FORM_FIELD_MASTER_ID = @MasterId
             if (schemaType is TableSchemaQueryType.OnlyTable or TableSchemaQueryType.OnlyMapping)
                 await EnsureDropdownsBulkInTxAsync(conn, tx, masterId, tableName, ct);
 
-            await SyncSourceNullabilityInTxAsync(conn, tx, tableName, masterId, columns, ct);
+            // await SyncSourceNullabilityInTxAsync(conn, tx, tableName, masterId, columns, ct);
 
             // 回傳結果同樣走交易內查詢，避免交易外查詢讀到不一致資料
             return await GetFieldsByTableNameInTxAsync(conn, tx, tableName, masterId, schemaType, ct);
@@ -1008,6 +1008,7 @@ WHERE c.FORM_FIELD_MASTER_ID = @MasterId
             var vm = CreateDefaultFieldConfig(
                 col.COLUMN_NAME,
                 col.DATA_TYPE,
+                col.SourceIsNullable,
                 masterId,
                 tableName,
                 order,
@@ -1057,55 +1058,82 @@ WHERE c.FORM_FIELD_MASTER_ID = @MasterId
     {
         const string sql = @"
 /**/ 
-INSERT INTO FORM_FIELD_DROPDOWN (ID, FORM_FIELD_CONFIG_ID, ISUSESQL, DROPDOWNSQL, IS_QUERY_DROPDOWN, IS_DELETE)
-SELECT NEWID(), c.ID, 0, NULL, 0, 0
+INSERT INTO FORM_FIELD_DROPDOWN
+(
+    ID,
+    FORM_FIELD_CONFIG_ID,
+    ISUSESQL,
+    DROPDOWNSQL,
+    IS_QUERY_DROPDOWN,
+    IS_DELETE,
+    CREATE_USER,
+    CREATE_TIME,
+    EDIT_USER,
+    EDIT_TIME
+)
+SELECT
+    NEWID(),
+    c.ID,
+    0,            -- 預設不使用 SQL 下拉
+    NULL,         -- 尚未設定 Dropdown SQL
+    0,            -- 非查詢型 Dropdown
+    0,            -- 未刪除
+    @CREATE_USER, -- 建立者：用目前登入者
+    GETDATE(),
+    @EDIT_USER,   -- 編輯者：用目前登入者
+    GETDATE()
 FROM FORM_FIELD_CONFIG c
-LEFT JOIN FORM_FIELD_DROPDOWN d ON d.FORM_FIELD_CONFIG_ID = c.ID AND d.IS_DELETE = 0
 WHERE c.FORM_FIELD_MASTER_ID = @MasterId
   AND c.TABLE_NAME = @TableName
   AND c.IS_DELETE = 0
-  AND d.ID IS NULL;";
+  AND NOT EXISTS
+  (
+      SELECT 1
+      FROM FORM_FIELD_DROPDOWN d
+      WHERE d.FORM_FIELD_CONFIG_ID = c.ID
+        AND d.IS_DELETE = 0
+  );";
 
         return conn.ExecuteAsync(new CommandDefinition(
             sql,
-            new { MasterId = masterId, TableName = tableName },
+            new { MasterId = masterId, TableName = tableName, CREATE_USER = GetCurrentUserId(), EDIT_USER = GetCurrentUserId() },
             transaction: tx,
             cancellationToken: ct));
     }
     
-    private Task SyncSourceNullabilityInTxAsync(
-        SqlConnection conn,
-        SqlTransaction tx,
-        string tableName,
-        Guid masterId,
-        IReadOnlyList<DbColumnInfo> columns,
-        CancellationToken ct)
-    {
-        const string sql = @"
-/**/
-UPDATE dbo.FORM_FIELD_CONFIG
-SET COLUMN_IS_NULLABLE = @COLUMN_IS_NULLABLE,
-    EDIT_TIME = GETDATE()
-WHERE FORM_FIELD_MASTER_ID = @MasterId
-  AND TABLE_NAME = @TableName
-  AND COLUMN_NAME = @ColumnName
-  AND IS_DELETE = 0
-  AND (COLUMN_IS_NULLABLE <> @COLUMN_IS_NULLABLE);";
-
-        var rows = columns.Select(c => new
-        {
-            MasterId = masterId,
-            TableName = tableName,
-            ColumnName = c.COLUMN_NAME,
-            COLUMN_IS_NULLABLE = c.SourceIsNullable
-        });
-
-        return conn.ExecuteAsync(new CommandDefinition(
-            sql,
-            rows,
-            transaction: tx,
-            cancellationToken: ct));
-    }
+//     private Task SyncSourceNullabilityInTxAsync(
+//         SqlConnection conn,
+//         SqlTransaction tx,
+//         string tableName,
+//         Guid masterId,
+//         IReadOnlyList<DbColumnInfo> columns,
+//         CancellationToken ct)
+//     {
+//         const string sql = @"
+// /**/
+// UPDATE dbo.FORM_FIELD_CONFIG
+// SET COLUMN_IS_NULLABLE = @COLUMN_IS_NULLABLE,
+//     EDIT_TIME = GETDATE()
+// WHERE FORM_FIELD_MASTER_ID = @MasterId
+//   AND TABLE_NAME = @TableName
+//   AND COLUMN_NAME = @ColumnName
+//   AND IS_DELETE = 0
+//   AND (COLUMN_IS_NULLABLE <> @COLUMN_IS_NULLABLE);";
+//
+//         var rows = columns.Select(c => new
+//         {
+//             MasterId = masterId,
+//             TableName = tableName,
+//             ColumnName = c.COLUMN_NAME,
+//             COLUMN_IS_NULLABLE = c.SourceIsNullable
+//         });
+//
+//         return conn.ExecuteAsync(new CommandDefinition(
+//             sql,
+//             rows,
+//             transaction: tx,
+//             cancellationToken: ct));
+//     }
 
 
     /// <summary>
@@ -1193,7 +1221,9 @@ WHERE FORM_FIELD_MASTER_ID = @MasterId
             model.QUERY_COMPONENT,
             model.QUERY_CONDITION,
             model.CAN_QUERY,
-            model.DETAIL_TO_RELATION_DEFAULT_COLUMN
+            model.DETAIL_TO_RELATION_DEFAULT_COLUMN,
+            CREATE_USER = GetCurrentUserId(),
+            EDIT_USER = GetCurrentUserId()
         };
 
         var affected = await conn.ExecuteAsync(new CommandDefinition(
@@ -1430,7 +1460,7 @@ WHERE FORM_FIELD_MASTER_ID = @MasterId
     public async Task<List<FormFieldValidationRuleDto>> GetValidationRulesByFieldId( Guid fieldId, CancellationToken ct = default )
     {
         var where = new WhereBuilder<FormFieldValidationRuleDto>()
-            .AndEq(x => x.FIELD_CONFIG_ID, fieldId)
+            .AndEq(x => x.FORM_FIELD_CONFIG_ID, fieldId)
             .AndNotDeleted();
         
         var rules = await _sqlHelper.SelectWhereAsync( where, ct );
@@ -1458,7 +1488,7 @@ WHERE FORM_FIELD_MASTER_ID = @MasterId
         return new FormFieldValidationRuleDto
         {
             ID = Guid.NewGuid(),
-            FIELD_CONFIG_ID = fieldConfigId,
+            FORM_FIELD_CONFIG_ID = fieldConfigId,
             VALIDATION_VALUE = "",
             MESSAGE_ZH = "",
             MESSAGE_EN = "",
@@ -2401,7 +2431,7 @@ WHERE TC.CONSTRAINT_TYPE = 'PRIMARY KEY'
         return rows.ToHashSet(StringComparer.OrdinalIgnoreCase);
     }
     
-    private FormFieldViewModel CreateDefaultFieldConfig(string columnName, string dataType, Guid masterId, string tableName, long index, TableSchemaQueryType schemaType)
+    private FormFieldViewModel CreateDefaultFieldConfig(string columnName, string dataType, bool sourceIsNullable, Guid masterId, string tableName, long index, TableSchemaQueryType schemaType)
     {
         return new FormFieldViewModel
         {
@@ -2410,6 +2440,7 @@ WHERE TC.CONSTRAINT_TYPE = 'PRIMARY KEY'
             TableName = tableName,
             COLUMN_NAME = columnName,
             DATA_TYPE = dataType,
+            IsNullable = sourceIsNullable,
             CONTROL_TYPE = FormFieldHelper.GetDefaultControlType(dataType), // 依型態決定 ControlType
             IS_REQUIRED = false,
             IS_EDITABLE = true,
@@ -2629,15 +2660,16 @@ WHEN MATCHED THEN
         CAN_QUERY      = @CAN_QUERY,
         DETAIL_TO_RELATION_DEFAULT_COLUMN = @DETAIL_TO_RELATION_DEFAULT_COLUMN,
         COLUMN_IS_NULLABLE = @COLUMN_IS_NULLABLE,    
-        EDIT_TIME      = GETDATE()
+        EDIT_TIME      = GETDATE(),
+        EDIT_USER      = @EDIT_USER
 WHEN NOT MATCHED THEN
     INSERT (
         ID, FORM_FIELD_MASTER_ID, TABLE_NAME, COLUMN_NAME, DISPLAY_NAME, DATA_TYPE,
-        CONTROL_TYPE, IS_REQUIRED, IS_EDITABLE, QUERY_DEFAULT_VALUE, FIELD_ORDER, QUERY_COMPONENT, QUERY_CONDITION, CAN_QUERY, DETAIL_TO_RELATION_DEFAULT_COLUMN, CREATE_TIME, IS_DELETE, COLUMN_IS_NULLABLE
+        CONTROL_TYPE, IS_REQUIRED, IS_EDITABLE, QUERY_DEFAULT_VALUE, FIELD_ORDER, QUERY_COMPONENT, QUERY_CONDITION, CAN_QUERY, DETAIL_TO_RELATION_DEFAULT_COLUMN, CREATE_TIME, IS_DELETE, COLUMN_IS_NULLABLE, CREATE_USER, EDIT_USER
     )
     VALUES (
         @ID, @FORM_FIELD_MASTER_ID, @TABLE_NAME, @COLUMN_NAME, @DISPLAY_NAME, @DATA_TYPE,
-        @CONTROL_TYPE, @IS_REQUIRED, @IS_EDITABLE, @QUERY_DEFAULT_VALUE, @FIELD_ORDER, @QUERY_COMPONENT, @QUERY_CONDITION, @CAN_QUERY, @DETAIL_TO_RELATION_DEFAULT_COLUMN, GETDATE(), 0, @COLUMN_IS_NULLABLE
+        @CONTROL_TYPE, @IS_REQUIRED, @IS_EDITABLE, @QUERY_DEFAULT_VALUE, @FIELD_ORDER, @QUERY_COMPONENT, @QUERY_CONDITION, @CAN_QUERY, @DETAIL_TO_RELATION_DEFAULT_COLUMN, GETDATE(), 0, @COLUMN_IS_NULLABLE, @CREATE_USER, @EDIT_USER
     );";
 
         public const string CheckFieldExists         = @"/**/
@@ -2663,16 +2695,16 @@ SET IS_REQUIRED = CASE WHEN @isRequired = 1 AND IS_EDITABLE = 1 THEN 1 ELSE 0 EN
 WHERE FORM_FIELD_MASTER_ID = @formMasterId";
         
         public const string CountValidationRules     = @"/**/
-SELECT COUNT(1) FROM FORM_FIELD_VALIDATION_RULE WHERE FIELD_CONFIG_ID = @fieldId AND IS_DELETE = 0";
+SELECT COUNT(1) FROM FORM_FIELD_VALIDATION_RULE WHERE FORM_FIELD_CONFIG_ID = @fieldId AND IS_DELETE = 0";
 
         public const string GetNextValidationOrder   = @"/**/
-SELECT ISNULL(MAX(VALIDATION_ORDER), 0) + 1 FROM FORM_FIELD_VALIDATION_RULE WHERE FIELD_CONFIG_ID = @fieldId";
+SELECT ISNULL(MAX(VALIDATION_ORDER), 0) + 1 FROM FORM_FIELD_VALIDATION_RULE WHERE FORM_FIELD_CONFIG_ID = @fieldId";
         
         public const string GetControlTypeByFieldId  = @"/**/
 SELECT CONTROL_TYPE FROM FORM_FIELD_CONFIG WHERE ID = @fieldId";
 
         public const string GetRequiredFieldIds      = @"/**/
-SELECT FIELD_CONFIG_ID FROM FORM_FIELD_VALIDATION_RULE WHERE IS_DELETE = 0";
+SELECT FORM_FIELD_CONFIG_ID FROM FORM_FIELD_VALIDATION_RULE WHERE IS_DELETE = 0";
 
 
         public const string EnsureDropdownExists = @"
@@ -2685,13 +2717,7 @@ BEGIN
     VALUES (NEWID(), @fieldId, @isUseSql, @sql, 0, 0)
 END
 ";
-
-        public const string UpdateDropdownSql = @"/**/
-UPDATE FORM_FIELD_DROPDOWN
-SET DROPDOWNSQL = @Sql,
-    ISUSESQL = 1,
-    IS_QUERY_DROPDOWN = 0
-WHERE ID = @DropdownId;";
+        
 
         public const string UpdatePreviousQueryDropdownSourceSql = @"/**/
 UPDATE FORM_FIELD_DROPDOWN
@@ -2700,67 +2726,6 @@ SET DROPDOWNSQL = @Sql,
     IS_QUERY_DROPDOWN = @isQueryDropdwon
 WHERE ID = @DropdownId;";
         
-        public const string UpsertDropdownOption = @"/**/
-MERGE dbo.FORM_FIELD_DROPDOWN_OPTIONS AS target
-USING (
-    SELECT
-        @Id             AS ID,                 -- Guid (可能是空)
-        @DropdownId     AS FORM_FIELD_DROPDOWN_ID,
-        @OptionText     AS OPTION_TEXT,
-        @OptionValue    AS OPTION_VALUE,
-        @OptionTable    AS OPTION_TABLE
-) AS source
-ON target.ID = source.ID                     -- 只比對 PK
-WHEN MATCHED THEN
-    UPDATE SET
-        OPTION_TEXT  = source.OPTION_TEXT,
-        OPTION_VALUE = source.OPTION_VALUE,
-        OPTION_TABLE = source.OPTION_TABLE,
-        IS_DELETE    = 0
-WHEN NOT MATCHED THEN
-    INSERT (ID, FORM_FIELD_DROPDOWN_ID, OPTION_TEXT, OPTION_VALUE, OPTION_TABLE, IS_DELETE)
-    VALUES (ISNULL(source.ID, NEWID()),       -- 若 Guid.Empty → 直接 NEWID()
-            source.FORM_FIELD_DROPDOWN_ID,
-            source.OPTION_TEXT,
-            source.OPTION_VALUE,
-            source.OPTION_TABLE,
-            0)
-OUTPUT INSERTED.ID;                          -- 把 ID 回傳給 Dapper
-";
-
-        public const string InsertOptionIgnoreDuplicate = @"/**/
-MERGE dbo.FORM_FIELD_DROPDOWN_OPTIONS AS target
-USING (
-    SELECT
-        @DropdownId  AS FORM_FIELD_DROPDOWN_ID,
-        @OptionTable AS OPTION_TABLE,
-        @OptionValue AS OPTION_VALUE,
-        @OptionText  AS OPTION_TEXT
-) AS src
-ON target.FORM_FIELD_DROPDOWN_ID = src.FORM_FIELD_DROPDOWN_ID
-   AND target.OPTION_TABLE = src.OPTION_TABLE
-   AND target.OPTION_VALUE = src.OPTION_VALUE
-WHEN NOT MATCHED THEN
-    INSERT (ID, FORM_FIELD_DROPDOWN_ID, OPTION_TABLE, OPTION_VALUE, OPTION_TEXT, IS_DELETE)
-    VALUES (NEWID(), src.FORM_FIELD_DROPDOWN_ID, src.OPTION_TABLE, src.OPTION_VALUE, src.OPTION_TEXT, 0);
-";
-        
-        public const string DeleteFormMaster = @"
-DELETE FROM FORM_FIELD_DROPDOWN_OPTIONS WHERE FORM_FIELD_DROPDOWN_ID IN (
-    SELECT ID FROM FORM_FIELD_DROPDOWN WHERE FORM_FIELD_CONFIG_ID IN (
-        SELECT ID FROM FORM_FIELD_CONFIG WHERE FORM_FIELD_MASTER_ID = @id
-    )
-);
-DELETE FROM FORM_FIELD_DROPDOWN WHERE FORM_FIELD_CONFIG_ID IN (
-    SELECT ID FROM FORM_FIELD_CONFIG WHERE FORM_FIELD_MASTER_ID = @id
-);
-DELETE FROM FORM_FIELD_VALIDATION_RULE WHERE FIELD_CONFIG_ID IN (
-    SELECT ID FROM FORM_FIELD_CONFIG WHERE FORM_FIELD_MASTER_ID = @id
-);
-DELETE FROM FORM_FIELD_CONFIG WHERE FORM_FIELD_MASTER_ID = @id;
-DELETE FROM FORM_FIELD_MASTER WHERE ID = @id;
-";
-
         /// <summary>
         /// 取 Moving / Prev / Next 的群組欄位（確保同一個 FORM_FIELD_MASTER_ID + TABLE_NAME）
         /// </summary>

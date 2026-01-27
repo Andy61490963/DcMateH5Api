@@ -7,6 +7,7 @@ using Microsoft.Data.SqlClient;
 using System.Collections.Generic;
 using System.Threading;
 using System.Threading.Tasks;
+using DcMateH5Api.Services.CurrentUser.Interfaces;
 
 namespace DcMateH5Api.Areas.Form.Services.FormLogic;
 
@@ -14,13 +15,21 @@ public class FormFieldMasterService : IFormFieldMasterService
 {
     private readonly SqlConnection _con;
     private readonly SQLGenerateHelper _sqlHelper;
+    private readonly ICurrentUserAccessor _currentUser;
 
-    public FormFieldMasterService(SqlConnection connection, SQLGenerateHelper sqlHelper)
+    public FormFieldMasterService(SqlConnection connection, SQLGenerateHelper sqlHelper, ICurrentUserAccessor currentUser)
     {
         _con = connection;
         _sqlHelper = sqlHelper;
+        _currentUser = currentUser; 
     }
 
+    private Guid GetCurrentUserId()
+    {
+        var user = _currentUser.Get();
+        return user.Id;
+    }
+    
     public FormFieldMasterDto? GetFormFieldMaster(TableSchemaQueryType type)
     {
         return _con.QueryFirstOrDefault<FormFieldMasterDto>(
@@ -107,12 +116,12 @@ public class FormFieldMasterService : IFormFieldMasterService
     (ID, FORM_NAME, STATUS, SCHEMA_TYPE,
      BASE_TABLE_NAME, VIEW_TABLE_NAME, DETAIL_TABLE_NAME, MAPPING_TABLE_NAME,
      BASE_TABLE_ID,  VIEW_TABLE_ID,  DETAIL_TABLE_ID, MAPPING_TABLE_ID,
-     FUNCTION_TYPE, IS_DELETE, CREATE_TIME, EDIT_TIME)
+     FUNCTION_TYPE, IS_DELETE, CREATE_TIME, EDIT_TIME, CREATE_USER, EDIT_USER)
     VALUES
     (@ID, @FORM_NAME, @STATUS, @SCHEMA_TYPE,
      @BASE_TABLE_NAME, @VIEW_TABLE_NAME, @DETAIL_TABLE_NAME, @MAPPING_TABLE_NAME,
      @BASE_TABLE_ID, @VIEW_TABLE_ID,  @DETAIL_TABLE_ID, @MAPPING_TABLE_ID,
-     @FUNCTION_TYPE, 0, GETDATE(), GETDATE());",
+     @FUNCTION_TYPE, 0, GETDATE(), GETDATE(), @CREATE_USER, @EDIT_USER);",
             new
             {
                 ID = id,
@@ -127,7 +136,9 @@ public class FormFieldMasterService : IFormFieldMasterService
                 VIEW_TABLE_ID = HasValue(model.VIEW_TABLE_NAME) ? id : (Guid?)null,
                 DETAIL_TABLE_ID = HasValue(model.DETAIL_TABLE_NAME) ? id : (Guid?)null,
                 MAPPING_TABLE_ID = HasValue(model.MAPPING_TABLE_NAME) ? id : (Guid?)null,
-                model.FUNCTION_TYPE
+                model.FUNCTION_TYPE,
+                CREATE_USER = GetCurrentUserId(),
+                EDIT_USER = GetCurrentUserId()
             },
             tx,
             cancellationToken: ct);

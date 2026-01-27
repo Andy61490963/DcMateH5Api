@@ -307,7 +307,7 @@ public async Task DoSomethingComplexAsync(InputModel input, CancellationToken ct
 | 欄位 | 型別 | 說明 |
 |---|---|---|
 | `ID` | uniqueidentifier | PK |
-| `FIELD_CONFIG_ID` | uniqueidentifier | FK → `FORM_FIELD_CONFIG.ID` |
+| `FORM_FIELD_CONFIG_ID` | uniqueidentifier | FK → `FORM_FIELD_CONFIG.ID` |
 | `VALIDATION_TYPE` | int | 驗證類型（enum） |
 | `VALIDATION_VALUE` | nvarchar(255) | 驗證值（例如 min=3、regex pattern） |
 | `MESSAGE_ZH` / `MESSAGE_EN` | nvarchar(255) | 多語訊息 |

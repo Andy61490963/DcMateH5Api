@@ -32,7 +32,7 @@ public class FormFieldConfigService : IFormFieldConfigService
 
                     SELECT R.*
                     FROM FORM_FIELD_VALIDATION_RULE R
-                    JOIN FORM_FIELD_CONFIG C ON R.FIELD_CONFIG_ID = C.ID
+                    JOIN FORM_FIELD_CONFIG C ON R.FORM_FIELD_CONFIG_ID = C.ID
                     WHERE C.FORM_FIELD_MASTER_ID = @ID;
 
                     SELECT D.*
