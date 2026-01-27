@@ -93,6 +93,7 @@ builder.Services.AddScoped<IDbExecutor, DbExecutor>();
 builder.Services.AddScoped<SQLGenerateHelper>();
 
 // 核心功能註冊
+builder.Services.AddHostedService<FormOrphanCleanupHostedService>();
 builder.Services.AddScoped<IFormOrphanCleanupService, FormOrphanCleanupService>();
 builder.Services.AddScoped<ILogService, LogService>();
 builder.Services.AddScoped<IFormDesignerService, FormDesignerService>();

@@ -135,7 +135,7 @@ SET @Affected += @@ROWCOUNT;
 SELECT @Affected;
 ";
 
-        var affected = await _tx.WithTransactionAsync<int>(async (tx, token) =>
+        var affected = await _tx.WithTransactionAsync(async (tx, token) =>
         {
             var cmd = new CommandDefinition(
                 sql,
