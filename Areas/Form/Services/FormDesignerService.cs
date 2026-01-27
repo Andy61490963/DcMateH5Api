@@ -25,6 +25,7 @@ public class FormDesignerService : IFormDesignerService
     private readonly SQLGenerateHelper _sqlHelper;
     private readonly ICurrentUserAccessor _currentUser;
     private readonly IFormFieldMasterService _formFieldMasterService;
+    private readonly IFormOrphanCleanupService _formOrphanCleanupService;
     private readonly IReadOnlyList<string> _relationColumnSuffixes;
     
     public FormDesignerService(
@@ -33,6 +34,7 @@ public class FormDesignerService : IFormDesignerService
         IConfiguration configuration,
         ISchemaService schemaService,
         IFormFieldMasterService formFieldMasterService,
+        IFormOrphanCleanupService formOrphanCleanupService,
         IOptions<FormSettings> formSettings,
         ICurrentUserAccessor currentUser)
     {
@@ -41,6 +43,7 @@ public class FormDesignerService : IFormDesignerService
         _schemaService = schemaService;
         _sqlHelper = sqlHelper;
         _formFieldMasterService = formFieldMasterService;
+        _formOrphanCleanupService = formOrphanCleanupService;
         _currentUser = currentUser; 
         
         _excludeColumns = _configuration.GetSection("DropdownSqlSettings:ExcludeColumns").Get<List<string>>() ?? new();
@@ -1913,7 +1916,7 @@ WHERE c.FORM_FIELD_MASTER_ID = @MasterId
                 cancellationToken: ct));
     }
         
-    public async Task<Guid> SaveFormHeader( FormHeaderViewModel model )
+    public async Task<Guid> SaveFormHeader( FormHeaderViewModel model, CancellationToken ct )
     {
         var whereBase = new WhereBuilder<FormFieldMasterDto>()
             .AndEq(x => x.ID, model.BASE_TABLE_ID)
@@ -1966,13 +1969,16 @@ WHERE c.FORM_FIELD_MASTER_ID = @MasterId
             
             CREATE_TIME = DateTime.Now,
             EDIT_TIME = DateTime.Now,
-            CREATE_USER = Guid.NewGuid(),
-            EDIT_USER = Guid.NewGuid()
+            CREATE_USER = GetCurrentUserId(),
+            EDIT_USER = GetCurrentUserId()
         });
+
+        await _formOrphanCleanupService.SoftDeleteOrphansAsync(GetCurrentUserId(), ct);
+        
         return id;
     }
 
-    public async Task<Guid> SaveMasterDetailFormHeader(MasterDetailFormHeaderViewModel model)
+    public async Task<Guid> SaveMasterDetailFormHeader( MasterDetailFormHeaderViewModel model, CancellationToken ct )
     {
         var whereBase = new WhereBuilder<FormFieldMasterDto>()
             .AndEq(x => x.ID, model.BASE_TABLE_ID)
@@ -2036,6 +2042,9 @@ WHERE c.FORM_FIELD_MASTER_ID = @MasterId
             SCHEMA_TYPE = TableSchemaQueryType.All,
             FUNCTION_TYPE = FormFunctionType.MasterDetailMaintenance
         });
+        
+        await _formOrphanCleanupService.SoftDeleteOrphansAsync(GetCurrentUserId(), ct);
+        
         return id;
     }
 
@@ -2047,7 +2056,7 @@ WHERE c.FORM_FIELD_MASTER_ID = @MasterId
     /// 會同步檢查主表、目標表與關聯表的實體存在性與關聯欄位，
     /// 並在有設定顯示欄位時驗證欄位存在性，避免後續顯示或維護時出錯。
     /// </remarks>
-    public async Task<Guid> SaveMultipleMappingFormHeader(MultipleMappingFormHeaderViewModel model)
+    public async Task<Guid> SaveMultipleMappingFormHeader( MultipleMappingFormHeaderViewModel model, CancellationToken ct )
     {
         if (string.IsNullOrWhiteSpace(model.MAPPING_BASE_FK_COLUMN) ||
             string.IsNullOrWhiteSpace(model.MAPPING_DETAIL_FK_COLUMN))
@@ -2186,6 +2195,8 @@ WHERE c.FORM_FIELD_MASTER_ID = @MasterId
             FUNCTION_TYPE = FormFunctionType.MultipleMappingMaintenance
         });
 
+        await _formOrphanCleanupService.SoftDeleteOrphansAsync(GetCurrentUserId(), ct);
+        
         return id;
     }
     

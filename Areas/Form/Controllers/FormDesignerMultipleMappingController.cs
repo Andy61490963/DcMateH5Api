@@ -355,9 +355,9 @@ public class FormDesignerMultipleMappingController : ControllerBase
     [HttpPost(Routes.Headers)]
     [ProducesResponseType(StatusCodes.Status200OK)]
     [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status400BadRequest)]
-    public async Task<IActionResult> SaveMultipleMappingFormHeader([FromBody] MultipleMappingFormHeaderViewModel model)
+    public async Task<IActionResult> SaveMultipleMappingFormHeader( [FromBody] MultipleMappingFormHeaderViewModel model, CancellationToken ct )
     {
-        var id = await _formDesignerService.SaveMultipleMappingFormHeader(model);
+        var id = await _formDesignerService.SaveMultipleMappingFormHeader( model, ct );
         return Ok(new { id });
     }
 }

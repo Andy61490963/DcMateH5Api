@@ -585,11 +585,12 @@ public class FormDesignerController : BaseController
     /// 儲存表單主檔資訊
     /// </summary>
     /// <param name="model"></param>
+    /// <param name="ct"></param>
     /// <returns></returns>
     [HttpPost("headers")]
     [ProducesResponseType(StatusCodes.Status200OK)]
     [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status400BadRequest)]
-    public async Task<IActionResult> SaveFormHeader( [FromBody] FormHeaderViewModel model )
+    public async Task<IActionResult> SaveFormHeader( [FromBody] FormHeaderViewModel model, CancellationToken ct )
     {
         if ( model.BASE_TABLE_ID == Guid.Empty || model.VIEW_TABLE_ID == Guid.Empty )
             return BadRequest("BASE_TABLE_ID / VIEW_TABLE_ID 不可為空");
@@ -597,7 +598,7 @@ public class FormDesignerController : BaseController
         // if ( _formDesignerService.CheckFormMasterExists( model.BASE_TABLE_ID, model.VIEW_TABLE_ID, model.ID ) )
         //     return Conflict("相同的表格及 View 組合已存在");
 
-        var id = await _formDesignerService.SaveFormHeader( model );
+        var id = await _formDesignerService.SaveFormHeader( model, ct );
         return Ok( new { id } );
     }
 }

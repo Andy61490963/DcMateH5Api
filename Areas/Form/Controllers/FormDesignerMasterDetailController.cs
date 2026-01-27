@@ -412,7 +412,7 @@ public class FormDesignerMasterDetailController : ControllerBase
     [ProducesResponseType(StatusCodes.Status200OK)]
     [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status400BadRequest)]
     [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status409Conflict)]
-    public async Task<IActionResult> SaveMasterDetailFormHeader([FromBody] MasterDetailFormHeaderViewModel model)
+    public async Task<IActionResult> SaveMasterDetailFormHeader( [FromBody] MasterDetailFormHeaderViewModel model, CancellationToken ct )
     {
         if (model.BASE_TABLE_ID == Guid.Empty ||
             model.DETAIL_TABLE_ID == Guid.Empty ||
@@ -421,18 +421,7 @@ public class FormDesignerMasterDetailController : ControllerBase
             return BadRequest("MASTER_TABLE_ID / DETAIL_TABLE_ID / VIEW_TABLE_ID 不可為空");
         }
 
-        // var exists = await _formDesignerService.CheckMasterDetailFormMasterExistsAsync(
-        //     model.BASE_TABLE_ID,
-        //     model.DETAIL_TABLE_ID,
-        //     model.VIEW_TABLE_ID,
-        //     model.ID);
-        //
-        // if (exists)
-        // {
-        //     return Conflict("相同的 Master/Detail/View 組合已存在");
-        // }
-
-        var id = await _formDesignerService.SaveMasterDetailFormHeader(model);
+        var id = await _formDesignerService.SaveMasterDetailFormHeader( model, ct );
         return Ok(new { id });
     }
 }
