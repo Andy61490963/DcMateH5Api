@@ -78,17 +78,17 @@ public static class FormFieldHelper
     /// </summary>
     private static readonly Dictionary<SqlDataType, List<QueryComponentType>> QueryConditionTypeWhitelistMap = new()
     {
-        { SqlDataType.DateTime, new() { QueryComponentType.Date } },
+        { SqlDataType.DateTime, new() { QueryComponentType.Date, QueryComponentType.Dropdown } },
         { SqlDataType.Bit,      new() { QueryComponentType.Dropdown } },
 
         { SqlDataType.Int,      new() { QueryComponentType.Number, QueryComponentType.Text, QueryComponentType.Dropdown } },
-        { SqlDataType.Decimal,  new() { QueryComponentType.Number, QueryComponentType.Text } },
+        { SqlDataType.Decimal,  new() { QueryComponentType.Number, QueryComponentType.Text, QueryComponentType.Dropdown } },
 
         { SqlDataType.NVarChar, new() { QueryComponentType.Number, QueryComponentType.Text, QueryComponentType.Dropdown } },
         { SqlDataType.VarChar,  new() { QueryComponentType.Number, QueryComponentType.Text, QueryComponentType.Dropdown } },
 
-        { SqlDataType.Text,     new() { QueryComponentType.Text } },
-        { SqlDataType.Unknown,  new() { QueryComponentType.Text } }
+        { SqlDataType.Text,     new() { QueryComponentType.Text, QueryComponentType.Dropdown } },
+        { SqlDataType.Unknown,  new() { QueryComponentType.Text, QueryComponentType.Dropdown } }
     };
 
     /// <summary>
