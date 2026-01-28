@@ -41,12 +41,12 @@ public static class FormFieldHelper
     /// </summary>
     private static readonly Dictionary<SqlDataType, List<FormControlType>> ControlTypeWhitelistMap = new()
     {
-        { SqlDataType.DateTime, new() { FormControlType.Date } },
-        { SqlDataType.Bit,      new() { FormControlType.Checkbox } },
+        { SqlDataType.DateTime, new() { FormControlType.Date, FormControlType.Dropdown } },
+        { SqlDataType.Bit,      new() { FormControlType.Checkbox, FormControlType.Dropdown } },
 
         // 數值型欄位，允許數字輸入、文字輸入、下拉選單（如代碼表）
         { SqlDataType.Int,      new() { FormControlType.Text, FormControlType.Number, FormControlType.Dropdown } },
-        { SqlDataType.Decimal,  new() { FormControlType.Text, FormControlType.Number } },
+        { SqlDataType.Decimal,  new() { FormControlType.Text, FormControlType.Number, FormControlType.Dropdown } },
 
         // 字串型欄位，通常最彈性
         { SqlDataType.NVarChar, new() { FormControlType.Text, FormControlType.Number, FormControlType.Dropdown, FormControlType.Checkbox } },
@@ -54,12 +54,12 @@ public static class FormFieldHelper
         { SqlDataType.Char,  new() { FormControlType.Text, FormControlType.Number, FormControlType.Dropdown, FormControlType.Checkbox } },
 
         // 長文字欄位
-        { SqlDataType.Text,     new() { FormControlType.Textarea, FormControlType.Text } },
+        { SqlDataType.Text,     new() { FormControlType.Textarea, FormControlType.Text, FormControlType.Dropdown } },
 
         { SqlDataType.Uniqueidentifier,  new() { FormControlType.Text, FormControlType.Dropdown } },
         
         // 無法辨識型別時的保守預設
-        { SqlDataType.Unknown,  new() { FormControlType.Text } }
+        { SqlDataType.Unknown,  new() { FormControlType.Text, FormControlType.Dropdown } }
     };
 
     /// <summary>
