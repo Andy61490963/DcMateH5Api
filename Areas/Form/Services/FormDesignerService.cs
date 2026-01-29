@@ -1507,7 +1507,6 @@ WHERE c.FORM_FIELD_MASTER_ID = @MasterId
     /// <returns></returns>
     public async Task<bool> InsertValidationRule( FormFieldValidationRuleDto model, CancellationToken ct = default )
     {
-
         var count = await _sqlHelper.InsertAsync( model, ct );
         return count > 0;
     }

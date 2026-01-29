@@ -1,10 +1,10 @@
 using ClassLibrary;
-using DcMateH5Api.Areas.Form.Models;
 using DcMateH5Api.Areas.Form.Interfaces;
+using DcMateH5Api.Areas.Form.Models;
 using DcMateH5Api.Areas.Form.ViewModels;
-using Microsoft.AspNetCore.Mvc;
-using DcMateH5Api.Helper;
 using DcMateH5Api.Controllers;
+using DcMateH5Api.Helper;
+using Microsoft.AspNetCore.Mvc;
 
 namespace DcMateH5Api.Areas.Form.Controllers;
 
@@ -16,14 +16,52 @@ public class FormDesignerController : BaseController
 {
     private readonly IFormDesignerService _formDesignerService;
     private readonly FormFunctionType _funcType = FormFunctionType.MasterMaintenance;
-    
-    public FormDesignerController(
-        IFormDesignerService formDesignerService)
+
+    public FormDesignerController(IFormDesignerService formDesignerService)
     {
         _formDesignerService = formDesignerService;
     }
 
-    // ────────── Form Designer 列表 ──────────
+    private static class Routes
+    {
+        // Master
+        public const string UpdateFormName = "form-name";
+        public const string ById = "{id}";
+        public const string ByIdGuid = "{id:guid}";
+
+        // Tables / Fields
+        public const string SearchTables = "tables/tableName";
+        public const string TableFields = "tables/{tableName}/fields";
+        public const string GetField = "fields/{fieldId}";
+        public const string UpsertField = "fields";
+        public const string MoveField = "fields/move";
+        public const string BatchEditable = "tables/fields/batch-editable";
+        public const string BatchRequired = "tables/fields/batch-required";
+
+        // Validation Rules
+        public const string FieldRules = "fields/{fieldId:guid}/rules";
+        public const string UpdateRule = "rules";
+        public const string DeleteRule = "rules/{id:guid}";
+
+        // Dropdown
+        public const string GetDropdown = "dropdowns/{dropdownId:guid}";
+        public const string SetDropdownMode = "dropdowns/{dropdownId:guid}/mode";
+        public const string GetDropdownOptions = "dropdowns/{dropdownId:guid}/options";
+        public const string ValidateDropdownSql = "dropdowns/validate-sql";
+        public const string ImportPreviousQueryValues = "dropdowns/{dropdownId:guid}/import-previous-query-values";
+        public const string ReplaceDropdownOptions = "dropdowns/{dropdownId:guid}/options:replace";
+
+        // Delete Guard SQL
+        public const string DeleteGuardSqls = "delete-guard-sqls";
+        public const string DeleteGuardSqlById = "delete-guard-sqls/{id:guid}";
+
+        // Header
+        public const string SaveHeaders = "headers";
+    }
+
+    // ────────── Master ──────────
+    #region Master
+
     /// <summary>
     /// 取得表單主檔 (FORM_FIELD_MASTER) 清單
     /// </summary>
@@ -32,573 +70,660 @@ public class FormDesignerController : BaseController
     /// <returns>表單主檔清單</returns>
     [HttpGet]
     [ProducesResponseType(typeof(List<FormFieldMasterDto>), StatusCodes.Status200OK)]
-    public async Task<ActionResult<List<FormFieldMasterDto>>> GetFormMasters( [FromQuery] string? q, CancellationToken ct )
+    public async Task<ActionResult<List<FormFieldMasterDto>>> GetFormMasters([FromQuery] string? q, CancellationToken ct)
     {
-        var masters = await _formDesignerService.GetFormMasters( _funcType, q, ct );
-        return Ok( masters.ToList() );
+        try
+        {
+            var masters = await _formDesignerService.GetFormMasters(_funcType, q, ct);
+            return Ok(masters);
+        }
+        catch (HttpStatusCodeException ex)
+        {
+            return StatusCode((int)ex.StatusCode, ex.Message);
+        }
     }
-    
+
     /// <summary>
     /// 更新主檔 or 明細 or 檢視表 名稱
     /// </summary>
-    /// <param name="model"></param>
+    /// <param name="model">更新資料</param>
     /// <param name="ct">CancellationToken</param>
-    /// <returns></returns>
-    [HttpPut("form-name")]
+    [HttpPut(Routes.UpdateFormName)]
     [ProducesResponseType(StatusCodes.Status200OK)]
     [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status400BadRequest)]
-    public async Task<IActionResult> UpdateFormName( [FromBody] UpdateFormNameViewModel model, CancellationToken ct )
+    public async Task<IActionResult> UpdateFormName([FromBody] UpdateFormNameViewModel model, CancellationToken ct)
     {
-        await _formDesignerService.UpdateFormName( model, ct );
-        return Ok();
+        try
+        {
+            await _formDesignerService.UpdateFormName(model, ct);
+            return Ok();
+        }
+        catch (HttpStatusCodeException ex)
+        {
+            return StatusCode((int)ex.StatusCode, ex.Message);
+        }
     }
-    
+
     /// <summary>
     /// 刪除指定的主檔或明細或檢視表資料
     /// </summary>
     /// <param name="id">FORM_FIELD_MASTER 的ID</param>
+    /// <param name="ct">CancellationToken</param>
     /// <returns>NoContent 回應</returns>
-    [HttpDelete("{id}")]
+    [HttpDelete(Routes.ById)]
     [ProducesResponseType(StatusCodes.Status204NoContent)]
     [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status400BadRequest)]
-    public async Task<IActionResult> Delete( Guid id )
+    public async Task<IActionResult> Delete([FromRoute] Guid id, CancellationToken ct)
     {
-        await _formDesignerService.DeleteFormMaster( id );
-        return NoContent();
+        try
+        {
+            await _formDesignerService.DeleteFormMaster(id);
+            return NoContent();
+        }
+        catch (HttpStatusCodeException ex)
+        {
+            return StatusCode((int)ex.StatusCode, ex.Message);
+        }
     }
-    
-    // ────────── Form Designer 入口 ──────────
+
     /// <summary>
     /// 取得指定的 主檔、檢視表 主畫面資料(請傳入父節點 masterId)
     /// </summary>
     /// <param name="id">FORM_FIELD_MASTER 的ID</param>
-    /// <param name="ct"></param>
-    /// <returns></returns>
-    [HttpGet("{id:guid}")]
+    /// <param name="ct">CancellationToken</param>
+    [HttpGet(Routes.ByIdGuid)]
     [ProducesResponseType(typeof(FormDesignerIndexViewModel), StatusCodes.Status200OK)]
     [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status404NotFound)]
-    public async Task<IActionResult> GetDesigner( Guid id, CancellationToken ct )
+    public async Task<IActionResult> GetDesigner([FromRoute] Guid id, CancellationToken ct)
     {
-        var model = await _formDesignerService.GetFormDesignerIndexViewModel( _funcType, id, ct );
-        return Ok( model );
+        try
+        {
+            var model = await _formDesignerService.GetFormDesignerIndexViewModel(_funcType, id, ct);
+            return Ok(model);
+        }
+        catch (HttpStatusCodeException ex)
+        {
+            return StatusCode((int)ex.StatusCode, ex.Message);
+        }
     }
 
-    // ────────── 欄位相關 ──────────
+    #endregion
+
+    // ────────── Tables / Fields ──────────
+    #region Tables / Fields
 
     /// <summary>
     /// 依名稱關鍵字查詢資料表或檢視表名稱清單(目前列出全部)
     /// 支援前綴與模糊比對（使用 LIKE）。
     /// </summary>
-    /// /// <param name="tableName">名稱</param>
+    /// <param name="tableName">名稱</param>
     /// <param name="queryType">欲搜尋的資料來源類型（主表或檢視表）</param>
     /// <returns>符合條件的表名稱集合</returns>
-    [HttpGet("tables/tableName")]
+    [HttpGet(Routes.SearchTables)]
     [ProducesResponseType(typeof(List<string>), StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status404NotFound)]
     [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status400BadRequest)]
     [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status500InternalServerError)]
-    public IActionResult SearchTables( string? tableName, [FromQuery] TableQueryType queryType )
+    public IActionResult SearchTables([FromQuery] string? tableName, [FromQuery] TableQueryType queryType)
     {
         try
         {
-            var result = _formDesignerService.SearchTables( tableName, queryType );
-            if ( result.Count == 0 ) return NotFound();
-            return Ok( result );
+            var result = _formDesignerService.SearchTables(tableName, queryType);
+            if (result.Count == 0)
+            {
+                return NotFound();
+            }
+
+            return Ok(result);
         }
-        catch ( HttpStatusCodeException ex )
+        catch (HttpStatusCodeException ex)
         {
-            return StatusCode( (int)ex.StatusCode, ex.Message );
+            return StatusCode((int)ex.StatusCode, ex.Message);
         }
     }
-    
+
     /// <summary>
     /// 取得資料表所有欄位設定(tableName必須傳，如果傳入空formMasterId，會創建一筆新的，如果有傳入formMasterId，會取得舊的)
     /// </summary>
-    /// <param name="tableName">名稱</param>
-    /// <param name="formMasterId">FORM_FIELD_MASTER 的ID</param>
-    /// <param name="schemaType">列舉類型</param>
-    /// <returns></returns>
-    [HttpGet("tables/{tableName}/fields")]
+    [HttpGet(Routes.TableFields)]
     [ProducesResponseType(typeof(List<FormFieldViewModel>), StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status404NotFound)]
     [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status400BadRequest)]
     [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status500InternalServerError)]
-    public async Task<IActionResult> GetFields( string tableName, Guid? formMasterId, [FromQuery] TableSchemaQueryType schemaType, CancellationToken ct )
+    public async Task<IActionResult> GetFields(
+        [FromRoute] string tableName,
+        [FromQuery] Guid? formMasterId,
+        [FromQuery] TableSchemaQueryType schemaType,
+        CancellationToken ct)
     {
         try
         {
-            var result = await _formDesignerService.EnsureFieldsSaved( tableName, formMasterId, schemaType, ct );
+            var result = await _formDesignerService.EnsureFieldsSaved(tableName, formMasterId, schemaType, ct);
+            if (result == null)
+            {
+                return NotFound();
+            }
 
-            if ( result == null ) return NotFound();
-            return Ok( result );
+            return Ok(result);
         }
-        catch ( HttpStatusCodeException ex )
+        catch (HttpStatusCodeException ex)
         {
-            return StatusCode( (int)ex.StatusCode, ex.Message );
+            return StatusCode((int)ex.StatusCode, ex.Message);
         }
     }
 
     /// <summary>
     /// 依欄位設定 ID 取得單一欄位設定 ( GetFields搜尋時就會先預先建立完成 )
     /// </summary>
-    /// <param name="fieldId">FORM_FIELD_CONFIG 的ID</param>
-    /// <returns></returns>
-    [HttpGet("fields/{fieldId}")]
+    [HttpGet(Routes.GetField)]
     [ProducesResponseType(typeof(FormFieldViewModel), StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status404NotFound)]
-    public async Task<IActionResult> GetField( Guid fieldId )
+    public async Task<IActionResult> GetField([FromRoute] Guid fieldId, CancellationToken ct)
     {
-        var field = await _formDesignerService.GetFieldById( fieldId );
-        if ( field == null ) return NotFound();
-        return Ok( field );
+        try
+        {
+            var field = await _formDesignerService.GetFieldById(fieldId);
+            if (field == null)
+            {
+                return NotFound();
+            }
+
+            return Ok(field);
+        }
+        catch (HttpStatusCodeException ex)
+        {
+            return StatusCode((int)ex.StatusCode, ex.Message);
+        }
     }
 
     /// <summary>
     /// 新增或更新單一欄位設定（ID 有值為更新，無值為新增）
     /// </summary>
-    /// <param name="model">GetField( Guid fieldId ) 取得的欄位 Json </param>
-    /// <returns></returns>
-    [HttpPost("fields")]
+    [HttpPost(Routes.UpsertField)]
     [ProducesResponseType(typeof(List<FormFieldViewModel>), StatusCodes.Status200OK)]
     [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status409Conflict)]
     [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status400BadRequest)]
     [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status500InternalServerError)]
-    public async Task<IActionResult> UpsertField( [FromBody] FormFieldViewModel model )
+    public async Task<IActionResult> UpsertField([FromBody] FormFieldViewModel model, CancellationToken ct)
     {
         try
         {
-            if ( model.SchemaType == TableSchemaQueryType.OnlyTable &&
-                ( model.QUERY_COMPONENT != QueryComponentType.None ||
-                 model.CAN_QUERY == true ) )
-                return Conflict( "無法往主表寫入查詢條件" );
-            
-            if ( model.SchemaType == TableSchemaQueryType.OnlyTable &&
-                ( model.QUERY_DEFAULT_VALUE != null ||
-                 model.CAN_QUERY == true ) )
-                return Conflict( "無法往主表寫入查詢預設值" );
-            
-            if ( model.SchemaType == TableSchemaQueryType.OnlyView &&
-                ( model.CAN_QUERY == false && model.QUERY_COMPONENT != QueryComponentType.None ) )
-                return Conflict( "無法更改未開放查詢條件的查詢元件" );
-            
-            if ( model.ID != Guid.Empty &&
-                _formDesignerService.HasValidationRules( model.ID ) &&
-                _formDesignerService.GetControlTypeByFieldId( model.ID ) != model.CONTROL_TYPE )
-                return Conflict( "已有驗證規則，無法變更控制元件類型" );
+            var conflict = ValidateUpsertField(model);
+            if (conflict != null)
+            {
+                return conflict;
+            }
 
-            var master = new FormFieldMasterDto { ID = model.FORM_FIELD_MASTER_ID };
-            var formMasterId = await _formDesignerService.GetOrCreateFormMasterIdAsync(master);
+            await _formDesignerService.UpsertFieldAsync(model, model.FORM_FIELD_MASTER_ID, ct);
 
-            await _formDesignerService.UpsertFieldAsync(model, formMasterId);
-            var fields = await _formDesignerService.GetFieldsByTableName( model.TableName, formMasterId, model.SchemaType );
-            return Ok( fields );
+            var fields = await _formDesignerService.GetFieldsByTableName(model.TableName, model.FORM_FIELD_MASTER_ID, model.SchemaType);
+            return Ok(fields);
         }
-        catch ( HttpStatusCodeException ex )
+        catch (HttpStatusCodeException ex)
         {
-            return StatusCode( (int)ex.StatusCode, ex.Message );
+            return StatusCode((int)ex.StatusCode, ex.Message);
         }
     }
 
     /// <summary>
     /// 移動表單欄位的顯示順序（使用 分數索引排序 演算法）。
     /// </summary>
-    /// <remarks>
-    /// ### 使用方式
-    /// 
-    /// 此 API 用於「拖拉排序」或「指定位置移動」欄位，
-    /// **只會更新指定欄位的排序 Key，不會重排其他欄位**。
-    /// 
-    /// 排序邏輯說明：
-    /// - 系統使用 分數索引 產生排序 Key
-    /// - 排序值不保證連續（例如：1000、2500、3000）
-    ///   僅保證大小關係正確，可有效避免大量更新資料。
-    /// 
-    /// ### Request Body 說明
-    /// 
-    /// ```json
-    /// {
-    ///   "movingId": "要移動的欄位 ID",
-    ///   "prevId": "移動後前一個欄位 ID（放最前請傳 null）",
-    ///   "nextId": "移動後後一個欄位 ID（放最後請傳 null）"
-    /// }
-    /// ```
-    /// 
-    /// - **movingId**：
-    ///   必填，要移動的 `FORM_FIELD_CONFIG.ID`。
-    /// 
-    /// - **prevId / nextId**：
-    ///   - 代表「移動後」的位置，而非移動前。
-    ///   - `prevId = null` 表示移動至最前方。
-    ///   - `nextId = null` 表示移動至最後方。
-    /// 
-    /// ### 範例
-    /// 
-    /// 將欄位 C 移動至欄位 A 與 B 之間：
-    /// 
-    /// ```json
-    /// {
-    ///   "movingId": "C",
-    ///   "prevId": "A",
-    ///   "nextId": "B"
-    /// }
-    /// ```
-    /// 
-    /// </remarks>
-    /// <param name="req">欄位排序移動請求內容</param>
-    /// <param name="ct">取消權杖</param>
-    /// <returns>成功時回傳 HTTP 200</returns>
-    [HttpPost("fields/move")]
+    [HttpPost(Routes.MoveField)]
+    [ProducesResponseType(StatusCodes.Status200OK)]
+    [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status400BadRequest)]
     public async Task<IActionResult> MoveField([FromBody] MoveFormFieldRequest req, CancellationToken ct)
     {
-        await _formDesignerService.MoveFieldAsync(req, ct);
-        return Ok();
+        try
+        {
+            await _formDesignerService.MoveFieldAsync(req, ct);
+            return Ok();
+        }
+        catch (HttpStatusCodeException ex)
+        {
+            return StatusCode((int)ex.StatusCode, ex.Message);
+        }
     }
-
-    // ────────── 批次設定 ──────────
 
     /// <summary>
     /// 批次設定所有欄位為可編輯/不可編輯
     /// </summary>
-    /// <param name="formMasterId">FORM_FIELD_MASTER 的ID</param>
-    /// <param name="isEditable">是否可編輯</param>
-    /// <param name="ct"></param>
-    /// <returns></returns>
-    [HttpPost("tables/fields/batch-editable")]
+    [HttpPost(Routes.BatchEditable)]
     [ProducesResponseType(typeof(List<FormFieldListViewModel>), StatusCodes.Status200OK)]
     [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status400BadRequest)]
-    public async Task<IActionResult> BatchSetEditable( [FromQuery] Guid formMasterId, [FromQuery] bool isEditable, CancellationToken ct )
+    public async Task<IActionResult> BatchSetEditable([FromQuery] Guid formMasterId, [FromQuery] bool isEditable, CancellationToken ct)
     {
-        var model = await _formDesignerService.SetAllEditable( formMasterId, isEditable, ct );
-        var fields = await _formDesignerService.GetFieldsByTableName( model, formMasterId, TableSchemaQueryType.OnlyTable );
-        return Ok( fields );
+        try
+        {
+            var tableName = await _formDesignerService.SetAllEditable(formMasterId, isEditable, ct);
+            var fields = await _formDesignerService.GetFieldsByTableName(tableName, formMasterId, TableSchemaQueryType.OnlyTable);
+            return Ok(fields);
+        }
+        catch (HttpStatusCodeException ex)
+        {
+            return StatusCode((int)ex.StatusCode, ex.Message);
+        }
     }
 
     /// <summary>
     /// 批次設定所有欄位為必填/非必填
     /// </summary>
-    /// <param name="formMasterId">FORM_FIELD_MASTER 的ID</param>
-    /// <param name="isRequired">是否必填</param>
-    /// <param name="ct"></param>
-    /// <returns></returns>
-    [HttpPost("tables/fields/batch-required")]
+    [HttpPost(Routes.BatchRequired)]
     [ProducesResponseType(typeof(List<FormFieldListViewModel>), StatusCodes.Status200OK)]
     [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status400BadRequest)]
-    public async Task<IActionResult> BatchSetRequired( [FromQuery] Guid formMasterId, [FromQuery] bool isRequired, CancellationToken ct )
+    public async Task<IActionResult> BatchSetRequired([FromQuery] Guid formMasterId, [FromQuery] bool isRequired, CancellationToken ct)
     {
-        var tableName = await _formDesignerService.SetAllRequired( formMasterId, isRequired, ct );
-        var fields = await _formDesignerService.GetFieldsByTableName( tableName, formMasterId,  TableSchemaQueryType.OnlyTable );
-        return Ok( fields );
+        try
+        {
+            var tableName = await _formDesignerService.SetAllRequired(formMasterId, isRequired, ct);
+            var fields = await _formDesignerService.GetFieldsByTableName(tableName, formMasterId, TableSchemaQueryType.OnlyTable);
+            return Ok(fields);
+        }
+        catch (HttpStatusCodeException ex)
+        {
+            return StatusCode((int)ex.StatusCode, ex.Message);
+        }
     }
 
-    // ────────── 欄位驗證規則 ──────────
+    #endregion
+
+    // ────────── Validation Rules ──────────
+    #region Validation Rules
 
     /// <summary>
     /// 新增一筆空的驗證規則並回傳全部規則
     /// </summary>
-    /// <param name="fieldId">FORM_FIELD_CONFIG 的ID</param>
-    /// <param name="ct"></param>
-    /// <returns></returns>
-    [HttpPost("fields/{fieldId:guid}/rules")]
-    [ProducesResponseType(StatusCodes.Status200OK)]
+    [HttpPost(Routes.FieldRules)]
+    [ProducesResponseType(typeof(List<FormFieldValidationRuleDto>), StatusCodes.Status200OK)]
     [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status400BadRequest)]
-    public async Task<IActionResult> AddEmptyValidationRule( Guid fieldId, CancellationToken ct = default )
+    public async Task<IActionResult> AddEmptyValidationRule([FromRoute] Guid fieldId, CancellationToken ct)
     {
-        var rule = _formDesignerService.CreateEmptyValidationRule( fieldId );
-        await _formDesignerService.InsertValidationRule(rule);
-        var rules = await _formDesignerService.GetValidationRulesByFieldId( fieldId, ct );
-        return Ok( new { rules } );
+        try
+        {
+            var rule = _formDesignerService.CreateEmptyValidationRule(fieldId);
+            await _formDesignerService.InsertValidationRule(rule);
+
+            var rules = await _formDesignerService.GetValidationRulesByFieldId(fieldId, ct);
+            return Ok(rules);
+        }
+        catch (HttpStatusCodeException ex)
+        {
+            return StatusCode((int)ex.StatusCode, ex.Message);
+        }
     }
-    
+
     /// <summary>
-    /// 取得欄位驗證規則與驗證類型選項
+    /// 取得欄位驗證規則
     /// </summary>
-    /// <param name="fieldId">FORM_FIELD_CONFIG 的ID</param>
-    /// <param name="ct"></param>
-    /// <returns></returns>
-    [HttpGet("fields/{fieldId:guid}/rules")]
-    [ProducesResponseType(StatusCodes.Status200OK)]
+    [HttpGet(Routes.FieldRules)]
+    [ProducesResponseType(typeof(List<FormFieldValidationRuleDto>), StatusCodes.Status200OK)]
     [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status400BadRequest)]
-    public async Task<IActionResult> GetValidationRules( Guid fieldId, CancellationToken ct = default )
+    public async Task<IActionResult> GetValidationRules([FromRoute] Guid fieldId, CancellationToken ct)
     {
-        if ( fieldId == Guid.Empty )
-            return BadRequest("請先設定控制元件後再新增驗證條件。");
-        
-        var rules = await _formDesignerService.GetValidationRulesByFieldId( fieldId, ct );
-        return Ok( new { rules } );   
+        try
+        {
+            if (fieldId == Guid.Empty)
+            {
+                return BadRequest("請先設定控制元件後再新增驗證條件。");
+            }
+
+            var rules = await _formDesignerService.GetValidationRulesByFieldId(fieldId, ct);
+            return Ok(rules);
+        }
+        catch (HttpStatusCodeException ex)
+        {
+            return StatusCode((int)ex.StatusCode, ex.Message);
+        }
     }
 
     /// <summary>
     /// 更新單一驗證規則
     /// </summary>
-    /// <param name="model"></param>
-    /// <returns></returns>
-    [HttpPut("rules")]
+    [HttpPut(Routes.UpdateRule)]
     [ProducesResponseType(StatusCodes.Status200OK)]
     [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status400BadRequest)]
-    public async Task<IActionResult> UpdateValidationRule( [FromBody] FormFieldValidationRuleDto model )
+    public async Task<IActionResult> UpdateValidationRule([FromBody] FormFieldValidationRuleDto model, CancellationToken ct)
     {
-        await _formDesignerService.SaveValidationRule( model );
-        return Ok();
+        try
+        {
+            await _formDesignerService.SaveValidationRule(model);
+            return Ok();
+        }
+        catch (HttpStatusCodeException ex)
+        {
+            return StatusCode((int)ex.StatusCode, ex.Message);
+        }
     }
 
     /// <summary>
     /// 刪除驗證規則
     /// </summary>
-    /// <param name="id">FORM_FIELD_VALIDATION_RULE 的ID</param>
-    /// <returns></returns>
-    [HttpDelete("rules/{id:guid}")]
+    [HttpDelete(Routes.DeleteRule)]
     [ProducesResponseType(StatusCodes.Status204NoContent)]
     [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status400BadRequest)]
-    public async Task<IActionResult> DeleteValidationRule( Guid id )
+    public async Task<IActionResult> DeleteValidationRule([FromRoute] Guid id, CancellationToken ct)
     {
-        await _formDesignerService.DeleteValidationRule( id );
-        // var rules = _formDesignerService.GetValidationRulesByFieldId( fieldConfigId );
-        return NoContent();
+        try
+        {
+            await _formDesignerService.DeleteValidationRule(id);
+            return NoContent();
+        }
+        catch (HttpStatusCodeException ex)
+        {
+            return StatusCode((int)ex.StatusCode, ex.Message);
+        }
     }
 
+    #endregion
+
     // ────────── Dropdown ──────────
+    #region Dropdown
 
     /// <summary>
     /// 取得下拉選單設定（不存在則自動建立）
     /// </summary>
-    /// <param name="dropdownId">FORM_FIELD_DROPDOWN 的ID</param>
-    /// <returns></returns>
-    [HttpGet("dropdowns/{dropdownId:guid}")]
+    [HttpGet(Routes.GetDropdown)]
     [ProducesResponseType(typeof(DropDownViewModel), StatusCodes.Status200OK)]
     [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status400BadRequest)]
-    public async Task<IActionResult> GetDropdownSetting( Guid dropdownId )
+    public async Task<IActionResult> GetDropdownSetting([FromRoute] Guid dropdownId, CancellationToken ct)
     {
-        var setting = await _formDesignerService.GetDropdownSetting( dropdownId );
-        return Ok( setting );
+        try
+        {
+            var setting = await _formDesignerService.GetDropdownSetting(dropdownId);
+            return Ok(setting);
+        }
+        catch (HttpStatusCodeException ex)
+        {
+            return StatusCode((int)ex.StatusCode, ex.Message);
+        }
     }
 
     /// <summary>
     /// 設定下拉選單資料來源模式（SQL/設定檔）
     /// </summary>
-    /// <param name="dropdownId">FORM_FIELD_DROPDOWN 的ID</param>
-    /// <param name="isUseSql">是否使用Sql當作下拉選單的條件</param>
-    /// <param name="ct"></param>
-    /// <returns></returns>
-    [HttpPut("dropdowns/{dropdownId:guid}/mode")]
+    [HttpPut(Routes.SetDropdownMode)]
     [ProducesResponseType(StatusCodes.Status200OK)]
     [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status400BadRequest)]
-    public async Task<IActionResult> SetDropdownMode( Guid dropdownId, [FromQuery] bool isUseSql, CancellationToken ct )
+    public async Task<IActionResult> SetDropdownMode([FromRoute] Guid dropdownId, [FromQuery] bool isUseSql, CancellationToken ct)
     {
-        await _formDesignerService.SetDropdownMode( dropdownId, isUseSql, ct );
-        return Ok();
+        try
+        {
+            await _formDesignerService.SetDropdownMode(dropdownId, isUseSql, ct);
+            return Ok();
+        }
+        catch (HttpStatusCodeException ex)
+        {
+            return StatusCode((int)ex.StatusCode, ex.Message);
+        }
     }
 
     /// <summary>
     /// 取得所有下拉選單選項
     /// </summary>
-    /// <param name="dropdownId">FORM_FIELD_DROPDOWN 的ID</param>
-    /// <param name="ct"></param>
-    /// <returns></returns>
-    [HttpPost("dropdowns/{dropdownId:guid}/options")]
+    [HttpPost(Routes.GetDropdownOptions)]
     [ProducesResponseType(typeof(List<FormFieldDropdownOptionsDto>), StatusCodes.Status200OK)]
     [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status400BadRequest)]
-    public async Task<IActionResult> GetDropdownOption( Guid dropdownId, CancellationToken ct )
+    public async Task<IActionResult> GetDropdownOption([FromRoute] Guid dropdownId, CancellationToken ct)
     {
-        var options = await _formDesignerService.GetDropdownOptions( dropdownId, ct );
-        return Ok( options );
+        try
+        {
+            var options = await _formDesignerService.GetDropdownOptions(dropdownId, ct);
+            return Ok(options);
+        }
+        catch (HttpStatusCodeException ex)
+        {
+            return StatusCode((int)ex.StatusCode, ex.Message);
+        }
     }
-    
-    // /// <summary>
-    // /// 儲存下拉選單 SQL 查詢
-    // /// </summary>
-    // /// <param name="dropdownId">FORM_FIELD_DROPDOWN 的ID</param>
-    // /// <param name="sql">使用Sql當作下拉選單的條件，Sql的內容</param>
-    // /// <param name="ct"></param>
-    // /// <returns></returns>
-    // [HttpPut("dropdowns/{dropdownId:guid}/sql")]
-    // public async Task<IActionResult> SaveDropdownSql( Guid dropdownId, [FromBody] string sql, CancellationToken ct )
-    // {
-    //     await _formDesignerService.SaveDropdownSql( dropdownId, sql, ct );
-    //     return Ok();
-    // }
 
     /// <summary>
     /// 驗證下拉 SQL 語法
     /// </summary>
-    [HttpPost("dropdowns/validate-sql")]
+    [HttpPost(Routes.ValidateDropdownSql)]
     [ProducesResponseType(typeof(ValidateSqlResultViewModel), StatusCodes.Status200OK)]
     [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status400BadRequest)]
-    public IActionResult ValidateDropdownSql( [FromBody] string sql )
+    public IActionResult ValidateDropdownSql([FromBody] string sql)
     {
-        var res = _formDesignerService.ValidateDropdownSql( sql );
-        return Ok(res);
-    }
+        try
+        {
+            if (string.IsNullOrWhiteSpace(sql))
+            {
+                return BadRequest("SQL 不可為空");
+            }
 
-    /// <summary>
-    /// 匯入下拉選單選項（由 SQL 查詢）
-    /// </summary>
-    /// <param name="dropdownId">FORM_FIELD_DROPDOWN 的ID</param>
-    /// <param name="dto"></param>
-    /// <returns></returns>
-    // [HttpPost("dropdowns/{dropdownId:guid}/import-options")]
-    // [ProducesResponseType(typeof(List<FormFieldDropdownOptionsDto>), StatusCodes.Status200OK)]
-    // [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status400BadRequest)]
-    // public async Task<IActionResult> ImportDropdownOptions( Guid dropdownId, [FromBody] ImportOptionViewModel dto )
-    // {
-    //     var res = _formDesignerService.ImportDropdownOptionsFromSql( dto.Sql, dropdownId );
-    //     if ( !res.Success ) return BadRequest( res.Message );
-    //
-    //     var options = await _formDesignerService.GetDropdownOptions( dropdownId );
-    //     return Ok( options );
-    // }
+            var res = _formDesignerService.ValidateDropdownSql(sql);
+            return Ok(res);
+        }
+        catch (HttpStatusCodeException ex)
+        {
+            return StatusCode((int)ex.StatusCode, ex.Message);
+        }
+    }
 
     /// <summary>
     /// 匯入先前查詢的下拉選單值（僅允許 SELECT，結果需使用 AS NAME）。
     /// </summary>
-    /// <param name="dropdownId">FORM_FIELD_DROPDOWN 的ID</param>
-    /// <param name="isQueryDropdwon">區分是否為查詢</param>
-    /// <param name="dto">SQL 匯入資料</param>
-    /// <returns>匯入結果</returns>
-    [HttpPost("dropdowns/{dropdownId:guid}/import-previous-query-values")]
+    [HttpPost(Routes.ImportPreviousQueryValues)]
     [ProducesResponseType(typeof(PreviousQueryDropdownImportResultViewModel), StatusCodes.Status200OK)]
     [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status400BadRequest)]
-    public IActionResult ImportPreviousQueryDropdownValues(Guid dropdownId, bool isQueryDropdwon, [FromBody] ImportOptionViewModel dto)
+    public IActionResult ImportPreviousQueryDropdownValues(
+        [FromRoute] Guid dropdownId,
+        [FromQuery] bool isQueryDropdwon,
+        [FromBody] ImportOptionViewModel dto)
     {
-        var res = _formDesignerService.ImportPreviousQueryDropdownValues(dto.Sql, dropdownId, isQueryDropdwon);
-        if (!res.Success)
+        try
         {
-            return BadRequest(res.Message);
-        }
+            if (string.IsNullOrWhiteSpace(dto.Sql))
+            {
+                return BadRequest("SQL 不可為空");
+            }
 
-        return Ok(res);
+            var res = _formDesignerService.ImportPreviousQueryDropdownValues(dto.Sql, dropdownId, isQueryDropdwon);
+            if (!res.Success)
+            {
+                return BadRequest(res.Message);
+            }
+
+            return Ok(res);
+        }
+        catch (HttpStatusCodeException ex)
+        {
+            return StatusCode((int)ex.StatusCode, ex.Message);
+        }
     }
 
     /// <summary>
     /// 使用者自訂的下拉選項，以「前端送來的完整清單」覆蓋下拉選項（Replace All）
     /// </summary>
-    /// <remarks>
-    /// </remarks>
-    [HttpPut("dropdowns/{dropdownId:guid}/options:replace")]
+    [HttpPut(Routes.ReplaceDropdownOptions)]
     [ProducesResponseType(typeof(List<FormFieldDropdownOptionsDto>), StatusCodes.Status200OK)]
     [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status400BadRequest)]
     public async Task<IActionResult> ReplaceDropdownOptions(
-        Guid dropdownId,
+        [FromRoute] Guid dropdownId,
         [FromBody] List<DropdownOptionItemViewModel> options,
         CancellationToken ct)
     {
-        if (!ModelState.IsValid)
-            return ValidationProblem(ModelState);
+        try
+        {
+            if (!ModelState.IsValid)
+            {
+                return ValidationProblem(ModelState);
+            }
 
-        await _formDesignerService.ReplaceDropdownOptionsAsync(dropdownId, options, ct);
+            await _formDesignerService.ReplaceDropdownOptionsAsync(dropdownId, options, ct);
 
-        var latestOptions = await _formDesignerService.GetDropdownOptions(dropdownId, ct);
-        return Ok(latestOptions);
+            var latestOptions = await _formDesignerService.GetDropdownOptions(dropdownId, ct);
+            return Ok(latestOptions);
+        }
+        catch (HttpStatusCodeException ex)
+        {
+            return StatusCode((int)ex.StatusCode, ex.Message);
+        }
     }
 
-    // ────────── 刪除防呆 SQL ──────────
+    #endregion
 
-    /// <summary>
-    /// 取得刪除防呆 SQL 規則清單（可依表單主檔 ID 篩選）。
-    /// </summary>
-    /// <param name="formFieldMasterId">FORM_FIELD_MASTER 的ID</param>
-    /// <param name="ct">CancellationToken</param>
-    /// <returns>刪除防呆 SQL 規則清單</returns>
-    [HttpGet("delete-guard-sqls")]
+    // ────────── Delete Guard SQL ──────────
+    #region Delete Guard SQL
+
+    [HttpGet(Routes.DeleteGuardSqls)]
     [ProducesResponseType(typeof(List<FormFieldDeleteGuardSqlDto>), StatusCodes.Status200OK)]
-    public async Task<ActionResult<List<FormFieldDeleteGuardSqlDto>>> GetDeleteGuardSqls(
-        [FromQuery] Guid? formFieldMasterId,
-        CancellationToken ct)
+    public async Task<ActionResult<List<FormFieldDeleteGuardSqlDto>>> GetDeleteGuardSqls([FromQuery] Guid? formFieldMasterId, CancellationToken ct)
     {
-        var rules = await _formDesignerService.GetDeleteGuardSqls(formFieldMasterId, ct);
-        return Ok(rules);
+        try
+        {
+            var rules = await _formDesignerService.GetDeleteGuardSqls(formFieldMasterId, ct);
+            return Ok(rules);
+        }
+        catch (HttpStatusCodeException ex)
+        {
+            return StatusCode((int)ex.StatusCode, ex.Message);
+        }
     }
 
-    /// <summary>
-    /// 取得單筆刪除防呆 SQL 規則。
-    /// </summary>
-    /// <param name="id">規則 ID</param>
-    /// <param name="ct">CancellationToken</param>
-    /// <returns>刪除防呆 SQL 規則</returns>
-    [HttpGet("delete-guard-sqls/{id:guid}")]
+    [HttpGet(Routes.DeleteGuardSqlById)]
     [ProducesResponseType(typeof(FormFieldDeleteGuardSqlDto), StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status404NotFound)]
-    public async Task<IActionResult> GetDeleteGuardSql(Guid id, CancellationToken ct)
+    public async Task<IActionResult> GetDeleteGuardSql([FromRoute] Guid id, CancellationToken ct)
     {
-        var rule = await _formDesignerService.GetDeleteGuardSql(id, ct);
-        if (rule == null) return NotFound();
-        return Ok(rule);
+        try
+        {
+            var rule = await _formDesignerService.GetDeleteGuardSql(id, ct);
+            if (rule == null)
+            {
+                return NotFound();
+            }
+
+            return Ok(rule);
+        }
+        catch (HttpStatusCodeException ex)
+        {
+            return StatusCode((int)ex.StatusCode, ex.Message);
+        }
     }
 
-    /// <summary>
-    /// 新增刪除防呆 SQL 規則。
-    /// </summary>
-    /// <param name="model">新增資料</param>
-    /// <param name="ct">CancellationToken</param>
-    /// <returns>新增後的刪除防呆 SQL 規則</returns>
-    [HttpPost("delete-guard-sqls")]
+    [HttpPost(Routes.DeleteGuardSqls)]
     [ProducesResponseType(typeof(FormFieldDeleteGuardSqlDto), StatusCodes.Status200OK)]
-    public async Task<ActionResult<FormFieldDeleteGuardSqlDto>> CreateDeleteGuardSql(
-        [FromBody] FormFieldDeleteGuardSqlCreateViewModel model,
-        CancellationToken ct)
+    public async Task<ActionResult<FormFieldDeleteGuardSqlDto>> CreateDeleteGuardSql([FromBody] FormFieldDeleteGuardSqlCreateViewModel model, CancellationToken ct)
     {
-        var userId = CurrentUser.IsAuthenticated ? CurrentUser.Id : (Guid?)null;
-        var rule = await _formDesignerService.CreateDeleteGuardSql(model, userId, ct);
-        return Ok(rule);
+        try
+        {
+            var userId = CurrentUser.IsAuthenticated ? CurrentUser.Id : (Guid?)null;
+            var rule = await _formDesignerService.CreateDeleteGuardSql(model, userId, ct);
+            return Ok(rule);
+        }
+        catch (HttpStatusCodeException ex)
+        {
+            return StatusCode((int)ex.StatusCode, ex.Message);
+        }
     }
 
-    /// <summary>
-    /// 更新刪除防呆 SQL 規則。
-    /// </summary>
-    /// <param name="id">規則 ID</param>
-    /// <param name="model">更新資料</param>
-    /// <param name="ct">CancellationToken</param>
-    /// <returns>更新後的刪除防呆 SQL 規則</returns>
-    [HttpPut("delete-guard-sqls/{id:guid}")]
+    [HttpPut(Routes.DeleteGuardSqlById)]
     [ProducesResponseType(typeof(FormFieldDeleteGuardSqlDto), StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status404NotFound)]
-    public async Task<IActionResult> UpdateDeleteGuardSql(
-        Guid id,
-        [FromBody] FormFieldDeleteGuardSqlUpdateViewModel model,
-        CancellationToken ct)
+    public async Task<IActionResult> UpdateDeleteGuardSql([FromRoute] Guid id, [FromBody] FormFieldDeleteGuardSqlUpdateViewModel model, CancellationToken ct)
     {
-        var userId = CurrentUser.IsAuthenticated ? CurrentUser.Id : (Guid?)null;
-        var rule = await _formDesignerService.UpdateDeleteGuardSql(id, model, userId, ct);
-        if (rule == null) return NotFound();
-        return Ok(rule);
+        try
+        {
+            var userId = CurrentUser.IsAuthenticated ? CurrentUser.Id : (Guid?)null;
+            var rule = await _formDesignerService.UpdateDeleteGuardSql(id, model, userId, ct);
+            if (rule == null)
+            {
+                return NotFound();
+            }
+
+            return Ok(rule);
+        }
+        catch (HttpStatusCodeException ex)
+        {
+            return StatusCode((int)ex.StatusCode, ex.Message);
+        }
     }
 
-    /// <summary>
-    /// 刪除刪除防呆 SQL 規則
-    /// </summary>
-    /// <param name="id">規則 ID</param>
-    /// <param name="ct">CancellationToken</param>
-    /// <returns>NoContent 回應</returns>
-    [HttpDelete("delete-guard-sqls/{id:guid}")]
+    [HttpDelete(Routes.DeleteGuardSqlById)]
     [ProducesResponseType(StatusCodes.Status204NoContent)]
     [ProducesResponseType(StatusCodes.Status404NotFound)]
-    public async Task<IActionResult> DeleteDeleteGuardSql(Guid id, CancellationToken ct)
+    public async Task<IActionResult> DeleteDeleteGuardSql([FromRoute] Guid id, CancellationToken ct)
     {
-        var userId = CurrentUser.IsAuthenticated ? CurrentUser.Id : (Guid?)null;
-        var deleted = await _formDesignerService.DeleteDeleteGuardSql(id, userId, ct);
-        if (!deleted) return NotFound();
-        return NoContent();
+        try
+        {
+            var userId = CurrentUser.IsAuthenticated ? CurrentUser.Id : (Guid?)null;
+            var deleted = await _formDesignerService.DeleteDeleteGuardSql(id, userId, ct);
+            if (!deleted)
+            {
+                return NotFound();
+            }
+
+            return NoContent();
+        }
+        catch (HttpStatusCodeException ex)
+        {
+            return StatusCode((int)ex.StatusCode, ex.Message);
+        }
     }
-    
-    // ────────── Form Header ──────────
+
+    #endregion
+
+    // ────────── Header ──────────
+    #region Header
 
     /// <summary>
     /// 儲存表單主檔資訊
     /// </summary>
-    /// <param name="model"></param>
-    /// <param name="ct"></param>
-    /// <returns></returns>
-    [HttpPost("headers")]
-    [ProducesResponseType(StatusCodes.Status200OK)]
+    [HttpPost(Routes.SaveHeaders)]
+    [ProducesResponseType(typeof(Guid), StatusCodes.Status200OK)]
     [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status400BadRequest)]
-    public async Task<IActionResult> SaveFormHeader( [FromBody] FormHeaderViewModel model, CancellationToken ct )
+    public async Task<IActionResult> SaveFormHeader([FromBody] FormHeaderViewModel model, CancellationToken ct)
     {
-        if ( model.BASE_TABLE_ID == Guid.Empty || model.VIEW_TABLE_ID == Guid.Empty )
-            return BadRequest("BASE_TABLE_ID / VIEW_TABLE_ID 不可為空");
+        try
+        {
+            if (model.BASE_TABLE_ID == Guid.Empty || model.VIEW_TABLE_ID == Guid.Empty)
+            {
+                return BadRequest("BASE_TABLE_ID / VIEW_TABLE_ID 不可為空");
+            }
 
-        // if ( _formDesignerService.CheckFormMasterExists( model.BASE_TABLE_ID, model.VIEW_TABLE_ID, model.ID ) )
-        //     return Conflict("相同的表格及 View 組合已存在");
-
-        var id = await _formDesignerService.SaveFormHeader( model, ct );
-        return Ok( new { id } );
+            var id = await _formDesignerService.SaveFormHeader(model, ct);
+            return Ok(new { id });
+        }
+        catch (HttpStatusCodeException ex)
+        {
+            return StatusCode((int)ex.StatusCode, ex.Message);
+        }
     }
+
+    #endregion
+
+    // ────────── Private Helpers ──────────
+    #region Private Helpers
+
+    private IActionResult? ValidateUpsertField(FormFieldViewModel model)
+    {
+        if (model.SchemaType == TableSchemaQueryType.OnlyTable &&
+            (model.QUERY_COMPONENT != QueryComponentType.None || model.CAN_QUERY == true))
+        {
+            return Conflict("無法往主表寫入查詢條件");
+        }
+
+        if (model.SchemaType == TableSchemaQueryType.OnlyTable &&
+            (model.QUERY_DEFAULT_VALUE != null || model.CAN_QUERY == true))
+        {
+            return Conflict("無法往主表寫入查詢預設值");
+        }
+
+        if (model.SchemaType == TableSchemaQueryType.OnlyView &&
+            (model.CAN_QUERY == false && model.QUERY_COMPONENT != QueryComponentType.None))
+        {
+            return Conflict("無法更改未開放查詢條件的查詢元件");
+        }
+
+        if (model.ID != Guid.Empty &&
+            _formDesignerService.HasValidationRules(model.ID) &&
+            _formDesignerService.GetControlTypeByFieldId(model.ID) != model.CONTROL_TYPE)
+        {
+            return Conflict("已有驗證規則，無法變更控制元件類型");
+        }
+
+        return null;
+    }
+
+    #endregion
 }
