@@ -213,7 +213,7 @@ public class FormService : IFormService
                 }
 
                 var rowFields = fieldTemplates
-                    .Where(f => !sidColumnsToHide.Contains(f.Column))
+                    // .Where(f => !sidColumnsToHide.Contains(f.Column))
                     .Select(f => new FormFieldInputViewModel
                     {
                         FieldConfigId = f.FieldConfigId,
