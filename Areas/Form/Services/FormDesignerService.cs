@@ -784,7 +784,7 @@ WHERE c.FORM_FIELD_MASTER_ID = @MasterId
     /// - OnlyTable：視為純維運，不提供查詢條件 → 把查詢相關清空/關閉
     /// - Both/Default：保留原設定
     /// </summary>
-    private static void ApplySchemaPolicy(FormFieldViewModel f, TableSchemaQueryType schemaType)
+    public void ApplySchemaPolicy(FormFieldViewModel f, TableSchemaQueryType schemaType)
     {
         switch (schemaType)
         {
@@ -807,7 +807,7 @@ WHERE c.FORM_FIELD_MASTER_ID = @MasterId
                 f.CONTROL_TYPE_WHITELIST = null;
                 break;
             
-            case TableSchemaQueryType.OnlyFunction:
+            case TableSchemaQueryType.OnlyTvf:
                 // 完全比照 View，但語意獨立
                 f.IS_EDITABLE = null;
                 f.IS_REQUIRED = null;
@@ -983,7 +983,7 @@ WHERE c.FORM_FIELD_MASTER_ID = @MasterId
             throw new InvalidOperationException($"缺少必要欄位：{string.Join(", ", missing)}");
     }
 
-    private Task<Guid> ResolveMasterIdAsync(
+    public Task<Guid> ResolveMasterIdAsync(
         SqlConnection conn,
         SqlTransaction tx,
         string tableName,
@@ -1001,13 +1001,14 @@ WHERE c.FORM_FIELD_MASTER_ID = @MasterId
             BASE_TABLE_NAME = schemaType == TableSchemaQueryType.OnlyTable ? tableName : null,
             VIEW_TABLE_NAME = schemaType == TableSchemaQueryType.OnlyView ? tableName : null,
             DETAIL_TABLE_NAME = schemaType == TableSchemaQueryType.OnlyDetail ? tableName : null,
-            MAPPING_TABLE_NAME = schemaType == TableSchemaQueryType.OnlyMapping ? tableName : null
+            MAPPING_TABLE_NAME = schemaType == TableSchemaQueryType.OnlyMapping ? tableName : null,
+            TVP_TABLE_NAME = schemaType == TableSchemaQueryType.OnlyTvf ? tableName : null
         };
 
         return _formFieldMasterService.GetOrCreateInTxAsync(conn, tx, master, ct);
     }
 
-    private async Task UpsertMissingConfigsInTxAsync(
+    public async Task UpsertMissingConfigsInTxAsync(
         SqlConnection conn,
         SqlTransaction tx,
         string tableName,
@@ -2253,9 +2254,9 @@ WHERE c.FORM_FIELD_MASTER_ID = @MasterId
     }
 
     /// <summary>
-    /// 從 SQL Server 的 INFORMATION_SCHEMA 取得指定表的欄位結構（交易內）。
+    /// 從 SQL Server 取得指定「表」的欄位結構（交易內）。
     /// </summary>
-    private async Task<List<DbColumnInfo>> GetTableSchemaInTxAsync(
+    private Task<List<DbColumnInfo>> GetTableSchemaInTxAsync(
         SqlConnection conn,
         SqlTransaction tx,
         string tableName,
@@ -2263,9 +2264,23 @@ WHERE c.FORM_FIELD_MASTER_ID = @MasterId
     {
         ValidateTableName(tableName);
 
+        // 相容舊用法：預設 dbo
+        return GetObjectSchemaInTxAsync(conn, tx, "dbo", tableName, ct);
+    }
+
+    /// <summary>
+    /// 從 SQL Server 取得指定物件（Table/View/TVF）的欄位結構（交易內）。
+    /// </summary>
+    private async Task<List<DbColumnInfo>> GetObjectSchemaInTxAsync(
+        SqlConnection conn,
+        SqlTransaction tx,
+        string schemaName,
+        string objectName,
+        CancellationToken ct)
+    {
         var columns = await conn.QueryAsync<DbColumnInfo>(new CommandDefinition(
-            Sql.TableSchemaSelect,
-            new { TableName = tableName },
+            Sql.ObjectSchemaSelect,
+            new { SchemaName = schemaName, ObjectName = objectName },
             transaction: tx,
             cancellationToken: ct));
 
@@ -2296,7 +2311,7 @@ WHERE c.FORM_FIELD_MASTER_ID = @MasterId
     /// <summary>
     /// 從 FORM_FIELD_CONFIG 查出該表的欄位設定資訊（交易內）。
     /// </summary>
-    private async Task<Dictionary<string, FormFieldConfigDto>> GetFieldConfigsInTxAsync(
+    public async Task<Dictionary<string, FormFieldConfigDto>> GetFieldConfigsInTxAsync(
         SqlConnection conn,
         SqlTransaction tx,
         string tableName,
@@ -2498,6 +2513,23 @@ FROM INFORMATION_SCHEMA.COLUMNS
 WHERE TABLE_NAME = @TableName
 ORDER BY ORDINAL_POSITION";
 
+        // 20260130，可查 TVF
+        public const string ObjectSchemaSelect = @"
+/**/
+SELECT
+    c.name        AS COLUMN_NAME,
+    t.name        AS DATA_TYPE,
+    c.column_id   AS ORDINAL_POSITION,
+    CASE WHEN c.is_nullable = 1 THEN 'YES' ELSE 'NO' END AS IS_NULLABLE
+FROM sys.objects o
+JOIN sys.columns c ON o.object_id = c.object_id
+JOIN sys.types t   ON c.user_type_id = t.user_type_id
+WHERE o.name = @ObjectName
+  AND SCHEMA_NAME(o.schema_id) = @SchemaName
+  AND o.type IN ('U','V','IF','TF')
+ORDER BY c.column_id;
+";
+        
         public const string UpsertFormMaster = @"/**/
 MERGE FORM_FIELD_MASTER AS target
 USING (SELECT @ID AS ID) AS src
