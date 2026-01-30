@@ -24,7 +24,7 @@ public interface IFormDesignerService
 
     Task<FormFieldListViewModel?> EnsureFieldsSaved( string tableName, Guid? formMasterId, TableSchemaQueryType schemaType, CancellationToken ct );
     
-    Task<FormFieldListViewModel> GetFieldsByTableName( string tableName, Guid? formMasterId, TableSchemaQueryType schemaType );
+    Task<FormFieldListViewModel> GetFieldsByTableName( string tableName, Guid? formMasterId, TableSchemaQueryType schemaType, Dictionary<Guid, Guid>? preloadedDropdownMap = null );
 
     /// <summary>
     /// 依欄位設定 ID 取得單一欄位設定。
