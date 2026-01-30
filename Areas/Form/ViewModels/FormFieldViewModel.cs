@@ -31,6 +31,8 @@ public class FormFieldViewModel
     
     public bool IsNullable { get; set; }
     
+    public bool IS_TVF_QUERY_PARAMETER { get; set; }
+    
     /// <summary>
     /// 欄位名稱
     /// </summary>

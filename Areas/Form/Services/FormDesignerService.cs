@@ -1033,6 +1033,7 @@ WHERE c.FORM_FIELD_MASTER_ID = @MasterId
                 col.COLUMN_NAME,
                 col.DATA_TYPE,
                 col.SourceIsNullable,
+                col.isTvfQueryParameter,
                 masterId,
                 tableName,
                 order,
@@ -1237,6 +1238,7 @@ WHERE c.FORM_FIELD_MASTER_ID = @MasterId
             model.COLUMN_NAME,
             model.DISPLAY_NAME,
             model.DATA_TYPE,
+            model.IS_TVF_QUERY_PARAMETER,
             CONTROL_TYPE = controlType,
             IS_REQUIRED = isRequired,
             model.IS_EDITABLE,
@@ -2471,7 +2473,7 @@ WHERE TC.CONSTRAINT_TYPE = 'PRIMARY KEY'
         return rows.ToHashSet(StringComparer.OrdinalIgnoreCase);
     }
 
-    private FormFieldViewModel CreateDefaultFieldConfig(string columnName, string dataType, bool sourceIsNullable, Guid masterId, string tableName, long index, TableSchemaQueryType schemaType)
+    private FormFieldViewModel CreateDefaultFieldConfig(string columnName, string dataType, bool sourceIsNullable, bool isTvfQueryParameter, Guid masterId, string tableName, long index, TableSchemaQueryType schemaType)
     {
         return new FormFieldViewModel
         {
@@ -2481,6 +2483,7 @@ WHERE TC.CONSTRAINT_TYPE = 'PRIMARY KEY'
             COLUMN_NAME = columnName,
             DATA_TYPE = dataType,
             IsNullable = sourceIsNullable,
+            IS_TVF_QUERY_PARAMETER = isTvfQueryParameter,
             CONTROL_TYPE = FormFieldHelper.GetDefaultControlType(dataType), // 依型態決定 ControlType
             IS_REQUIRED = false,
             IS_EDITABLE = true,
@@ -2710,9 +2713,10 @@ WHEN MATCHED THEN
     UPDATE SET
         DISPLAY_NAME   = @DISPLAY_NAME,
         CONTROL_TYPE   = @CONTROL_TYPE,
-        IS_REQUIRED     = @IS_REQUIRED,
+        IS_REQUIRED    = @IS_REQUIRED,
         IS_EDITABLE    = @IS_EDITABLE,
         IS_DISPLAYED   = @IS_DISPLAYED,
+        IS_TVF_QUERY_PARAMETER         = @IS_TVF_QUERY_PARAMETER,
         QUERY_DEFAULT_VALUE  = @QUERY_DEFAULT_VALUE,
         QUERY_COMPONENT = @QUERY_COMPONENT,
         QUERY_CONDITION = @QUERY_CONDITION,
@@ -2721,14 +2725,21 @@ WHEN MATCHED THEN
         COLUMN_IS_NULLABLE = @COLUMN_IS_NULLABLE,    
         EDIT_TIME      = GETDATE(),
         EDIT_USER      = @EDIT_USER
+
 WHEN NOT MATCHED THEN
     INSERT (
         ID, FORM_FIELD_MASTER_ID, TABLE_NAME, COLUMN_NAME, DISPLAY_NAME, DATA_TYPE,
-        CONTROL_TYPE, IS_REQUIRED, IS_EDITABLE, IS_DISPLAYED, QUERY_DEFAULT_VALUE, FIELD_ORDER, QUERY_COMPONENT, QUERY_CONDITION, CAN_QUERY, DETAIL_TO_RELATION_DEFAULT_COLUMN, CREATE_TIME, IS_DELETE, COLUMN_IS_NULLABLE, CREATE_USER, EDIT_USER
+        CONTROL_TYPE, IS_REQUIRED, IS_EDITABLE, IS_DISPLAYED, IS_TVF_QUERY_PARAMETER, 
+        QUERY_DEFAULT_VALUE, FIELD_ORDER, QUERY_COMPONENT, QUERY_CONDITION, CAN_QUERY, 
+        DETAIL_TO_RELATION_DEFAULT_COLUMN, CREATE_TIME, IS_DELETE, COLUMN_IS_NULLABLE, 
+        CREATE_USER, EDIT_USER
     )
     VALUES (
         @ID, @FORM_FIELD_MASTER_ID, @TABLE_NAME, @COLUMN_NAME, @DISPLAY_NAME, @DATA_TYPE,
-        @CONTROL_TYPE, @IS_REQUIRED, @IS_EDITABLE, @IS_DISPLAYED, @QUERY_DEFAULT_VALUE, @FIELD_ORDER, @QUERY_COMPONENT, @QUERY_CONDITION, @CAN_QUERY, @DETAIL_TO_RELATION_DEFAULT_COLUMN, GETDATE(), 0, @COLUMN_IS_NULLABLE, @CREATE_USER, @EDIT_USER
+        @CONTROL_TYPE, @IS_REQUIRED, @IS_EDITABLE, @IS_DISPLAYED, @IS_TVF_QUERY_PARAMETER,
+        @QUERY_DEFAULT_VALUE, @FIELD_ORDER, @QUERY_COMPONENT, @QUERY_CONDITION, @CAN_QUERY, 
+        @DETAIL_TO_RELATION_DEFAULT_COLUMN, GETDATE(), 0, @COLUMN_IS_NULLABLE, 
+        @CREATE_USER, @EDIT_USER
     );";
 
         public const string CheckFieldExists = @"/**/

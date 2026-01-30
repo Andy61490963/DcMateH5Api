@@ -2,6 +2,7 @@
 using Dapper;
 using DcMateH5Api.Areas.Form.Interfaces;
 using DcMateH5Api.Areas.Form.Interfaces.FormLogic;
+using DcMateH5Api.Areas.Form.Models;
 using DcMateH5Api.Areas.Form.Options;
 using DcMateH5Api.Areas.Form.ViewModels;
 using DcMateH5Api.Services.CurrentUser.Interfaces;
@@ -44,6 +45,12 @@ public class FormDesignerTableValueFunctionService : IFormDesignerTableValueFunc
         _relationColumnSuffixes = resolvedSettings.GetRelationColumnSuffixesOrDefault();
     }
     
+    private Guid GetCurrentUserId()
+    {
+        var user = _currentUser.Get();
+        return user.Id;
+    }
+    
     /// <summary>
     /// 
     /// </summary>
@@ -72,6 +79,46 @@ public class FormDesignerTableValueFunctionService : IFormDesignerTableValueFunc
         }, ct: ct);
     }
     
+    public async Task<Guid> SaveTableValueFunctionFormHeader(FormHeaderTableValueFunctionViewModel model, CancellationToken ct)
+    {
+        var whereTvf = new WhereBuilder<FormFieldMasterDto>()
+            .AndEq(x => x.ID, model.TVF_TABLE_ID)
+            .AndNotDeleted();
+        
+        var tvfMaster = await _sqlHelper.SelectFirstOrDefaultAsync(whereTvf)
+                        ?? throw new InvalidOperationException("TVF 查無資料");
+
+        var tvfTableName = tvfMaster.TVP_TABLE_NAME;
+        
+        // 執行更新
+        var affectedRows = await _con.ExecuteAsync(Sql.UpdateFormMaster, new
+        {
+            model.ID, 
+            model.FORM_NAME,
+            model.FORM_CODE,
+            model.FORM_DESCRIPTION,
+            
+            model.TVF_TABLE_ID,
+            TVP_TABLE_NAME = tvfTableName,
+            
+            STATUS = (int)TableStatusType.Active,
+            SCHEMA_TYPE = TableSchemaQueryType.All,
+            FUNCTION_TYPE = FormFunctionType.TableValueFunctionMaintenance,
+
+            // UPDATE 只需要更新編輯時間與編輯者
+            EDIT_TIME = DateTime.Now,
+            EDIT_USER = GetCurrentUserId()
+        });
+
+        // 如果受影響行數為 0，代表 ID 不存在
+        if (affectedRows == 0)
+        {
+            throw new Exception($"更新失敗：找不到 ID 為 {model.ID} 的資料。");
+        }
+
+        return model.ID;
+    }
+    
     /// <summary>
     /// 從 SQL Server 取得指定物件（Table/View/TVF）的欄位結構（交易內）。
     /// </summary>
@@ -83,7 +130,7 @@ public class FormDesignerTableValueFunctionService : IFormDesignerTableValueFunc
         CancellationToken ct)
     {
         var columns = await conn.QueryAsync<DbColumnInfo>(new CommandDefinition(
-            Sql.ObjectSchemaSelect,
+            Sql.ObjectSchemaAndTvfInputsSelect,
             new { SchemaName = schemaName, ObjectName = objectName },
             transaction: tx,
             cancellationToken: ct));
@@ -111,6 +158,7 @@ public class FormDesignerTableValueFunctionService : IFormDesignerTableValueFunc
         {
             var columnName = col.COLUMN_NAME;
             var dataType = col.DATA_TYPE;
+            var isTvfQueryParameter = col.isTvfQueryParameter;
             var isNullable = col.SourceIsNullable;
 
             var hasCfg = configs.TryGetValue(columnName, out var cfg);
@@ -124,6 +172,7 @@ public class FormDesignerTableValueFunctionService : IFormDesignerTableValueFunc
                 TableName = tvpName,
                 IsNullable = isNullable,
                 COLUMN_NAME = columnName,
+                IS_TVF_QUERY_PARAMETER = isTvfQueryParameter,
                 DISPLAY_NAME = cfg?.DISPLAY_NAME ?? columnName,
                 DATA_TYPE = dataType,
                 CONTROL_TYPE = cfg?.CONTROL_TYPE,
@@ -155,20 +204,52 @@ public class FormDesignerTableValueFunctionService : IFormDesignerTableValueFunc
     
     private static class Sql
     {
-        public const string ObjectSchemaSelect = @"
+        public const string ObjectSchemaAndTvfInputsSelect = @"
 /**/
+-- (1) TVF input parameters
 SELECT
-    c.name        AS COLUMN_NAME,
-    t.name        AS DATA_TYPE,
-    c.column_id   AS ORDINAL_POSITION,
-    CASE WHEN c.is_nullable = 1 THEN 'YES' ELSE 'NO' END AS IS_NULLABLE
+    p.name AS COLUMN_NAME,
+    t.name AS DATA_TYPE,
+    p.parameter_id AS ORDINAL_POSITION,
+    'YES' AS IS_NULLABLE,
+    CONVERT(bit, 1) AS isTvfQueryParameter
+FROM sys.objects o
+JOIN sys.parameters p ON o.object_id = p.object_id
+JOIN sys.types t ON p.user_type_id = t.user_type_id
+WHERE o.name = @ObjectName
+  AND SCHEMA_NAME(o.schema_id) = @SchemaName
+  AND o.type IN ('IF','TF')
+
+UNION ALL
+
+-- (2) Returned table columns (Table/View/TVF)
+SELECT
+    c.name AS COLUMN_NAME,
+    t.name AS DATA_TYPE,
+    c.column_id AS ORDINAL_POSITION,
+    CASE WHEN c.is_nullable = 1 THEN 'YES' ELSE 'NO' END AS IS_NULLABLE,
+    CONVERT(bit, 0) AS isTvfQueryParameter
 FROM sys.objects o
 JOIN sys.columns c ON o.object_id = c.object_id
-JOIN sys.types t   ON c.user_type_id = t.user_type_id
+JOIN sys.types t ON c.user_type_id = t.user_type_id
 WHERE o.name = @ObjectName
   AND SCHEMA_NAME(o.schema_id) = @SchemaName
   AND o.type IN ('U','V','IF','TF')
-ORDER BY c.column_id;
+
+ORDER BY isTvfQueryParameter DESC, ORDINAL_POSITION;
 ";
+        
+        public const string UpdateFormMaster = @"
+UPDATE FORM_FIELD_MASTER
+SET
+    FORM_NAME        = @FORM_NAME,
+    FORM_CODE        = @FORM_CODE,
+    FORM_DESCRIPTION = @FORM_DESCRIPTION,
+    STATUS           = @STATUS,
+    SCHEMA_TYPE      = @SCHEMA_TYPE,
+    FUNCTION_TYPE    = @FUNCTION_TYPE,
+    EDIT_TIME        = @EDIT_TIME,
+    EDIT_USER        = @EDIT_USER
+WHERE ID = @ID;";
     }
 }

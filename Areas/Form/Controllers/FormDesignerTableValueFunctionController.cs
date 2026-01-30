@@ -117,4 +117,28 @@ public class FormDesignerTableValueFunctionController : BaseController
             return StatusCode((int)ex.StatusCode, ex.Message);
         }
     }
+    
+    /// <summary>
+    /// 儲存表單主檔資訊
+    /// </summary>
+    [HttpPost(Routes.SaveHeaders)]
+    [ProducesResponseType(typeof(Guid), StatusCodes.Status200OK)]
+    [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status400BadRequest)]
+    public async Task<IActionResult> SaveFormHeader([FromBody] FormHeaderTableValueFunctionViewModel model, CancellationToken ct)
+    {
+        try
+        {
+            if (model.TVF_TABLE_ID == Guid.Empty )
+            {
+                return BadRequest("TVP_TABLE_ID 不可為空");
+            }
+
+            var id = await _formDesignerTableValueFunctionService.SaveTableValueFunctionFormHeader(model, ct);
+            return Ok(new { id });
+        }
+        catch (HttpStatusCodeException ex)
+        {
+            return StatusCode((int)ex.StatusCode, ex.Message);
+        }
+    }
 }
