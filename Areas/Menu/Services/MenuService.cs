@@ -104,6 +104,9 @@ namespace DCMATEH5API.Areas.Menu.Services
         {
             foreach (var node in nodes)
             {
+                // 如果傳入的是空字串，代表是第一層，將返回路徑設為首頁
+                string backUrlToUse = string.IsNullOrEmpty(currentBackUrl) ? "index.html" : currentBackUrl;
+
                 var targetUrl = string.IsNullOrEmpty(node.Url) ? $"{node.Title}/index.html" : node.Url;
 
                 // 加入目前層級的磁磚清單
@@ -112,7 +115,7 @@ namespace DCMATEH5API.Areas.Menu.Services
                     Sid = node.Id,
                     Title = node.Title,
                     Url = targetUrl,
-                    BackUrl = currentBackUrl, // ⭐ 設定返回的路徑
+                    BackUrl = backUrlToUse, // ⭐ 設定返回的路徑
                     Parameter = node.Parameter,
                     Property = node.SourceType,
                     ImgIcon = node.ImgIcon,
@@ -128,7 +131,7 @@ namespace DCMATEH5API.Areas.Menu.Services
                         Sid = node.Id,
                         Title = node.Title,
                         Url = node.Url,
-                        BackUrl = currentBackUrl, // ⭐ 目錄物件也記錄返回路徑
+                        BackUrl = backUrlToUse, // ⭐ 目錄物件也記錄返回路徑
                         Parameter = node.Parameter,
                         Property = node.SourceType,
                         ImgIcon = node.ImgIcon,
@@ -156,7 +159,7 @@ namespace DCMATEH5API.Areas.Menu.Services
                         Sid = node.Id,
                         Title = node.Title,
                         Url = node.Url,
-                        BackUrl = currentBackUrl, // 頁面同樣記錄返回路徑
+                        BackUrl = backUrlToUse, // 頁面同樣記錄返回路徑
                         Parameter = node.Parameter,
                         Property = node.SourceType,
                         ImgIcon = node.ImgIcon
