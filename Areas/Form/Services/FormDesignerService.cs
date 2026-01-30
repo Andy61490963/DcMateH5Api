@@ -500,16 +500,14 @@ public class FormDesignerService : IFormDesignerService
     /// <returns>符合條件的表名稱集合</returns>
     public List<string> SearchTables(string? tableName, TableQueryType queryType)
     {
-        // 1) 輸入驗證（防 SQL Injection / 非預期字元）
-        // - 僅允許英數、底線與點
-        // - 點是為了支援 schema.table 的輸入格式
+        // 1) 僅允許 schema.object 的「查詢關鍵字」字元（同你原本）
         if (!string.IsNullOrWhiteSpace(tableName) &&
             !Regex.IsMatch(tableName, @"^[A-Za-z0-9_\.]+$", RegexOptions.CultureInvariant))
         {
             throw new ArgumentException("tableName 含非法字元");
         }
 
-        // 2) 解析 schema / table
+        // 2) 解析 schema / name
         string? schema = null;
         string? name = null;
 
@@ -527,39 +525,36 @@ public class FormDesignerService : IFormDesignerService
             }
         }
 
-        // 3) 依 enum 決定 TABLE_TYPE 條件
-        // - All           → 不加 TABLE_TYPE 條件
-        // - QueryTable    → BASE TABLE
-        // - OnlyViewTable → VIEW
-        string? tableType = queryType switch
+        // 3) sys.objects type 篩選
+        // U = user table, V = view, TF/IF = table-valued function
+        string? objectType = queryType switch
         {
             TableQueryType.All => null,
-            TableQueryType.QueryTable => "BASE TABLE",
-            TableQueryType.OnlyViewTable => "VIEW",
+            TableQueryType.QueryTable => "U",
+            TableQueryType.OnlyViewTable => "V",
+            TableQueryType.OnlyFunction => "F", // 我們用內部代碼代表 TF/IF（避免 magic string 散落）
             _ => throw new ArgumentOutOfRangeException(nameof(queryType))
         };
 
         const string sql = @"
 /**/
 SELECT
-    TABLE_SCHEMA + '.' + TABLE_NAME AS FullName
-FROM INFORMATION_SCHEMA.TABLES
-WHERE (@tableType IS NULL OR TABLE_TYPE = @tableType)
-  AND (@schema    IS NULL OR TABLE_SCHEMA = @schema)
-  AND (@name      IS NULL OR TABLE_NAME LIKE '%' + @name + '%')
-ORDER BY
-    TABLE_SCHEMA,
-    TABLE_NAME;
+    s.name + '.' + o.name AS FullName
+FROM sys.objects o
+INNER JOIN sys.schemas s ON s.schema_id = o.schema_id
+WHERE
+    (
+        @objectType IS NULL
+        OR (@objectType = 'U' AND o.type = 'U')
+        OR (@objectType = 'V' AND o.type = 'V')
+        OR (@objectType = 'F' AND o.type IN ('TF','IF'))
+    )
+    AND (@schema IS NULL OR s.name = @schema)
+    AND (@name   IS NULL OR o.name LIKE '%' + @name + '%')
+ORDER BY s.name, o.name;
 ";
 
-        var param = new
-        {
-            tableType,
-            schema,
-            name
-        };
-
-        return _con.Query<string>(sql, param).ToList();
+        return _con.Query<string>(sql, new { objectType, schema, name }).ToList();
     }
 
     /// <summary>
@@ -805,6 +800,15 @@ WHERE c.FORM_FIELD_MASTER_ID = @MasterId
 
             case TableSchemaQueryType.OnlyView:
                 // 只查不改：編輯控制改為 null、不可編輯、必填關閉
+                f.IS_EDITABLE = null;
+                f.IS_REQUIRED = null;
+                f.IS_VALIDATION_RULE = null;
+                f.CONTROL_TYPE = null;
+                f.CONTROL_TYPE_WHITELIST = null;
+                break;
+            
+            case TableSchemaQueryType.OnlyFunction:
+                // 完全比照 View，但語意獨立
                 f.IS_EDITABLE = null;
                 f.IS_REQUIRED = null;
                 f.IS_VALIDATION_RULE = null;

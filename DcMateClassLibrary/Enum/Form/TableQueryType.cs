@@ -11,5 +11,8 @@ public enum TableQueryType
     QueryTable = 1,
     
     [Display(Name = "查詢View表", Description = "查詢View表")]
-    OnlyViewTable = 2
+    OnlyViewTable = 2,
+    
+    [Display(Name = "查詢 Table-Valued Function 表", Description = "查詢 Table-Valued Function 表")]
+    OnlyFunction = 3
 }
