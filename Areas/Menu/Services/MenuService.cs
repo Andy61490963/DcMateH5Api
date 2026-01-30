@@ -100,7 +100,7 @@ namespace DCMATEH5API.Areas.Menu.Services
         /// <summary>
         /// 遞迴平鋪所有選單與頁面至 Response
         /// </summary>
-        private void FillPagesRecursive(List<MenuNavigationViewModel> nodes, MenuResponse response, List<TileViewModel> parentTiles)
+        private void FillPagesRecursive(List<MenuNavigationViewModel> nodes, MenuResponse response, List<TileViewModel> parentTiles, string currentBackUrl = "")
         {
             foreach (var node in nodes)
             {
@@ -112,6 +112,7 @@ namespace DCMATEH5API.Areas.Menu.Services
                     Sid = node.Id,
                     Title = node.Title,
                     Url = targetUrl,
+                    BackUrl = currentBackUrl, // ⭐ 設定返回的路徑
                     Parameter = node.Parameter,
                     Property = node.SourceType,
                     ImgIcon = node.ImgIcon,
@@ -127,6 +128,7 @@ namespace DCMATEH5API.Areas.Menu.Services
                         Sid = node.Id,
                         Title = node.Title,
                         Url = node.Url,
+                        BackUrl = currentBackUrl, // ⭐ 目錄物件也記錄返回路徑
                         Parameter = node.Parameter,
                         Property = node.SourceType,
                         ImgIcon = node.ImgIcon,
@@ -137,7 +139,9 @@ namespace DCMATEH5API.Areas.Menu.Services
                     // 往下遞迴處理子項
                     if (node.Children != null && node.Children.Any())
                     {
-                        FillPagesRecursive(node.Children, response, folder.Tiles);
+                        //FillPagesRecursive(node.Children, response, folder.Tiles);
+                        // ⭐ 關鍵：將「目前的 targetUrl」傳入下一層，當作子項的「返回路徑」
+                        FillPagesRecursive(node.Children, response, folder.Tiles, targetUrl);
                     }
 
                     // 加入字典
@@ -152,6 +156,7 @@ namespace DCMATEH5API.Areas.Menu.Services
                         Sid = node.Id,
                         Title = node.Title,
                         Url = node.Url,
+                        BackUrl = currentBackUrl, // 頁面同樣記錄返回路徑
                         Parameter = node.Parameter,
                         Property = node.SourceType,
                         ImgIcon = node.ImgIcon

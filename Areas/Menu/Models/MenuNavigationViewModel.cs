@@ -53,6 +53,7 @@ namespace DCMATEH5API.Areas.Menu.Models
         public string ImgIcon { get; set; } = string.Empty; // 新增 ImgIcon
         public string? Desc { get; set; }
 
+        public string BackUrl { get; set; } // ⭐ 新增這行
     }
 
     // 4. 原始資料零件 (接 SQL 用)
