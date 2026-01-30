@@ -81,42 +81,45 @@ public class FormDesignerTableValueFunctionService : IFormDesignerTableValueFunc
     
     public async Task<Guid> SaveTableValueFunctionFormHeader(FormHeaderTableValueFunctionViewModel model, CancellationToken ct)
     {
+        // 1. 查詢 TVF 表格資訊
         var whereTvf = new WhereBuilder<FormFieldMasterDto>()
             .AndEq(x => x.ID, model.TVF_TABLE_ID)
             .AndNotDeleted();
-        
+    
         var tvfMaster = await _sqlHelper.SelectFirstOrDefaultAsync(whereTvf)
                         ?? throw new InvalidOperationException("TVF 查無資料");
 
         var tvfTableName = tvfMaster.TVP_TABLE_NAME;
-        
-        // 執行更新
-        var affectedRows = await _con.ExecuteAsync(Sql.UpdateFormMaster, new
+        var currentUserId = GetCurrentUserId();
+        var now = DateTime.Now;
+
+        // 2. 執行 MERGE (Upsert)
+        // 注意：改用 ExecuteScalarAsync 來接收 OUTPUT INSERTED.ID
+        var id = await _con.ExecuteScalarAsync<Guid>(Sql.UpsertFormMasterTvf, new
         {
             model.ID, 
             model.FORM_NAME,
             model.FORM_CODE,
             model.FORM_DESCRIPTION,
-            
-            model.TVF_TABLE_ID,
+        
+            // TVF 專用欄位
+            TVF_TABLE_ID = model.TVF_TABLE_ID,
             TVP_TABLE_NAME = tvfTableName,
-            
+        
             STATUS = (int)TableStatusType.Active,
             SCHEMA_TYPE = TableSchemaQueryType.All,
             FUNCTION_TYPE = FormFunctionType.TableValueFunctionMaintenance,
 
-            // UPDATE 只需要更新編輯時間與編輯者
-            EDIT_TIME = DateTime.Now,
-            EDIT_USER = GetCurrentUserId()
+            // 編輯資訊 (Update 用)
+            EDIT_TIME = now,
+            EDIT_USER = currentUserId,
+
+            // 建立資訊 (Insert 用，MERGE 時必須同時提供)
+            CREATE_TIME = now,
+            CREATE_USER = currentUserId
         });
 
-        // 如果受影響行數為 0，代表 ID 不存在
-        if (affectedRows == 0)
-        {
-            throw new Exception($"更新失敗：找不到 ID 為 {model.ID} 的資料。");
-        }
-
-        return model.ID;
+        return id;
     }
     
     /// <summary>
@@ -201,7 +204,7 @@ public class FormDesignerTableValueFunctionService : IFormDesignerTableValueFunc
             Fields = fields.OrderBy(f => f.FIELD_ORDER).ToList()
         };
     }
-    
+
     private static class Sql
     {
         public const string ObjectSchemaAndTvfInputsSelect = @"
@@ -238,18 +241,62 @@ WHERE o.name = @ObjectName
 
 ORDER BY isTvfQueryParameter DESC, ORDINAL_POSITION;
 ";
+
+        public const string UpsertFormMasterTvf = @"
+MERGE FORM_FIELD_MASTER AS target
+USING (SELECT @ID AS ID) AS src
+ON target.ID = src.ID
+
+WHEN MATCHED THEN
+    UPDATE SET
+        FORM_NAME          = @FORM_NAME,
+        FORM_CODE          = @FORM_CODE,
+        FORM_DESCRIPTION   = @FORM_DESCRIPTION,
         
-        public const string UpdateFormMaster = @"
-UPDATE FORM_FIELD_MASTER
-SET
-    FORM_NAME        = @FORM_NAME,
-    FORM_CODE        = @FORM_CODE,
-    FORM_DESCRIPTION = @FORM_DESCRIPTION,
-    STATUS           = @STATUS,
-    SCHEMA_TYPE      = @SCHEMA_TYPE,
-    FUNCTION_TYPE    = @FUNCTION_TYPE,
-    EDIT_TIME        = @EDIT_TIME,
-    EDIT_USER        = @EDIT_USER
-WHERE ID = @ID;";
+        -- 這裡只更新 TVF 相關欄位，避免影響其他類型 (Base/View/Mapping)
+        TVP_TABLE_NAME     = @TVP_TABLE_NAME,
+        TVP_TABLE_ID       = @TVF_TABLE_ID,
+        
+        STATUS             = @STATUS,
+        SCHEMA_TYPE        = @SCHEMA_TYPE,
+        FUNCTION_TYPE      = @FUNCTION_TYPE,
+        EDIT_USER          = @EDIT_USER,
+        EDIT_TIME          = @EDIT_TIME
+
+WHEN NOT MATCHED THEN
+    INSERT (
+        ID,
+        FORM_NAME,
+        FORM_CODE,
+        FORM_DESCRIPTION,
+        TVP_TABLE_NAME,   -- 插入時指定 TVP 欄位
+        TVP_TABLE_ID,
+        STATUS,
+        SCHEMA_TYPE,
+        FUNCTION_TYPE,
+        IS_DELETE,
+        CREATE_USER,
+        CREATE_TIME,
+        EDIT_USER,
+        EDIT_TIME
+    )
+    VALUES (
+        @ID,
+        @FORM_NAME,
+        @FORM_CODE,
+        @FORM_DESCRIPTION,
+        @TVP_TABLE_NAME,
+        @TVF_TABLE_ID,
+        @STATUS,
+        @SCHEMA_TYPE,
+        @FUNCTION_TYPE,
+        0,                -- IS_DELETE
+        @CREATE_USER,
+        @CREATE_TIME,
+        @EDIT_USER,
+        @EDIT_TIME
+    )
+
+OUTPUT INSERTED.ID;";
     }
 }

@@ -393,7 +393,7 @@ public class FormDesignerService : IFormDesignerService
 
         var master = await GetFormMasterAsync(id, ct)
             ?? throw new KeyNotFoundException("查無主檔（FormMaster）。");
-
+        
         if (!master.FUNCTION_TYPE.HasValue)
             throw new InvalidOperationException("主檔未設定 FUNCTION_TYPE，請先完成表單主檔設定。");
 
@@ -413,15 +413,10 @@ public class FormDesignerService : IFormDesignerService
             MappingFields = new FormFieldListViewModel()
         };
 
-        // 統一在此處查詢 Dropdown Map (避免每個 GetFieldsByTableName 都查一次)
-        // 假設 masterId 用於所有表的 dropdown 關聯 (通常如此，因為 dropdown 綁 config, config 綁 master)
-        var dropdownMap = await GetDropdownIdMapByMasterIdAsync(master.ID);
-
         result.BaseFields = await GetFieldsByTableName(
             master.BASE_TABLE_NAME,
             master.BASE_TABLE_ID.Value,
-            TableSchemaQueryType.OnlyTable,
-            dropdownMap);
+            TableSchemaQueryType.OnlyTable);
 
         switch (functionType)
         {
@@ -432,8 +427,7 @@ public class FormDesignerService : IFormDesignerService
                 result.ViewFields = await GetFieldsByTableName(
                     master.VIEW_TABLE_NAME,
                     master.VIEW_TABLE_ID.Value,
-                    TableSchemaQueryType.OnlyView,
-                    dropdownMap);
+                    TableSchemaQueryType.OnlyView);
                 break;
 
             case FormFunctionType.MasterDetailMaintenance:
@@ -446,14 +440,12 @@ public class FormDesignerService : IFormDesignerService
                 result.DetailFields = await GetFieldsByTableName(
                     master.DETAIL_TABLE_NAME,
                     master.DETAIL_TABLE_ID.Value,
-                    TableSchemaQueryType.OnlyDetail,
-                    dropdownMap);
+                    TableSchemaQueryType.OnlyDetail);
 
                 result.ViewFields = await GetFieldsByTableName(
                     master.VIEW_TABLE_NAME,
                     master.VIEW_TABLE_ID.Value,
-                    TableSchemaQueryType.OnlyView,
-                    dropdownMap);
+                    TableSchemaQueryType.OnlyView);
                 break;
 
             case FormFunctionType.MultipleMappingMaintenance:
@@ -469,20 +461,17 @@ public class FormDesignerService : IFormDesignerService
                 result.DetailFields = await GetFieldsByTableName(
                     master.DETAIL_TABLE_NAME,
                     master.DETAIL_TABLE_ID.Value,
-                    TableSchemaQueryType.OnlyDetail,
-                    dropdownMap);
+                    TableSchemaQueryType.OnlyDetail);
 
                 result.MappingFields = await GetFieldsByTableName(
                     master.MAPPING_TABLE_NAME,
                     master.MAPPING_TABLE_ID.Value,
-                    TableSchemaQueryType.OnlyMapping,
-                    dropdownMap);
+                    TableSchemaQueryType.OnlyMapping);
 
                 result.ViewFields = await GetFieldsByTableName(
                     master.VIEW_TABLE_NAME,
                     master.VIEW_TABLE_ID.Value,
-                    TableSchemaQueryType.OnlyView,
-                    dropdownMap);
+                    TableSchemaQueryType.OnlyView);
                 break;
 
             default:
@@ -571,13 +560,8 @@ ORDER BY s.name, o.name;
     /// <param name="tableName">使用者輸入的表名稱</param>
     /// <param name="formMasterId"></param>
     /// <param name="schemaType"></param>
-    /// <param name="preloadedDropdownMap">預先載入的 Dropdown 對照表（優化用，若為 null 則內部自行查詢）</param>
     /// <returns></returns>
-    public async Task<FormFieldListViewModel> GetFieldsByTableName(
-        string tableName,
-        Guid? formMasterId,
-        TableSchemaQueryType schemaType,
-        Dictionary<Guid, Guid>? preloadedDropdownMap = null)
+    public async Task<FormFieldListViewModel> GetFieldsByTableName( string tableName, Guid? formMasterId, TableSchemaQueryType schemaType )
     {
         ValidateTableName(tableName);
 
@@ -590,28 +574,27 @@ ORDER BY s.name, o.name;
         // 先決定 masterId（提供 dropdown 查詢用）
         var masterId = formMasterId ?? configs.Values.First().FORM_FIELD_MASTER_ID;
 
-        // 若外部有傳 map 就用，沒有就自己查
-        var dropdownMap = preloadedDropdownMap
-                          ?? await GetDropdownIdMapByMasterIdAsync(masterId);
-
+        // 一次查 dropdown 對照表（masterId 可能是 Guid.Empty 就不用查，避免浪費）
+        var dropdownMap = await GetDropdownIdMapByMasterIdAsync(masterId);
+        
         // 查 PK
         var pk = _schemaService.GetPrimaryKeyColumns(tableName);
-
+        
         // 4) 逐欄位組裝 ViewModel
         var fields = new List<FormFieldViewModel>(columns.Count);
         foreach (var col in columns)
         {
             var columnName = col.COLUMN_NAME;
-            var dataType = col.DATA_TYPE;
-            var isNullable = col.SourceIsNullable;
+            var dataType   = col.DATA_TYPE;
+            var isNullable   = col.SourceIsNullable;
 
             // 4-1) 取對應設定（有就用設定 ID，沒有就產新的暫時 ID）
-            var hasCfg = configs.TryGetValue(columnName, out var cfg);
+            var hasCfg  = configs.TryGetValue(columnName, out var cfg);
             var fieldId = hasCfg ? cfg!.ID : Guid.NewGuid();
 
             // dropdownId：只有「有 cfg 且 dropdown 存在」才會有值
             dropdownMap.TryGetValue(fieldId, out var dropdownId);
-
+            
             var vm = new FormFieldViewModel
             {
                 ID = fieldId,
