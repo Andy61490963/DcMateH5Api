@@ -14,234 +14,307 @@ namespace DcMateH5Api.Areas.Form.Services;
 
 public class FormDesignerTableValueFunctionService : IFormDesignerTableValueFunctionService
 {
+    private const string DefaultSchemaName = "dbo";
+
     private readonly SqlConnection _con;
-    private readonly IConfiguration _configuration;
-    private readonly ISchemaService _schemaService;
     private readonly SQLGenerateHelper _sqlHelper;
     private readonly ICurrentUserAccessor _currentUser;
     private readonly IFormDesignerService _formDesignerService;
-    private readonly IFormFieldMasterService _formFieldMasterService;
+    private readonly ISchemaService _schemaService;
     private readonly IReadOnlyList<string> _relationColumnSuffixes;
 
     public FormDesignerTableValueFunctionService(
         SQLGenerateHelper sqlHelper,
         SqlConnection connection,
-        IConfiguration configuration,
-        ISchemaService schemaService,
-        IFormFieldMasterService formFieldMasterService,
-        IFormDesignerService formDesignerService,
         IOptions<FormSettings> formSettings,
+        IFormDesignerService formDesignerService,
+        ISchemaService schemaService,
         ICurrentUserAccessor currentUser)
     {
         _con = connection;
-        _configuration = configuration;
-        _schemaService = schemaService;
         _sqlHelper = sqlHelper;
-        _formFieldMasterService = formFieldMasterService;
         _formDesignerService = formDesignerService;
+        _schemaService = schemaService;
         _currentUser = currentUser;
-        
+
         var resolvedSettings = formSettings?.Value ?? new FormSettings();
         _relationColumnSuffixes = resolvedSettings.GetRelationColumnSuffixesOrDefault();
     }
-    
+
     private Guid GetCurrentUserId()
     {
         var user = _currentUser.Get();
         return user.Id;
     }
-    
+
     /// <summary>
-    /// 
+    /// 確保指定 TVF 的欄位設定已同步保存，並回傳欄位清單（交易內）。
     /// </summary>
-    /// <param name="tvpName"></param>
-    /// <param name="formMasterId"></param>
-    /// <param name="schemaType"></param>
-    /// <param name="ct"></param>
-    /// <returns></returns>
-    public async Task<FormFieldListViewModel?> EnsureFieldsSaved( string tvpName, Guid? formMasterId, TableSchemaQueryType schemaType, CancellationToken ct )
+    /// <param name="tvfName">TVF 名稱</param>
+    /// <param name="formMasterId">既有主檔 ID（可為 null）</param>
+    /// <param name="schemaType">Schema 類型</param>
+    /// <param name="ct">CancellationToken</param>
+    public async Task<FormFieldListViewModel?> EnsureFieldsSaved(string tvfName, Guid? formMasterId, TableSchemaQueryType schemaType, CancellationToken ct)
     {
         ct.ThrowIfCancellationRequested();
 
         return await _sqlHelper.TxAsync(async (conn, tx, ct) =>
         {
-            // 交易內使用同一個 conn/tx，確保整段欄位同步的一致性與原子性
-            var columns = await GetObjectSchemaInTxAsync(conn, tx, "dbo", tvpName, ct);
-            if (columns.Count == 0) return null;
+            var columns = await _schemaService.GetObjectSchemaInTxAsync(conn, tx, DefaultSchemaName, tvfName, ct).ConfigureAwait(false);
+            if (columns.Count == 0)
+            {
+                return null;
+            }
 
-            var masterId = await _formDesignerService.ResolveMasterIdAsync(conn, tx, tvpName, formMasterId, schemaType, ct);
+            var masterId = await _formDesignerService
+                .ResolveMasterIdAsync(conn, tx, tvfName, formMasterId, schemaType, ct)
+                .ConfigureAwait(false);
 
-            var configs = await _formDesignerService.GetFieldConfigsInTxAsync(conn, tx, tvpName, masterId, ct).ConfigureAwait(false);
-            await _formDesignerService.UpsertMissingConfigsInTxAsync(conn, tx, tvpName, masterId, schemaType, columns, configs, ct);
-            
-            // 回傳結果同樣走交易內查詢，避免交易外查詢讀到不一致資料
-            return await GetFieldsByTableNameInTxAsync(conn, tx, tvpName, masterId, schemaType, ct);
-        }, ct: ct);
+            var configs = await _formDesignerService
+                .GetFieldConfigsInTxAsync(conn, tx, tvfName, masterId, ct)
+                .ConfigureAwait(false);
+
+            await _formDesignerService
+                .UpsertMissingConfigsInTxAsync(conn, tx, tvfName, masterId, schemaType, columns, configs, ct)
+                .ConfigureAwait(false);
+
+            return await GetFieldsByTableNameInTxAsync(conn, tx, tvfName, masterId, schemaType, ct).ConfigureAwait(false);
+        }, ct: ct).ConfigureAwait(false);
     }
-    
+
+    /// <summary>
+    /// 儲存 TVF 表單主檔（Upsert），回傳主檔 ID（交易內）。
+    /// </summary>
     public async Task<Guid> SaveTableValueFunctionFormHeader(FormHeaderTableValueFunctionViewModel model, CancellationToken ct)
     {
-        // 1. 查詢 TVF 表格資訊
-        var whereTvf = new WhereBuilder<FormFieldMasterDto>()
-            .AndEq(x => x.ID, model.TVF_TABLE_ID)
-            .AndNotDeleted();
-    
-        var tvfMaster = await _sqlHelper.SelectFirstOrDefaultAsync(whereTvf)
-                        ?? throw new InvalidOperationException("TVF 查無資料");
+        ct.ThrowIfCancellationRequested();
 
-        var tvfTableName = tvfMaster.TVP_TABLE_NAME;
-        var currentUserId = GetCurrentUserId();
-        var now = DateTime.Now;
-
-        // 2. 執行 MERGE (Upsert)
-        // 注意：改用 ExecuteScalarAsync 來接收 OUTPUT INSERTED.ID
-        var id = await _con.ExecuteScalarAsync<Guid>(Sql.UpsertFormMasterTvf, new
+        return await _sqlHelper.TxAsync(async (conn, tx, ct) =>
         {
-            model.ID, 
-            model.FORM_NAME,
-            model.FORM_CODE,
-            model.FORM_DESCRIPTION,
-        
-            // TVF 專用欄位
-            TVF_TABLE_ID = model.TVF_TABLE_ID,
-            TVP_TABLE_NAME = tvfTableName,
-        
-            STATUS = (int)TableStatusType.Active,
-            SCHEMA_TYPE = TableSchemaQueryType.All,
-            FUNCTION_TYPE = FormFunctionType.TableValueFunctionMaintenance,
+            var tvfMaster = await GetTvfMasterAsync(conn, tx, model.TVF_TABLE_ID, ct).ConfigureAwait(false);
+            var tvfTableName = tvfMaster.TVF_TABLE_NAME;
 
-            // 編輯資訊 (Update 用)
-            EDIT_TIME = now,
-            EDIT_USER = currentUserId,
+            var currentUserId = GetCurrentUserId();
+            var now = DateTime.Now;
 
-            // 建立資訊 (Insert 用，MERGE 時必須同時提供)
-            CREATE_TIME = now,
-            CREATE_USER = currentUserId
-        });
+            var id = await conn.ExecuteScalarAsync<Guid>(new CommandDefinition(
+                Sql.UpsertFormMasterTvf,
+                new
+                {
+                    model.ID,
+                    model.FORM_NAME,
+                    model.FORM_CODE,
+                    model.FORM_DESCRIPTION,
 
-        return id;
+                    TVF_TABLE_ID = model.TVF_TABLE_ID,
+                    TVF_TABLE_NAME = tvfTableName,
+
+                    STATUS = (int)TableStatusType.Active,
+                    SCHEMA_TYPE = TableSchemaQueryType.All,
+                    FUNCTION_TYPE = FormFunctionType.TableValueFunctionMaintenance,
+
+                    EDIT_TIME = now,
+                    EDIT_USER = currentUserId,
+                    CREATE_TIME = now,
+                    CREATE_USER = currentUserId
+                },
+                transaction: tx,
+                cancellationToken: ct)).ConfigureAwait(false);
+
+            return id;
+        }, ct: ct).ConfigureAwait(false);
     }
-    
+
     /// <summary>
-    /// 從 SQL Server 取得指定物件（Table/View/TVF）的欄位結構（交易內）。
+    /// 對外公開：以「內部自包 Tx」方式取得欄位清單（給 Controller 用）。
     /// </summary>
-    private async Task<List<DbColumnInfo>> GetObjectSchemaInTxAsync(
-        SqlConnection conn,
-        SqlTransaction tx,
-        string schemaName,
-        string objectName,
-        CancellationToken ct)
-    {
-        var columns = await conn.QueryAsync<DbColumnInfo>(new CommandDefinition(
-            Sql.ObjectSchemaAndTvfInputsSelect,
-            new { SchemaName = schemaName, ObjectName = objectName },
-            transaction: tx,
-            cancellationToken: ct));
-
-        return columns.ToList();
-    }
-
-    private async Task<FormFieldListViewModel> GetFieldsByTableNameInTxAsync(
-        SqlConnection conn,
-        SqlTransaction tx,
-        string tvpName,
+    public async Task<FormFieldListViewModel> GetFieldsByTableNameInTxAsync(
+        string tvfName,
         Guid? formMasterId,
         TableSchemaQueryType schemaType,
         CancellationToken ct)
     {
-        var columns = await GetObjectSchemaInTxAsync(conn, tx, "dbo", tvpName, ct);
-        if (columns.Count == 0) return new();
+        ct.ThrowIfCancellationRequested();
 
-        var configs = await _formDesignerService.GetFieldConfigsInTxAsync(conn, tx, tvpName, formMasterId, ct).ConfigureAwait(false);
-
-        var masterId = formMasterId ?? configs.Values.First().FORM_FIELD_MASTER_ID;
-
-        var fields = new List<FormFieldViewModel>(columns.Count);
-        foreach (var col in columns)
+        return await _sqlHelper.TxAsync(async (conn, tx, ct) =>
         {
-            var columnName = col.COLUMN_NAME;
-            var dataType = col.DATA_TYPE;
-            var isTvfQueryParameter = col.isTvfQueryParameter;
-            var isNullable = col.SourceIsNullable;
+            return await GetFieldsByTableNameInTxAsync(conn, tx, tvfName, formMasterId, schemaType, ct).ConfigureAwait(false);
+        }, ct: ct).ConfigureAwait(false);
+    }
 
-            var hasCfg = configs.TryGetValue(columnName, out var cfg);
-            var fieldId = hasCfg ? cfg!.ID : Guid.NewGuid();
+    /// <summary>
+    /// 交易內：取得欄位清單（核心邏輯）。
+    /// </summary>
+    public async Task<FormFieldListViewModel> GetFieldsByTableNameInTxAsync(
+        SqlConnection conn,
+        SqlTransaction tx,
+        string tvfName,
+        Guid? formMasterId,
+        TableSchemaQueryType schemaType,
+        CancellationToken ct)
+    {
+        ct.ThrowIfCancellationRequested();
 
-            var vm = new FormFieldViewModel
-            {
-                ID = fieldId,
-                FORM_FIELD_MASTER_ID = masterId,
-                FORM_FIELD_DROPDOWN_ID = null,
-                TableName = tvpName,
-                IsNullable = isNullable,
-                COLUMN_NAME = columnName,
-                IS_TVF_QUERY_PARAMETER = isTvfQueryParameter,
-                DISPLAY_NAME = cfg?.DISPLAY_NAME ?? columnName,
-                DATA_TYPE = dataType,
-                CONTROL_TYPE = cfg?.CONTROL_TYPE,
-                CONTROL_TYPE_WHITELIST = null,
-                QUERY_COMPONENT_TYPE_WHITELIST = null,
-                IS_REQUIRED = cfg?.IS_REQUIRED ?? false,
-                IS_EDITABLE = cfg?.IS_EDITABLE ?? true,
-                IS_DISPLAYED = cfg?.IS_DISPLAYED ?? true,
-                IS_VALIDATION_RULE = null,
-                IS_PK = false,
-                QUERY_DEFAULT_VALUE = cfg?.QUERY_DEFAULT_VALUE,
-                SchemaType = schemaType,
-                QUERY_COMPONENT = cfg?.QUERY_COMPONENT ?? QueryComponentType.None,
-                QUERY_CONDITION = cfg?.QUERY_CONDITION,
-                CAN_QUERY = cfg?.CAN_QUERY ?? false,
-                FIELD_ORDER = cfg?.FIELD_ORDER,
-                DETAIL_TO_RELATION_DEFAULT_COLUMN = cfg?.DETAIL_TO_RELATION_DEFAULT_COLUMN
-            };
-
-            _formDesignerService.ApplySchemaPolicy(vm, schemaType);
-            fields.Add(vm);
+        var columns = await _schemaService.GetObjectSchemaInTxAsync(conn, tx, DefaultSchemaName, tvfName, ct).ConfigureAwait(false);
+        if (columns.Count == 0)
+        {
+            return new FormFieldListViewModel { Fields = new List<FormFieldViewModel>() };
         }
+
+        var configs = await _formDesignerService
+            .GetFieldConfigsInTxAsync(conn, tx, tvfName, formMasterId, ct)
+            .ConfigureAwait(false);
+
+        var masterId = ResolveMasterId(formMasterId, configs);
+
+        var fields = BuildFieldViewModels(columns, configs, masterId, tvfName, schemaType);
 
         return new FormFieldListViewModel
         {
-            Fields = fields.OrderBy(f => f.FIELD_ORDER).ToList()
+            Fields = SortFields(fields, columns)
         };
+    }
+
+    private static Guid ResolveMasterId(Guid? formMasterId, IReadOnlyDictionary<string, FormFieldConfigDto> configs)
+    {
+        if (formMasterId.HasValue)
+        {
+            return formMasterId.Value;
+        }
+
+        // 防呆：configs 可能是空（例如尚未建立任何 config）
+        if (configs.Count == 0)
+        {
+            return Guid.Empty; // 保持行為：原本會炸，現在改成安全回傳；若你不接受 Guid.Empty，可改成 throw。
+        }
+
+        return configs.Values.First().FORM_FIELD_MASTER_ID;
+    }
+
+    private List<FormFieldViewModel> BuildFieldViewModels(
+        List<DbColumnInfo> columns,
+        IReadOnlyDictionary<string, FormFieldConfigDto> configs,
+        Guid masterId,
+        string tvfName,
+        TableSchemaQueryType schemaType)
+    {
+        var fields = new List<FormFieldViewModel>(columns.Count);
+
+        foreach (var col in columns)
+        {
+            var columnName = col.COLUMN_NAME;
+            var hasCfg = configs.TryGetValue(columnName, out var cfg);
+
+            var vm = CreateFieldViewModel(
+                cfg,
+                columnName,
+                col.DATA_TYPE,
+                col.isTvfQueryParameter,
+                col.SourceIsNullable,
+                masterId,
+                tvfName,
+                schemaType);
+
+            _formDesignerService.ApplySchemaPolicy(vm, schemaType);
+
+            fields.Add(vm);
+        }
+
+        return fields;
+    }
+
+    private static FormFieldViewModel CreateFieldViewModel(
+        FormFieldConfigDto? cfg,
+        string columnName,
+        string dataType,
+        bool isTvfQueryParameter,
+        bool isNullable,
+        Guid masterId,
+        string tvfName,
+        TableSchemaQueryType schemaType)
+    {
+        var fieldId = cfg != null ? cfg.ID : Guid.NewGuid();
+
+        return new FormFieldViewModel
+        {
+            ID = fieldId,
+            FORM_FIELD_MASTER_ID = masterId,
+            FORM_FIELD_DROPDOWN_ID = null,
+            TableName = tvfName,
+
+            IsNullable = isNullable,
+            COLUMN_NAME = columnName,
+            DATA_TYPE = dataType,
+            IS_TVF_QUERY_PARAMETER = isTvfQueryParameter,
+
+            DISPLAY_NAME = cfg?.DISPLAY_NAME ?? columnName,
+            CONTROL_TYPE = cfg?.CONTROL_TYPE,
+
+            IS_REQUIRED = cfg?.IS_REQUIRED ?? false,
+            IS_EDITABLE = cfg?.IS_EDITABLE ?? true,
+            IS_DISPLAYED = cfg?.IS_DISPLAYED ?? true,
+
+            IS_PK = false,
+
+            QUERY_DEFAULT_VALUE = cfg?.QUERY_DEFAULT_VALUE,
+            QUERY_COMPONENT = cfg?.QUERY_COMPONENT ?? QueryComponentType.None,
+            QUERY_CONDITION = cfg?.QUERY_CONDITION,
+            CAN_QUERY = cfg?.CAN_QUERY ?? false,
+
+            FIELD_ORDER = cfg?.FIELD_ORDER,
+            DETAIL_TO_RELATION_DEFAULT_COLUMN = cfg?.DETAIL_TO_RELATION_DEFAULT_COLUMN,
+
+            // 你原本就塞 null 的保留
+            CONTROL_TYPE_WHITELIST = null,
+            QUERY_COMPONENT_TYPE_WHITELIST = null,
+            IS_VALIDATION_RULE = null,
+
+            SchemaType = schemaType
+        };
+    }
+
+    private static List<FormFieldViewModel> SortFields(List<FormFieldViewModel> fields, List<DbColumnInfo> columns)
+    {
+        // 防止 FIELD_ORDER 大量 null 導致排序不穩定：fallback 用 schema ordinal（columns 原本就有 ORDINAL_POSITION）
+        var ordinalMap = columns
+            .GroupBy(x => x.COLUMN_NAME, StringComparer.OrdinalIgnoreCase)
+            .ToDictionary(g => g.Key, g => g.Min(x => x.ORDINAL_POSITION), StringComparer.OrdinalIgnoreCase);
+
+        return fields
+            .OrderBy(f => f.FIELD_ORDER ?? int.MaxValue)
+            .ThenBy(f =>
+            {
+                if (ordinalMap.TryGetValue(f.COLUMN_NAME, out var ord))
+                {
+                    return ord;
+                }
+
+                return int.MaxValue;
+            })
+            .ThenBy(f => f.COLUMN_NAME, StringComparer.OrdinalIgnoreCase)
+            .ToList();
+    }
+
+    private async Task<FormFieldMasterDto> GetTvfMasterAsync(SqlConnection conn, SqlTransaction tx, Guid tvfTableId, CancellationToken ct)
+    {
+        var whereTvf = new WhereBuilder<FormFieldMasterDto>()
+            .AndEq(x => x.ID, tvfTableId)
+            .AndNotDeleted();
+
+        // 你原本是 _sqlHelper.SelectFirstOrDefaultAsync(whereTvf)（可能沒吃 tx）
+        // 這裡假設 SQLGenerateHelper 有 Tx 版；如果沒有，就改成用 conn/tx 自己 query（不新增套件）。
+        var tvfMaster = await _sqlHelper.SelectFirstOrDefaultInTxAsync<FormFieldMasterDto>(conn, tx, whereTvf).ConfigureAwait(false);
+
+        if (tvfMaster == null)
+        {
+            throw new InvalidOperationException("TVF 查無資料");
+        }
+
+        return tvfMaster;
     }
 
     private static class Sql
     {
-        public const string ObjectSchemaAndTvfInputsSelect = @"
-/**/
--- (1) TVF input parameters
-SELECT
-    p.name AS COLUMN_NAME,
-    t.name AS DATA_TYPE,
-    p.parameter_id AS ORDINAL_POSITION,
-    'YES' AS IS_NULLABLE,
-    CONVERT(bit, 1) AS isTvfQueryParameter
-FROM sys.objects o
-JOIN sys.parameters p ON o.object_id = p.object_id
-JOIN sys.types t ON p.user_type_id = t.user_type_id
-WHERE o.name = @ObjectName
-  AND SCHEMA_NAME(o.schema_id) = @SchemaName
-  AND o.type IN ('IF','TF')
-
-UNION ALL
-
--- (2) Returned table columns (Table/View/TVF)
-SELECT
-    c.name AS COLUMN_NAME,
-    t.name AS DATA_TYPE,
-    c.column_id AS ORDINAL_POSITION,
-    CASE WHEN c.is_nullable = 1 THEN 'YES' ELSE 'NO' END AS IS_NULLABLE,
-    CONVERT(bit, 0) AS isTvfQueryParameter
-FROM sys.objects o
-JOIN sys.columns c ON o.object_id = c.object_id
-JOIN sys.types t ON c.user_type_id = t.user_type_id
-WHERE o.name = @ObjectName
-  AND SCHEMA_NAME(o.schema_id) = @SchemaName
-  AND o.type IN ('U','V','IF','TF')
-
-ORDER BY isTvfQueryParameter DESC, ORDINAL_POSITION;
-";
-
         public const string UpsertFormMasterTvf = @"
 MERGE FORM_FIELD_MASTER AS target
 USING (SELECT @ID AS ID) AS src
@@ -252,11 +325,11 @@ WHEN MATCHED THEN
         FORM_NAME          = @FORM_NAME,
         FORM_CODE          = @FORM_CODE,
         FORM_DESCRIPTION   = @FORM_DESCRIPTION,
-        
-        -- 這裡只更新 TVF 相關欄位，避免影響其他類型 (Base/View/Mapping)
-        TVP_TABLE_NAME     = @TVP_TABLE_NAME,
-        TVP_TABLE_ID       = @TVF_TABLE_ID,
-        
+
+        -- 只更新 TVF 相關欄位，避免影響其他類型
+        TVF_TABLE_NAME     = @TVF_TABLE_NAME,
+        TVF_TABLE_ID       = @TVF_TABLE_ID,
+
         STATUS             = @STATUS,
         SCHEMA_TYPE        = @SCHEMA_TYPE,
         FUNCTION_TYPE      = @FUNCTION_TYPE,
@@ -269,8 +342,8 @@ WHEN NOT MATCHED THEN
         FORM_NAME,
         FORM_CODE,
         FORM_DESCRIPTION,
-        TVP_TABLE_NAME,   -- 插入時指定 TVP 欄位
-        TVP_TABLE_ID,
+        TVF_TABLE_NAME,
+        TVF_TABLE_ID,
         STATUS,
         SCHEMA_TYPE,
         FUNCTION_TYPE,
@@ -285,12 +358,12 @@ WHEN NOT MATCHED THEN
         @FORM_NAME,
         @FORM_CODE,
         @FORM_DESCRIPTION,
-        @TVP_TABLE_NAME,
+        @TVF_TABLE_NAME,
         @TVF_TABLE_ID,
         @STATUS,
         @SCHEMA_TYPE,
         @FUNCTION_TYPE,
-        0,                -- IS_DELETE
+        0,
         @CREATE_USER,
         @CREATE_TIME,
         @EDIT_USER,

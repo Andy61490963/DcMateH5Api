@@ -33,6 +33,8 @@ public class FormFieldViewModel
     
     public bool IS_TVF_QUERY_PARAMETER { get; set; }
     
+    public string? TVF_CURRENT_VALUE { get; set; }
+    
     /// <summary>
     /// 欄位名稱
     /// </summary>

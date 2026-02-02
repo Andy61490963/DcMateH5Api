@@ -113,6 +113,7 @@ builder.Services.AddScoped<IFormMasterDetailService, FormMasterDetailService>();
 builder.Services.AddScoped<IFormMultipleMappingService, FormMultipleMappingService>();
 builder.Services.AddScoped<IFormDesignerTableValueFunctionService, FormDesignerTableValueFunctionService>();
 builder.Services.AddScoped<IDropdownSqlSyncService, DropdownSqlSyncService>();
+builder.Services.AddScoped<IFormTableValueFunctionService, FormTableValueFunctionService>();
 
 // Menu Tree
 builder.Services.AddScoped<DCMATEH5API.Areas.Menu.Services.IMenuService, DCMATEH5API.Areas.Menu.Services.MenuService>();

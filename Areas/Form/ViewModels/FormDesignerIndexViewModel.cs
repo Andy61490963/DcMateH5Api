@@ -33,4 +33,9 @@ public class FormDesignerIndexViewModel
     /// 多對多關聯表欄位設定清單
     /// </summary>
     public FormFieldListViewModel MappingFields { get; set; } = new();
+    
+    /// <summary>
+    /// TVF 設定清單
+    /// </summary>
+    public FormFieldListViewModel TvfFields { get; set; } = new();
 }
