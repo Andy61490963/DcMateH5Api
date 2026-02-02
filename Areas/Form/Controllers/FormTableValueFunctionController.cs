@@ -31,7 +31,7 @@ public class FormTableValueFunctionController : BaseController
     }
     
     /// <summary>
-    /// 取得 TableFunctionValue 設定檔清單。
+    /// 取得 Table Value Function 設定檔清單。
     /// </summary>
     [HttpGet(Routes.Masters)]
     [ProducesResponseType(typeof(IEnumerable<TableValueFunctionConfigViewModel>), StatusCodes.Status200OK)]
@@ -49,7 +49,7 @@ public class FormTableValueFunctionController : BaseController
     }
     
     /// <summary>
-    /// 取得 TableFunctionValue 維護的資料列表
+    /// 取得 Table Value Function 維護的資料列表
     /// </summary>
     /// <remarks>
     /// ### 使用說明
