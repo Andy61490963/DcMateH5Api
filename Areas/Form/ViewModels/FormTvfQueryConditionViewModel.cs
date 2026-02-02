@@ -41,8 +41,3 @@ public class FormTvfQueryConditionViewModel
     /// <summary>欄位的 SQL 資料型別，用於轉型。</summary>
     public string DataType { get; set; } = string.Empty;
 }
-
-public sealed record FormOrderBy(
-    string Column,
-    SortType Direction = SortType.Asc
-);
