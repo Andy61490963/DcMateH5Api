@@ -62,7 +62,7 @@ public class FormDesignerTableValueFunctionController : BaseController
     }
     
     /// <summary>
-    /// 取得指定的 主檔、檢視表 主畫面資料(請傳入父節點 masterId)
+    /// 取得指定的 TableFunctionValue 主畫面資料(請傳入父節點 masterId)
     /// </summary>
     /// <param name="id">FORM_FIELD_MASTER 的ID</param>
     /// <param name="ct">CancellationToken</param>
@@ -112,7 +112,7 @@ public class FormDesignerTableValueFunctionController : BaseController
     }
     
     /// <summary>
-    /// 取得 TVF 資料表所有欄位設定(tableName必須傳，如果傳入空formMasterId，會創建一筆新的，如果有傳入formMasterId，會取得舊的)
+    /// 取得 TableFunctionValue 資料表所有欄位設定(tableName必須傳，如果傳入空formMasterId，會創建一筆新的，如果有傳入formMasterId，會取得舊的)
     /// </summary>
     [HttpGet(Routes.TableFields)]
     [ProducesResponseType(typeof(List<FormFieldViewModel>), StatusCodes.Status200OK)]
@@ -343,7 +343,7 @@ public class FormDesignerTableValueFunctionController : BaseController
     #endregion
     
     /// <summary>
-    /// 儲存表單主檔資訊
+    /// 儲存 TableFunctionValue 設定檔
     /// </summary>
     [HttpPost(Routes.SaveHeaders)]
     [ProducesResponseType(typeof(Guid), StatusCodes.Status200OK)]
