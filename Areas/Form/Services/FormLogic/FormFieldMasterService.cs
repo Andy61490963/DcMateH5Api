@@ -112,16 +112,20 @@ public class FormFieldMasterService : IFormFieldMasterService
         // 同一交易內寫入主檔，確保建立與後續操作一致
         var command = new CommandDefinition(
             @"
-        INSERT INTO FORM_FIELD_MASTER
-    (ID, FORM_NAME, STATUS, SCHEMA_TYPE,
-     BASE_TABLE_NAME, VIEW_TABLE_NAME, DETAIL_TABLE_NAME, MAPPING_TABLE_NAME,
-     BASE_TABLE_ID,  VIEW_TABLE_ID,  DETAIL_TABLE_ID, MAPPING_TABLE_ID,
-     FUNCTION_TYPE, IS_DELETE, CREATE_TIME, EDIT_TIME, CREATE_USER, EDIT_USER)
+    INSERT INTO FORM_FIELD_MASTER
+    (
+        ID, FORM_NAME, STATUS, SCHEMA_TYPE,
+        BASE_TABLE_NAME, VIEW_TABLE_NAME, DETAIL_TABLE_NAME, MAPPING_TABLE_NAME, TVF_TABLE_NAME,
+        BASE_TABLE_ID,   VIEW_TABLE_ID,   DETAIL_TABLE_ID,   MAPPING_TABLE_ID,   TVF_TABLE_ID,
+        FUNCTION_TYPE, IS_DELETE, CREATE_TIME, EDIT_TIME, CREATE_USER, EDIT_USER
+    )
     VALUES
-    (@ID, @FORM_NAME, @STATUS, @SCHEMA_TYPE,
-     @BASE_TABLE_NAME, @VIEW_TABLE_NAME, @DETAIL_TABLE_NAME, @MAPPING_TABLE_NAME,
-     @BASE_TABLE_ID, @VIEW_TABLE_ID,  @DETAIL_TABLE_ID, @MAPPING_TABLE_ID,
-     @FUNCTION_TYPE, 0, GETDATE(), GETDATE(), @CREATE_USER, @EDIT_USER);",
+    (
+        @ID, @FORM_NAME, @STATUS, @SCHEMA_TYPE,
+        @BASE_TABLE_NAME, @VIEW_TABLE_NAME, @DETAIL_TABLE_NAME, @MAPPING_TABLE_NAME, @TVF_TABLE_NAME,
+        @BASE_TABLE_ID,   @VIEW_TABLE_ID,   @DETAIL_TABLE_ID,   @MAPPING_TABLE_ID,   @TVF_TABLE_ID,
+        @FUNCTION_TYPE, 0, GETDATE(), GETDATE(), @CREATE_USER, @EDIT_USER
+    );",
             new
             {
                 ID = id,
@@ -132,10 +136,15 @@ public class FormFieldMasterService : IFormFieldMasterService
                 model.VIEW_TABLE_NAME,
                 model.DETAIL_TABLE_NAME,
                 model.MAPPING_TABLE_NAME,
+                model.TVF_TABLE_NAME, // 確保這裡 DTO 也有值
+            
+                // 下面這些 ID 的判斷邏輯維持不變
                 BASE_TABLE_ID = HasValue(model.BASE_TABLE_NAME) ? id : (Guid?)null,
                 VIEW_TABLE_ID = HasValue(model.VIEW_TABLE_NAME) ? id : (Guid?)null,
                 DETAIL_TABLE_ID = HasValue(model.DETAIL_TABLE_NAME) ? id : (Guid?)null,
                 MAPPING_TABLE_ID = HasValue(model.MAPPING_TABLE_NAME) ? id : (Guid?)null,
+                TVF_TABLE_ID = HasValue(model.TVF_TABLE_NAME) ? id : (Guid?)null,
+            
                 model.FUNCTION_TYPE,
                 CREATE_USER = GetCurrentUserId(),
                 EDIT_USER = GetCurrentUserId()

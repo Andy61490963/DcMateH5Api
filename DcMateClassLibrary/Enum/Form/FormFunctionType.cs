@@ -33,5 +33,14 @@ public enum FormFunctionType
     /// - 中介關聯表（Mapping Table）
     /// </summary>
     [Display(Name = "多對多維護", Description = "多對多維護")]
-    MultipleMappingMaintenance = 2
+    MultipleMappingMaintenance = 2,
+    
+    /// <summary>
+    /// TVF 維護
+    ///
+    /// 特性：
+    /// TVF
+    /// </summary>
+    [Display(Name = "TVF 維護", Description = "TVF 維護")]
+    TableValueFunctionMaintenance = 3
 }

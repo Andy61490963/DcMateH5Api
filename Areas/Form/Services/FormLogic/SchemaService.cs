@@ -3,6 +3,7 @@ using Dapper;
 using DcMateH5Api.Helper;
 using DcMateH5Api.Areas.Form.Models;
 using DcMateH5Api.Areas.Form.Interfaces.FormLogic;
+using DcMateH5Api.Areas.Form.ViewModels;
 using Microsoft.Data.SqlClient;
 
 namespace DcMateH5Api.Areas.Form.Services.FormLogic;
@@ -166,4 +167,49 @@ ORDER BY
         return tableName;
     }
 
+    public async Task<List<DbColumnInfo>> GetObjectSchemaInTxAsync(SqlConnection conn, SqlTransaction tx, string schemaName, string objectName, CancellationToken ct)
+    {
+        const string sql = @"
+/**/
+-- (1) TVF input parameters
+SELECT
+    p.name AS COLUMN_NAME,
+    t.name AS DATA_TYPE,
+    p.parameter_id AS ORDINAL_POSITION,
+    'YES' AS IS_NULLABLE,
+    CONVERT(bit, 1) AS isTvfQueryParameter
+FROM sys.objects o
+JOIN sys.parameters p ON o.object_id = p.object_id
+JOIN sys.types t ON p.user_type_id = t.user_type_id
+WHERE o.name = @ObjectName
+  AND SCHEMA_NAME(o.schema_id) = @SchemaName
+  AND o.type IN ('IF','TF')
+
+UNION ALL
+
+-- (2) Returned table columns (Table/View/TVF)
+SELECT
+    c.name AS COLUMN_NAME,
+    t.name AS DATA_TYPE,
+    c.column_id AS ORDINAL_POSITION,
+    CASE WHEN c.is_nullable = 1 THEN 'YES' ELSE 'NO' END AS IS_NULLABLE,
+    CONVERT(bit, 0) AS isTvfQueryParameter
+FROM sys.objects o
+JOIN sys.columns c ON o.object_id = c.object_id
+JOIN sys.types t ON c.user_type_id = t.user_type_id
+WHERE o.name = @ObjectName
+  AND SCHEMA_NAME(o.schema_id) = @SchemaName
+  AND o.type IN ('U','V','IF','TF')
+
+ORDER BY isTvfQueryParameter DESC, ORDINAL_POSITION;
+";
+        
+        var columns = await conn.QueryAsync<DbColumnInfo>(new CommandDefinition(
+            sql,
+            new { SchemaName = schemaName, ObjectName = objectName },
+            transaction: tx,
+            cancellationToken: ct)).ConfigureAwait(false);
+
+        return columns.ToList();
+    }
 }

@@ -25,6 +25,9 @@ public class FormService : IFormService
     private readonly IFormDeleteGuardService _formDeleteGuardService;
     private readonly IExcelExportService _excelExportService;
     private readonly IConfiguration _configuration;
+    private readonly List<string> _excludeColumns;
+    private readonly List<string> _excludeColumnsId;
+    
     
     public FormService(SqlConnection connection, ITransactionService txService, IFormFieldMasterService formFieldMasterService, ISchemaService schemaService, IFormFieldConfigService formFieldConfigService, IDropdownService dropdownService, IFormDataService formDataService, IConfiguration configuration, IDropdownSqlSyncService dropdownSqlSyncService, IFormDeleteGuardService formDeleteGuardService, IExcelExportService excelExportService)
     {
@@ -42,9 +45,6 @@ public class FormService : IFormService
         _excludeColumns = _configuration.GetSection("FormDesignerSettings:RequiredColumns").Get<List<string>>() ?? new();
         _excludeColumnsId = _configuration.GetSection("DropdownSqlSettings:ExcludeColumns").Get<List<string>>() ?? new();
     }
-    
-    private readonly List<string> _excludeColumns;
-    private readonly List<string> _excludeColumnsId;
     
     /// <summary>
     /// 取得表單列表頁所需的資料清單（含各欄位實際值），

@@ -38,6 +38,10 @@ public class FormFieldMasterDto
     [Column("MAPPING_TABLE_NAME")]
     public string? MAPPING_TABLE_NAME { get; set; }
     
+    [Column("TVF_TABLE_NAME")]
+    public string? TVF_TABLE_NAME { get; set; }
+    
+    
     
     [Column("BASE_TABLE_ID")]
     public Guid? BASE_TABLE_ID { get; set; }
@@ -50,6 +54,9 @@ public class FormFieldMasterDto
 
     [Column("MAPPING_TABLE_ID")]
     public Guid? MAPPING_TABLE_ID { get; set; }
+    
+    [Column("TVF_TABLE_ID")]
+    public Guid? TVF_TABLE_ID { get; set; }
 
     [Column("FORM_FIELD_MASTER_BUTTON_LINK_ID")]
     public Guid? FORM_FIELD_MASTER_BUTTON_LINK_ID { get; set; }

@@ -16,6 +16,9 @@ public enum TableSchemaQueryType
     [Display(Name = "關聯表", Description = "多對多關聯使用的對應資料表")]
     OnlyMapping = 3,
     
+    [Display(Name = "函數檢視", Description = "Table Function (TVF)，僅用於查詢顯示，不可編輯")]
+    OnlyTvf = 4,
+    
     [Display(Name = "已完成的設定檔", Description = "已完成的設定檔")]
     All = 5,      
 }

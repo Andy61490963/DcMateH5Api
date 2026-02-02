@@ -394,14 +394,13 @@ public class FormDesignerService : IFormDesignerService
         var master = await GetFormMasterAsync(id, ct)
             ?? throw new KeyNotFoundException("查無主檔（FormMaster）。");
         
+        // 1. 基本防呆：檢查功能類型是否設定
         if (!master.FUNCTION_TYPE.HasValue)
             throw new InvalidOperationException("主檔未設定 FUNCTION_TYPE，請先完成表單主檔設定。");
 
+        // 2. 基本防呆：檢查請求的類型與主檔設定是否一致
         if (master.FUNCTION_TYPE.Value != functionType)
-            throw new InvalidOperationException("表單功能模組與表單型態不一致，請使用對應的維護模組。");
-
-        if (string.IsNullOrWhiteSpace(master.BASE_TABLE_NAME) || master.BASE_TABLE_ID is null)
-            throw new InvalidOperationException("缺少主檔（Base）表設定：請檢查 BASE_TABLE_NAME / BASE_TABLE_ID。");
+            throw new InvalidOperationException($"表單功能模組({master.FUNCTION_TYPE})與請求型態({functionType})不一致。");
 
         var result = new FormDesignerIndexViewModel
         {
@@ -410,9 +409,36 @@ public class FormDesignerService : IFormDesignerService
             DetailFields = new FormFieldListViewModel(),
             ViewDetailFields = new FormFieldListViewModel(),
             ViewFields = new FormFieldListViewModel(),
-            MappingFields = new FormFieldListViewModel()
+            MappingFields = new FormFieldListViewModel(),
+            TvfFields = new FormFieldListViewModel() 
         };
 
+        // =================================================================
+        // 分流 一：TVF 表單函式維護 (不需要 Base Table，依賴 TVF Table)
+        // =================================================================
+        if (functionType == FormFunctionType.TableValueFunctionMaintenance)
+        {
+            if (string.IsNullOrWhiteSpace(master.TVF_TABLE_NAME) || master.TVF_TABLE_ID is null)
+                throw new InvalidOperationException("缺少 TVF 表格設定：請檢查 TVF_TABLE_NAME / TVF_TABLE_ID。");
+
+            // 使用專用的方法取得 TVF 欄位 (含 Input Parameters 與 Result Columns)
+            result.TvfFields = await GetTvfFields(
+                master.TVF_TABLE_NAME,
+                master.TVF_TABLE_ID.Value);
+
+            // TVF 處理完畢，直接回傳 (不跑下方的 Base Table 檢查)
+            return result;
+        }
+
+        // ==========================================
+        // 分流二：標準表單維護 (Base Table 為必要)
+        // ==========================================
+        
+        // 標準表單必須有 Base Table，若無則報錯
+        if (string.IsNullOrWhiteSpace(master.BASE_TABLE_NAME) || master.BASE_TABLE_ID is null)
+            throw new InvalidOperationException("缺少主檔（Base）表設定：請檢查 BASE_TABLE_NAME / BASE_TABLE_ID。");
+
+        // 載入共用的 Base Fields
         result.BaseFields = await GetFieldsByTableName(
             master.BASE_TABLE_NAME,
             master.BASE_TABLE_ID.Value,
@@ -475,10 +501,101 @@ public class FormDesignerService : IFormDesignerService
                 break;
 
             default:
-                throw new InvalidOperationException("不支援的功能模組型態。");
+                throw new InvalidOperationException($"不支援的功能模組型態：{functionType}");
         }
 
         return result;
+    }
+    
+    /// <summary>
+    /// [TVF 專用] 根據 TVF 名稱取得欄位資訊。
+    /// 使用專用的 SQL 來同時讀取「輸入參數」與「回傳欄位」。
+    /// </summary>
+    private async Task<FormFieldListViewModel> GetTvfFields(string tvfName, Guid formMasterId)
+    {
+        ValidateTableName(tvfName);
+
+        // 解析 schema.objectname
+        var schema = "dbo";
+        var objectName = tvfName;
+        if (tvfName.Contains("."))
+        {
+            var parts = tvfName.Split('.');
+            schema = parts[0];
+            objectName = parts[1];
+        }
+
+        // 1. 取得結構 (Parameters + Columns)
+        // 這裡使用 Sql.ObjectSchemaAndTvfInputsSelect
+        var columns = (await _con.QueryAsync<DbColumnInfo>(
+            Sql.ObjectSchemaAndTvfInputsSelect, 
+            new { SchemaName = schema, ObjectName = objectName }
+        )).ToList();
+
+        if (columns.Count == 0) return new FormFieldListViewModel();
+
+        // 2. 取得設定
+        var configs = await GetFieldConfigs(tvfName, formMasterId);
+        
+        // 3. 取得 Dropdown 對照
+        var dropdownMap = await GetDropdownIdMapByMasterIdAsync(formMasterId);
+
+        var fields = new List<FormFieldViewModel>(columns.Count);
+
+        foreach (var col in columns)
+        {
+            var columnName = col.COLUMN_NAME;
+            var hasCfg = configs.TryGetValue(columnName, out var cfg);
+            var fieldId = hasCfg ? cfg!.ID : Guid.NewGuid();
+
+            dropdownMap.TryGetValue(fieldId, out var dropdownId);
+
+            var vm = new FormFieldViewModel
+            {
+                ID = fieldId,
+                FORM_FIELD_MASTER_ID = formMasterId,
+                FORM_FIELD_DROPDOWN_ID = dropdownId == Guid.Empty ? null : dropdownId,
+
+                TableName = tvfName,
+                IsNullable = col.SourceIsNullable,
+                COLUMN_NAME = columnName,
+                
+                // 重要：標記是否為 TVF 的輸入參數
+                IS_TVF_QUERY_PARAMETER = col.isTvfQueryParameter, 
+
+                DISPLAY_NAME = cfg?.DISPLAY_NAME ?? columnName,
+                DATA_TYPE = col.DATA_TYPE,
+
+                CONTROL_TYPE = cfg?.CONTROL_TYPE,
+                CONTROL_TYPE_WHITELIST = FormFieldHelper.GetControlTypeWhitelist(col.DATA_TYPE),
+                QUERY_COMPONENT_TYPE_WHITELIST = FormFieldHelper.GetQueryConditionTypeWhitelist(col.DATA_TYPE),
+
+                IS_REQUIRED = cfg?.IS_REQUIRED ?? false,
+                // TVF 的輸入參數通常需要編輯；回傳欄位通常唯讀，這裡先給 true，後續由 ApplySchemaPolicy 控管
+                IS_EDITABLE = cfg?.IS_EDITABLE ?? true, 
+                IS_DISPLAYED = cfg?.IS_DISPLAYED ?? true,
+                IS_VALIDATION_RULE = false, 
+                IS_PK = false,
+
+                QUERY_DEFAULT_VALUE = cfg?.QUERY_DEFAULT_VALUE,
+                SchemaType = TableSchemaQueryType.OnlyTvf,
+                
+                QUERY_COMPONENT = cfg?.QUERY_COMPONENT ?? QueryComponentType.None,
+                QUERY_CONDITION = cfg?.QUERY_CONDITION,
+                CAN_QUERY = cfg?.CAN_QUERY ?? false,
+                FIELD_ORDER = cfg?.FIELD_ORDER
+            };
+
+            // 套用 TVF 策略 (例如：只有 Parameter 可編輯，Result 只能看)
+            ApplySchemaPolicy(vm, TableSchemaQueryType.OnlyTvf);
+
+            fields.Add(vm);
+        }
+
+        return new FormFieldListViewModel
+        {
+            Fields = fields.OrderBy(f => f.FIELD_ORDER).ToList(),
+        };
     }
     
     /// <summary>
@@ -489,16 +606,14 @@ public class FormDesignerService : IFormDesignerService
     /// <returns>符合條件的表名稱集合</returns>
     public List<string> SearchTables(string? tableName, TableQueryType queryType)
     {
-        // 1) 輸入驗證（防 SQL Injection / 非預期字元）
-        // - 僅允許英數、底線與點
-        // - 點是為了支援 schema.table 的輸入格式
+        // 1) 僅允許 schema.object 的「查詢關鍵字」字元（同你原本）
         if (!string.IsNullOrWhiteSpace(tableName) &&
             !Regex.IsMatch(tableName, @"^[A-Za-z0-9_\.]+$", RegexOptions.CultureInvariant))
         {
             throw new ArgumentException("tableName 含非法字元");
         }
 
-        // 2) 解析 schema / table
+        // 2) 解析 schema / name
         string? schema = null;
         string? name = null;
 
@@ -516,39 +631,36 @@ public class FormDesignerService : IFormDesignerService
             }
         }
 
-        // 3) 依 enum 決定 TABLE_TYPE 條件
-        // - All           → 不加 TABLE_TYPE 條件
-        // - QueryTable    → BASE TABLE
-        // - OnlyViewTable → VIEW
-        string? tableType = queryType switch
+        // 3) sys.objects type 篩選
+        // U = user table, V = view, TF/IF = table-valued function
+        string? objectType = queryType switch
         {
             TableQueryType.All => null,
-            TableQueryType.QueryTable => "BASE TABLE",
-            TableQueryType.OnlyViewTable => "VIEW",
+            TableQueryType.QueryTable => "U",
+            TableQueryType.OnlyViewTable => "V",
+            TableQueryType.OnlyFunction => "F", // 我們用內部代碼代表 TF/IF（避免 magic string 散落）
             _ => throw new ArgumentOutOfRangeException(nameof(queryType))
         };
 
         const string sql = @"
 /**/
 SELECT
-    TABLE_SCHEMA + '.' + TABLE_NAME AS FullName
-FROM INFORMATION_SCHEMA.TABLES
-WHERE (@tableType IS NULL OR TABLE_TYPE = @tableType)
-  AND (@schema    IS NULL OR TABLE_SCHEMA = @schema)
-  AND (@name      IS NULL OR TABLE_NAME LIKE '%' + @name + '%')
-ORDER BY
-    TABLE_SCHEMA,
-    TABLE_NAME;
+    s.name + '.' + o.name AS FullName
+FROM sys.objects o
+INNER JOIN sys.schemas s ON s.schema_id = o.schema_id
+WHERE
+    (
+        @objectType IS NULL
+        OR (@objectType = 'U' AND o.type = 'U')
+        OR (@objectType = 'V' AND o.type = 'V')
+        OR (@objectType = 'F' AND o.type IN ('TF','IF'))
+    )
+    AND (@schema IS NULL OR s.name = @schema)
+    AND (@name   IS NULL OR o.name LIKE '%' + @name + '%')
+ORDER BY s.name, o.name;
 ";
 
-        var param = new
-        {
-            tableType,
-            schema,
-            name
-        };
-
-        return _con.Query<string>(sql, param).ToList();
+        return _con.Query<string>(sql, new { objectType, schema, name }).ToList();
     }
     
     /// <summary>
@@ -772,7 +884,7 @@ WHERE c.FORM_FIELD_MASTER_ID = @MasterId
     /// - OnlyTable：視為純維運，不提供查詢條件 → 把查詢相關清空/關閉
     /// - Both/Default：保留原設定
     /// </summary>
-    private static void ApplySchemaPolicy(FormFieldViewModel f, TableSchemaQueryType schemaType)
+    public void ApplySchemaPolicy(FormFieldViewModel f, TableSchemaQueryType schemaType)
     {
         switch (schemaType)
         {
@@ -788,6 +900,15 @@ WHERE c.FORM_FIELD_MASTER_ID = @MasterId
             
             case TableSchemaQueryType.OnlyView:
                 // 只查不改：編輯控制改為 null、不可編輯、必填關閉
+                f.IS_EDITABLE = null;
+                f.IS_REQUIRED = null;
+                f.IS_VALIDATION_RULE = null;
+                f.CONTROL_TYPE = null;
+                f.CONTROL_TYPE_WHITELIST = null;
+                break;
+            
+            case TableSchemaQueryType.OnlyTvf:
+                // 完全比照 View，但語意獨立
                 f.IS_EDITABLE = null;
                 f.IS_REQUIRED = null;
                 f.IS_VALIDATION_RULE = null;
@@ -851,7 +972,9 @@ WHERE c.FORM_FIELD_MASTER_ID = @MasterId
             TableName = cfg.TABLE_NAME,
             COLUMN_NAME = cfg.COLUMN_NAME,
             DATA_TYPE = cfg.DATA_TYPE,
-
+            IS_TVF_QUERY_PARAMETER = cfg.IS_TVF_QUERY_PARAMETER,
+            TVF_CURRENT_VALUE    = cfg.TVF_CURRENT_VALUE,
+            
             // 控制元件設定
             CONTROL_TYPE = cfg.CONTROL_TYPE,
 
@@ -962,7 +1085,7 @@ WHERE c.FORM_FIELD_MASTER_ID = @MasterId
             throw new InvalidOperationException($"缺少必要欄位：{string.Join(", ", missing)}");
     }
 
-    private Task<Guid> ResolveMasterIdAsync(
+    public Task<Guid> ResolveMasterIdAsync(
         SqlConnection conn,
         SqlTransaction tx,
         string tableName,
@@ -980,13 +1103,14 @@ WHERE c.FORM_FIELD_MASTER_ID = @MasterId
             BASE_TABLE_NAME = schemaType == TableSchemaQueryType.OnlyTable ? tableName : null,
             VIEW_TABLE_NAME = schemaType == TableSchemaQueryType.OnlyView ? tableName : null,
             DETAIL_TABLE_NAME = schemaType == TableSchemaQueryType.OnlyDetail ? tableName : null,
-            MAPPING_TABLE_NAME = schemaType == TableSchemaQueryType.OnlyMapping ? tableName : null
+            MAPPING_TABLE_NAME = schemaType == TableSchemaQueryType.OnlyMapping ? tableName : null,
+            TVF_TABLE_NAME = schemaType == TableSchemaQueryType.OnlyTvf ? tableName : null
         };
 
         return _formFieldMasterService.GetOrCreateInTxAsync(conn, tx, master, ct);
     }
 
-    private async Task UpsertMissingConfigsInTxAsync(
+    public async Task UpsertMissingConfigsInTxAsync(
         SqlConnection conn,
         SqlTransaction tx,
         string tableName,
@@ -1011,6 +1135,7 @@ WHERE c.FORM_FIELD_MASTER_ID = @MasterId
                 col.COLUMN_NAME,
                 col.DATA_TYPE,
                 col.SourceIsNullable,
+                col.isTvfQueryParameter,
                 masterId,
                 tableName,
                 order,
@@ -1215,6 +1340,8 @@ WHERE c.FORM_FIELD_MASTER_ID = @MasterId
             model.COLUMN_NAME,
             model.DISPLAY_NAME,
             model.DATA_TYPE,
+            model.IS_TVF_QUERY_PARAMETER,
+            model.TVF_CURRENT_VALUE,
             CONTROL_TYPE = controlType,
             IS_REQUIRED = isRequired,
             model.IS_EDITABLE,
@@ -2232,9 +2359,9 @@ WHERE c.FORM_FIELD_MASTER_ID = @MasterId
     }
 
     /// <summary>
-    /// 從 SQL Server 的 INFORMATION_SCHEMA 取得指定表的欄位結構（交易內）。
+    /// 從 SQL Server 取得指定「表」的欄位結構（交易內）。
     /// </summary>
-    private async Task<List<DbColumnInfo>> GetTableSchemaInTxAsync(
+    private Task<List<DbColumnInfo>> GetTableSchemaInTxAsync(
         SqlConnection conn,
         SqlTransaction tx,
         string tableName,
@@ -2242,9 +2369,23 @@ WHERE c.FORM_FIELD_MASTER_ID = @MasterId
     {
         ValidateTableName(tableName);
 
+        // 相容舊用法：預設 dbo
+        return GetObjectSchemaInTxAsync(conn, tx, "dbo", tableName, ct);
+    }
+
+    /// <summary>
+    /// 從 SQL Server 取得指定物件（Table/View/TVF）的欄位結構（交易內）。
+    /// </summary>
+    private async Task<List<DbColumnInfo>> GetObjectSchemaInTxAsync(
+        SqlConnection conn,
+        SqlTransaction tx,
+        string schemaName,
+        string objectName,
+        CancellationToken ct)
+    {
         var columns = await conn.QueryAsync<DbColumnInfo>(new CommandDefinition(
-            Sql.TableSchemaSelect,
-            new { TableName = tableName },
+            Sql.ObjectSchemaSelect,
+            new { SchemaName = schemaName, ObjectName = objectName },
             transaction: tx,
             cancellationToken: ct));
 
@@ -2275,7 +2416,7 @@ WHERE c.FORM_FIELD_MASTER_ID = @MasterId
     /// <summary>
     /// 從 FORM_FIELD_CONFIG 查出該表的欄位設定資訊（交易內）。
     /// </summary>
-    private async Task<Dictionary<string, FormFieldConfigDto>> GetFieldConfigsInTxAsync(
+    public async Task<Dictionary<string, FormFieldConfigDto>> GetFieldConfigsInTxAsync(
         SqlConnection conn,
         SqlTransaction tx,
         string tableName,
@@ -2435,7 +2576,7 @@ WHERE TC.CONSTRAINT_TYPE = 'PRIMARY KEY'
         return rows.ToHashSet(StringComparer.OrdinalIgnoreCase);
     }
     
-    private FormFieldViewModel CreateDefaultFieldConfig(string columnName, string dataType, bool sourceIsNullable, Guid masterId, string tableName, long index, TableSchemaQueryType schemaType)
+    private FormFieldViewModel CreateDefaultFieldConfig(string columnName, string dataType, bool sourceIsNullable, bool isTvfQueryParameter, Guid masterId, string tableName, long index, TableSchemaQueryType schemaType)
     {
         return new FormFieldViewModel
         {
@@ -2445,6 +2586,7 @@ WHERE TC.CONSTRAINT_TYPE = 'PRIMARY KEY'
             COLUMN_NAME = columnName,
             DATA_TYPE = dataType,
             IsNullable = sourceIsNullable,
+            IS_TVF_QUERY_PARAMETER = isTvfQueryParameter,
             CONTROL_TYPE = FormFieldHelper.GetDefaultControlType(dataType), // 依型態決定 ControlType
             IS_REQUIRED = false,
             IS_EDITABLE = true,
@@ -2477,6 +2619,23 @@ FROM INFORMATION_SCHEMA.COLUMNS
 WHERE TABLE_NAME = @TableName
 ORDER BY ORDINAL_POSITION";
 
+        // 20260130，可查 TVF
+        public const string ObjectSchemaSelect = @"
+/**/
+SELECT
+    c.name        AS COLUMN_NAME,
+    t.name        AS DATA_TYPE,
+    c.column_id   AS ORDINAL_POSITION,
+    CASE WHEN c.is_nullable = 1 THEN 'YES' ELSE 'NO' END AS IS_NULLABLE
+FROM sys.objects o
+JOIN sys.columns c ON o.object_id = c.object_id
+JOIN sys.types t   ON c.user_type_id = t.user_type_id
+WHERE o.name = @ObjectName
+  AND SCHEMA_NAME(o.schema_id) = @SchemaName
+  AND o.type IN ('U','V','IF','TF')
+ORDER BY c.column_id;
+";
+        
         public const string UpsertFormMaster = @"/**/
 MERGE FORM_FIELD_MASTER AS target
 USING (SELECT @ID AS ID) AS src
@@ -2657,9 +2816,11 @@ WHEN MATCHED THEN
     UPDATE SET
         DISPLAY_NAME   = @DISPLAY_NAME,
         CONTROL_TYPE   = @CONTROL_TYPE,
-        IS_REQUIRED     = @IS_REQUIRED,
+        IS_REQUIRED    = @IS_REQUIRED,
         IS_EDITABLE    = @IS_EDITABLE,
         IS_DISPLAYED   = @IS_DISPLAYED,
+        IS_TVF_QUERY_PARAMETER         = @IS_TVF_QUERY_PARAMETER,
+        TVF_CURRENT_VALUE = @TVF_CURRENT_VALUE,
         QUERY_DEFAULT_VALUE  = @QUERY_DEFAULT_VALUE,
         QUERY_COMPONENT = @QUERY_COMPONENT,
         QUERY_CONDITION = @QUERY_CONDITION,
@@ -2668,14 +2829,21 @@ WHEN MATCHED THEN
         COLUMN_IS_NULLABLE = @COLUMN_IS_NULLABLE,    
         EDIT_TIME      = GETDATE(),
         EDIT_USER      = @EDIT_USER
+
 WHEN NOT MATCHED THEN
     INSERT (
         ID, FORM_FIELD_MASTER_ID, TABLE_NAME, COLUMN_NAME, DISPLAY_NAME, DATA_TYPE,
-        CONTROL_TYPE, IS_REQUIRED, IS_EDITABLE, IS_DISPLAYED, QUERY_DEFAULT_VALUE, FIELD_ORDER, QUERY_COMPONENT, QUERY_CONDITION, CAN_QUERY, DETAIL_TO_RELATION_DEFAULT_COLUMN, CREATE_TIME, IS_DELETE, COLUMN_IS_NULLABLE, CREATE_USER, EDIT_USER
+        CONTROL_TYPE, IS_REQUIRED, IS_EDITABLE, IS_DISPLAYED, IS_TVF_QUERY_PARAMETER, TVF_CURRENT_VALUE,
+        QUERY_DEFAULT_VALUE, FIELD_ORDER, QUERY_COMPONENT, QUERY_CONDITION, CAN_QUERY, 
+        DETAIL_TO_RELATION_DEFAULT_COLUMN, CREATE_TIME, IS_DELETE, COLUMN_IS_NULLABLE, 
+        CREATE_USER, EDIT_USER
     )
     VALUES (
         @ID, @FORM_FIELD_MASTER_ID, @TABLE_NAME, @COLUMN_NAME, @DISPLAY_NAME, @DATA_TYPE,
-        @CONTROL_TYPE, @IS_REQUIRED, @IS_EDITABLE, @IS_DISPLAYED, @QUERY_DEFAULT_VALUE, @FIELD_ORDER, @QUERY_COMPONENT, @QUERY_CONDITION, @CAN_QUERY, @DETAIL_TO_RELATION_DEFAULT_COLUMN, GETDATE(), 0, @COLUMN_IS_NULLABLE, @CREATE_USER, @EDIT_USER
+        @CONTROL_TYPE, @IS_REQUIRED, @IS_EDITABLE, @IS_DISPLAYED, @IS_TVF_QUERY_PARAMETER, @TVF_CURRENT_VALUE,
+        @QUERY_DEFAULT_VALUE, @FIELD_ORDER, @QUERY_COMPONENT, @QUERY_CONDITION, @CAN_QUERY, 
+        @DETAIL_TO_RELATION_DEFAULT_COLUMN, GETDATE(), 0, @COLUMN_IS_NULLABLE, 
+        @CREATE_USER, @EDIT_USER
     );";
 
         public const string CheckFieldExists         = @"/**/
@@ -2792,6 +2960,43 @@ SET FIELD_ORDER = ordered.rn * @Gap,
     EDIT_TIME = GETDATE()
 FROM dbo.FORM_FIELD_CONFIG c
 JOIN ordered ON ordered.ID = c.ID;";
+        
+        public const string ObjectSchemaAndTvfInputsSelect = @"
+/**/
+-- (1) TVF input parameters (視為 isTvfQueryParameter = 1)
+SELECT
+    p.name AS COLUMN_NAME,
+    t.name AS DATA_TYPE,
+    p.parameter_id AS ORDINAL_POSITION,
+    'YES' AS IS_NULLABLE,
+    CONVERT(bit, 1) AS isTvfQueryParameter
+FROM sys.objects o
+JOIN sys.parameters p ON o.object_id = p.object_id
+JOIN sys.types t ON p.user_type_id = t.user_type_id
+WHERE o.name = @ObjectName
+  AND SCHEMA_NAME(o.schema_id) = @SchemaName
+  AND o.type IN ('IF','TF')
+
+UNION ALL
+
+-- (2) Returned table columns (視為 isTvfQueryParameter = 0)
+SELECT
+    c.name AS COLUMN_NAME,
+    t.name AS DATA_TYPE,
+    c.column_id AS ORDINAL_POSITION,
+    CASE WHEN c.is_nullable = 1 THEN 'YES' ELSE 'NO' END AS IS_NULLABLE,
+    CONVERT(bit, 0) AS isTvfQueryParameter
+FROM sys.objects o
+JOIN sys.columns c ON o.object_id = c.object_id
+JOIN sys.types t ON c.user_type_id = t.user_type_id
+WHERE o.name = @ObjectName
+  AND SCHEMA_NAME(o.schema_id) = @SchemaName
+  AND o.type IN ('U','V','IF','TF')
+
+ORDER BY isTvfQueryParameter DESC, ORDINAL_POSITION;
+";
+        
     }
+    
     #endregion
 }

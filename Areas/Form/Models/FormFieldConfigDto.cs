@@ -20,6 +20,9 @@ public class FormFieldConfigDto
     [Column("COLUMN_NAME")]
     public string COLUMN_NAME { get; set; } = string.Empty;
     
+    [Column("IS_TVF_QUERY_PARAMETER")]
+    public bool IS_TVF_QUERY_PARAMETER { get; set; }
+    
     [Column("COLUMN_IS_NULLABLE")]
     public bool COLUMN_IS_NULLABLE { get; set; }
     
@@ -67,4 +70,7 @@ public class FormFieldConfigDto
     
     [Column("DETAIL_TO_RELATION_DEFAULT_COLUMN")]
     public string? DETAIL_TO_RELATION_DEFAULT_COLUMN { get; set; }
+    
+    [Column("TVF_CURRENT_VALUE")]
+    public string? TVF_CURRENT_VALUE { get; set; }
 }

@@ -1,5 +1,6 @@
 ﻿using DcMateH5Api.Areas.Form.Models;
 using ClassLibrary;
+using DcMateH5Api.Areas.Form.ViewModels;
 using Microsoft.Data.SqlClient;
 
 namespace DcMateH5Api.Areas.Form.Interfaces.FormLogic;
@@ -16,4 +17,7 @@ public interface ISchemaService
     bool IsIdentityColumn(string tableName, string columnName, SqlTransaction? tx = null);
     
     string GetTableNameByTableId(Guid tableId, SqlTransaction? tx = null);
+
+    Task<List<DbColumnInfo>> GetObjectSchemaInTxAsync(SqlConnection conn, SqlTransaction tx, string schemaName,
+        string objectName, CancellationToken ct);
 }

@@ -168,4 +168,31 @@ public interface IFormDesignerService
     /// <param name="ct">取消權杖</param>
     /// <returns>是否刪除成功</returns>
     Task<bool> DeleteDeleteGuardSql(Guid id, Guid? currentUserId, CancellationToken ct = default);
+
+    Task UpsertMissingConfigsInTxAsync(
+        SqlConnection conn,
+        SqlTransaction tx,
+        string tableName,
+        Guid masterId,
+        TableSchemaQueryType schemaType,
+        IReadOnlyList<DbColumnInfo> columns,
+        IReadOnlyDictionary<string, FormFieldConfigDto> configs,
+        CancellationToken ct);
+    
+    Task<Dictionary<string, FormFieldConfigDto>> GetFieldConfigsInTxAsync(
+        SqlConnection conn,
+        SqlTransaction tx,
+        string tableName,
+        Guid? formMasterId,
+        CancellationToken ct);
+    
+    Task<Guid> ResolveMasterIdAsync(
+        SqlConnection conn,
+        SqlTransaction tx,
+        string tableName,
+        Guid? formMasterId,
+        TableSchemaQueryType schemaType,
+        CancellationToken ct);
+
+    void ApplySchemaPolicy(FormFieldViewModel f, TableSchemaQueryType schemaType);
 }

@@ -11,4 +11,6 @@ public class DbColumnInfo
 
     public bool SourceIsNullable =>
         string.Equals(IS_NULLABLE, "YES", StringComparison.OrdinalIgnoreCase);
+    
+    public bool isTvfQueryParameter { get; set; }
 }

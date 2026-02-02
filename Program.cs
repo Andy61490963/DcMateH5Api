@@ -111,7 +111,9 @@ builder.Services.AddScoped<IFormService, FormService>();
 builder.Services.AddScoped<IFormDeleteGuardService, FormDeleteGuardService>();
 builder.Services.AddScoped<IFormMasterDetailService, FormMasterDetailService>();
 builder.Services.AddScoped<IFormMultipleMappingService, FormMultipleMappingService>();
+builder.Services.AddScoped<IFormDesignerTableValueFunctionService, FormDesignerTableValueFunctionService>();
 builder.Services.AddScoped<IDropdownSqlSyncService, DropdownSqlSyncService>();
+builder.Services.AddScoped<IFormTableValueFunctionService, FormTableValueFunctionService>();
 
 // Menu Tree
 builder.Services.AddScoped<DCMATEH5API.Areas.Menu.Services.IMenuService, DCMATEH5API.Areas.Menu.Services.MenuService>();
@@ -195,6 +197,7 @@ var swaggerGroups = new[]
     SwaggerGroups.ApiStatus, SwaggerGroups.Enum, SwaggerGroups.Log,
     SwaggerGroups.Security, SwaggerGroups.Menu,
     SwaggerGroups.Form, SwaggerGroups.FormWithMasterDetail, SwaggerGroups.FormWithMultipleMapping,
+    SwaggerGroups.FormTableValueFunction
 };
 
 builder.Services.AddEndpointsApiExplorer();
