@@ -6,7 +6,8 @@ public sealed record FormSearchRequest(
     Guid FormMasterId,
     int Page = 1,
     int PageSize = 20,
-    List<FormQueryConditionViewModel>? Conditions = null
+    List<FormQueryConditionViewModel>? Conditions = null,
+    List<FormOrderBy>? OrderBys = null
 );
 
 /// <summary>
@@ -48,3 +49,8 @@ public class MappingListQuery
     public Dictionary<string, string> Filters { get; set; }
         = new(StringComparer.OrdinalIgnoreCase);
 }
+
+public sealed record FormOrderBy(
+    string Column,
+    SortType Direction = SortType.Asc
+);

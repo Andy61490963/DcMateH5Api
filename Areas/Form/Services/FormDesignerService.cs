@@ -26,7 +26,7 @@ public class FormDesignerService : IFormDesignerService
     private readonly ICurrentUserAccessor _currentUser;
     private readonly IFormFieldMasterService _formFieldMasterService;
     private readonly IReadOnlyList<string> _relationColumnSuffixes;
-
+    
     public FormDesignerService(
         SQLGenerateHelper sqlHelper,
         SqlConnection connection,
@@ -41,8 +41,8 @@ public class FormDesignerService : IFormDesignerService
         _schemaService = schemaService;
         _sqlHelper = sqlHelper;
         _formFieldMasterService = formFieldMasterService;
-        _currentUser = currentUser;
-
+        _currentUser = currentUser; 
+        
         _excludeColumns = _configuration.GetSection("DropdownSqlSettings:ExcludeColumns").Get<List<string>>() ?? new();
         _requiredColumns = _configuration.GetSection("FormDesignerSettings:RequiredColumns").Get<List<string>>() ?? new();
         var resolvedSettings = formSettings?.Value ?? new FormSettings();
@@ -51,15 +51,15 @@ public class FormDesignerService : IFormDesignerService
 
     private readonly List<string> _excludeColumns;
     private readonly List<string> _requiredColumns;
-
+    
     private Guid GetCurrentUserId()
     {
         var user = _currentUser.Get();
         return user.Id;
     }
-
+    
     #region Public API
-
+    
     /// <summary>
     /// 取得 FORM_FIELD_MASTER 列表（可依 SchemaType 與關鍵字模糊查詢）
     /// </summary>
@@ -80,7 +80,7 @@ public class FormDesignerService : IFormDesignerService
         {
             where.AndLike(x => x.FORM_NAME, q);
         }
-
+        
         var res = _sqlHelper.SelectWhereAsync(where, ct);
         return res;
     }
@@ -115,7 +115,7 @@ public class FormDesignerService : IFormDesignerService
                 }
             };
         }
-
+        
         var where = new WhereBuilder<FormFieldDeleteGuardSqlDto>()
             .AndNotDeleted();
 
@@ -254,7 +254,7 @@ public class FormDesignerService : IFormDesignerService
 
         return true;
     }
-
+    
     /// <summary>
     /// 取得單一主表設定
     /// </summary>
@@ -345,7 +345,7 @@ public class FormDesignerService : IFormDesignerService
 
         }, ct: ct);
     }
-
+    
     /// <summary>
     /// 根據 functionType 取得 Form Designer 首頁所需資料（用於前端建立樹狀結構/左側欄位樹）。
     ///
@@ -506,7 +506,7 @@ public class FormDesignerService : IFormDesignerService
 
         return result;
     }
-
+    
     /// <summary>
     /// [TVF 專用] 根據 TVF 名稱取得欄位資訊。
     /// 使用專用的 SQL 來同時讀取「輸入參數」與「回傳欄位」。
@@ -662,7 +662,7 @@ ORDER BY s.name, o.name;
 
         return _con.Query<string>(sql, new { objectType, schema, name }).ToList();
     }
-
+    
     /// <summary>
     /// 取得或建立 FORM_FIELD_MASTER 主鍵（非交易版）。
     /// </summary>
@@ -670,7 +670,7 @@ ORDER BY s.name, o.name;
     {
         return _formFieldMasterService.GetOrCreateAsync(model, ct);
     }
-
+    
     /// <summary>
     /// 根據資料表名稱，取得所有欄位資訊並合併 欄位設定、驗證資訊。
     /// </summary>
@@ -897,7 +897,7 @@ WHERE c.FORM_FIELD_MASTER_ID = @MasterId
                 f.QUERY_COMPONENT_TYPE_WHITELIST = null;
                 f.QUERY_DEFAULT_VALUE = null;
                 break;
-
+            
             case TableSchemaQueryType.OnlyView:
                 // 只查不改：編輯控制改為 null、不可編輯、必填關閉
                 f.IS_EDITABLE = null;
@@ -917,7 +917,7 @@ WHERE c.FORM_FIELD_MASTER_ID = @MasterId
                 break;
         }
     }
-
+    
     /// <summary>
     /// 依欄位設定 ID 取得單一欄位的完整設定資訊。
     ///
@@ -1069,7 +1069,7 @@ WHERE c.FORM_FIELD_MASTER_ID = @MasterId
             return await GetFieldsByTableNameInTxAsync(conn, tx, tableName, masterId, schemaType, ct);
         }, ct: ct);
     }
-
+    
     private void EnsureRequiredColumns(
         IReadOnlyList<DbColumnInfo> columns,
         TableSchemaQueryType schemaType)
@@ -1227,40 +1227,40 @@ WHERE c.FORM_FIELD_MASTER_ID = @MasterId
             transaction: tx,
             cancellationToken: ct));
     }
-
-    //     private Task SyncSourceNullabilityInTxAsync(
-    //         SqlConnection conn,
-    //         SqlTransaction tx,
-    //         string tableName,
-    //         Guid masterId,
-    //         IReadOnlyList<DbColumnInfo> columns,
-    //         CancellationToken ct)
-    //     {
-    //         const string sql = @"
-    // /**/
-    // UPDATE dbo.FORM_FIELD_CONFIG
-    // SET COLUMN_IS_NULLABLE = @COLUMN_IS_NULLABLE,
-    //     EDIT_TIME = GETDATE()
-    // WHERE FORM_FIELD_MASTER_ID = @MasterId
-    //   AND TABLE_NAME = @TableName
-    //   AND COLUMN_NAME = @ColumnName
-    //   AND IS_DELETE = 0
-    //   AND (COLUMN_IS_NULLABLE <> @COLUMN_IS_NULLABLE);";
-    //
-    //         var rows = columns.Select(c => new
-    //         {
-    //             MasterId = masterId,
-    //             TableName = tableName,
-    //             ColumnName = c.COLUMN_NAME,
-    //             COLUMN_IS_NULLABLE = c.SourceIsNullable
-    //         });
-    //
-    //         return conn.ExecuteAsync(new CommandDefinition(
-    //             sql,
-    //             rows,
-    //             transaction: tx,
-    //             cancellationToken: ct));
-    //     }
+    
+//     private Task SyncSourceNullabilityInTxAsync(
+//         SqlConnection conn,
+//         SqlTransaction tx,
+//         string tableName,
+//         Guid masterId,
+//         IReadOnlyList<DbColumnInfo> columns,
+//         CancellationToken ct)
+//     {
+//         const string sql = @"
+// /**/
+// UPDATE dbo.FORM_FIELD_CONFIG
+// SET COLUMN_IS_NULLABLE = @COLUMN_IS_NULLABLE,
+//     EDIT_TIME = GETDATE()
+// WHERE FORM_FIELD_MASTER_ID = @MasterId
+//   AND TABLE_NAME = @TableName
+//   AND COLUMN_NAME = @ColumnName
+//   AND IS_DELETE = 0
+//   AND (COLUMN_IS_NULLABLE <> @COLUMN_IS_NULLABLE);";
+//
+//         var rows = columns.Select(c => new
+//         {
+//             MasterId = masterId,
+//             TableName = tableName,
+//             ColumnName = c.COLUMN_NAME,
+//             COLUMN_IS_NULLABLE = c.SourceIsNullable
+//         });
+//
+//         return conn.ExecuteAsync(new CommandDefinition(
+//             sql,
+//             rows,
+//             transaction: tx,
+//             cancellationToken: ct));
+//     }
 
 
     /// <summary>
@@ -1293,7 +1293,7 @@ WHERE c.FORM_FIELD_MASTER_ID = @MasterId
 
         if (orphanIds.Count == 0)
             return;
-
+        
         // 4.1 一定要 WHERE：用 WhereBuilder 組 IN
         var where = new WhereBuilder<FormFieldConfigDto>()
             .AndIn(x => x.ID, orphanIds);
@@ -1303,7 +1303,7 @@ WHERE c.FORM_FIELD_MASTER_ID = @MasterId
                 where)
             .ConfigureAwait(false);
     }
-
+    
     /// <summary>
     /// 新增或更新欄位設定，若已存在則更新，否則新增。
     /// </summary>
@@ -1361,7 +1361,7 @@ WHERE c.FORM_FIELD_MASTER_ID = @MasterId
             param,
             transaction: tx,
             cancellationToken: ct));
-
+        
         if (affected == 0)
         {
             throw new InvalidOperationException($"Upsert 失敗：{model.COLUMN_NAME} 無法新增或更新");
@@ -1513,7 +1513,7 @@ WHERE c.FORM_FIELD_MASTER_ID = @MasterId
                 throw new InvalidOperationException("更新排序失敗。");
         }, ct: ct);
     }
-
+    
     /// <summary>
     /// 批次設定欄位的必填狀態，僅對可編輯欄位生效。
     /// </summary>
@@ -1522,12 +1522,12 @@ WHERE c.FORM_FIELD_MASTER_ID = @MasterId
         Guid children = _con.QueryFirstOrDefault<Guid>(Sql.GetFormFieldMasterChildren, new { formMasterId, SchemaType = TableSchemaQueryType.All.ToInt() });
         return children;
     }
-
+    
     /// <summary>
     /// 批次設定欄位的可編輯狀態。
     /// 若設定為不可編輯，會同步取消必填。
     /// </summary>
-    public async Task<string> SetAllEditable(Guid formMasterId, bool isEditable, CancellationToken ct)
+    public async Task<string> SetAllEditable( Guid formMasterId, bool isEditable, CancellationToken ct )
     {
         return await _sqlHelper.TxAsync(async (conn, tx, ct) =>
         {
@@ -1549,7 +1549,7 @@ WHERE c.FORM_FIELD_MASTER_ID = @MasterId
     /// <summary>
     /// 批次設定欄位的必填狀態，僅對可編輯欄位生效。
     /// </summary>
-    public async Task<string> SetAllRequired(Guid formMasterId, bool isRequired, CancellationToken ct)
+    public async Task<string> SetAllRequired( Guid formMasterId, bool isRequired, CancellationToken ct )
     {
         return await _sqlHelper.TxAsync(async (conn, tx, ct) =>
         {
@@ -1587,13 +1587,13 @@ WHERE c.FORM_FIELD_MASTER_ID = @MasterId
     /// <summary>
     /// 依欄位設定 ID 取回該欄位的所有驗證規則（過濾已刪除），並依 SEQNO/ID 排序。
     /// </summary>
-    public async Task<List<FormFieldValidationRuleDto>> GetValidationRulesByFieldId(Guid fieldId, CancellationToken ct = default)
+    public async Task<List<FormFieldValidationRuleDto>> GetValidationRulesByFieldId( Guid fieldId, CancellationToken ct = default )
     {
         var where = new WhereBuilder<FormFieldValidationRuleDto>()
             .AndEq(x => x.FORM_FIELD_CONFIG_ID, fieldId)
             .AndNotDeleted();
-
-        var rules = await _sqlHelper.SelectWhereAsync(where, ct);
+        
+        var rules = await _sqlHelper.SelectWhereAsync( where, ct );
         return rules;
     }
 
@@ -1632,9 +1632,9 @@ WHERE c.FORM_FIELD_MASTER_ID = @MasterId
     /// <param name="model"></param>
     /// <param name="ct"></param>
     /// <returns></returns>
-    public async Task<bool> InsertValidationRule(FormFieldValidationRuleDto model, CancellationToken ct = default)
+    public async Task<bool> InsertValidationRule( FormFieldValidationRuleDto model, CancellationToken ct = default )
     {
-        var count = await _sqlHelper.InsertAsync(model, ct);
+        var count = await _sqlHelper.InsertAsync( model, ct );
         return count > 0;
     }
 
@@ -1648,7 +1648,7 @@ WHERE c.FORM_FIELD_MASTER_ID = @MasterId
         var res = _con.ExecuteScalar<int>(Sql.GetNextValidationOrder, new { fieldId });
         return res;
     }
-
+    
     /// <summary>
     /// 根據欄位 ID 取得該欄位的控制類型（FormControlType Enum）。
     /// </summary>
@@ -1666,9 +1666,9 @@ WHERE c.FORM_FIELD_MASTER_ID = @MasterId
     /// <param name="model"></param>
     /// <param name="ct"></param>
     /// <returns></returns>
-    public async Task<bool> SaveValidationRule(FormFieldValidationRuleDto model, CancellationToken ct = default)
-    {
-        var res = await _sqlHelper.UpdateAllByIdAsync(model, UpdateNullBehavior.IgnoreNulls, true, ct) > 0;
+    public async Task<bool> SaveValidationRule( FormFieldValidationRuleDto model, CancellationToken ct = default )
+    { 
+        var res = await _sqlHelper.UpdateAllByIdAsync(model, UpdateNullBehavior.IgnoreNulls, true, ct)  > 0;
         return res;
     }
 
@@ -1677,11 +1677,11 @@ WHERE c.FORM_FIELD_MASTER_ID = @MasterId
     /// </summary>
     /// <param name="id">驗證規則的唯一識別碼</param>
     /// <returns>刪除成功則回傳 true</returns>
-    public async Task<bool> DeleteValidationRule(Guid id, CancellationToken ct = default)
+    public async Task<bool> DeleteValidationRule( Guid id , CancellationToken ct = default )
     {
         var where = new WhereBuilder<FormFieldValidationRuleDto>()
             .AndEq(x => x.ID, id);
-        var res = await _sqlHelper.DeleteWhereAsync(where, ct) > 0;
+        var res = await _sqlHelper.DeleteWhereAsync( where, ct ) > 0;
         return res;
     }
 
@@ -1696,24 +1696,24 @@ WHERE c.FORM_FIELD_MASTER_ID = @MasterId
     {
         _con.Execute(Sql.EnsureDropdownExists, new { fieldId, isUseSql, sql });
     }
-
-    public async Task<DropDownViewModel> GetDropdownSetting(Guid dropdownId, CancellationToken ct = default)
+    
+    public async Task<DropDownViewModel> GetDropdownSetting( Guid dropdownId, CancellationToken ct = default )
     {
         var model = new DropDownViewModel();
         var where = new WhereBuilder<FormFieldDropDownDto>()
             .AndEq(x => x.ID, dropdownId)
             .AndNotDeleted();
-
-        var dropDown = await _sqlHelper.SelectFirstOrDefaultAsync(where, ct);
-        if (dropDown == null) throw new Exception("查無下拉選單設定，且確認傳入的id是否正確");
-
+        
+        var dropDown = await _sqlHelper.SelectFirstOrDefaultAsync( where, ct );
+        if(dropDown == null) throw new Exception("查無下拉選單設定，且確認傳入的id是否正確");
+        
         model.FormFieldDropDown = dropDown;
-        var optionTexts = await GetDropdownOptions(dropDown.ID, ct);
+        var optionTexts = await GetDropdownOptions( dropDown.ID, ct );
         model.OPTION_TEXT = optionTexts;
 
         return model;
     }
-
+    
     /// <summary>
     /// 取得下拉選項（純查詢）：僅回傳使用者自行建立/儲存在 DB 的選項，不做 SQL Sync。
     /// </summary>
@@ -1745,8 +1745,8 @@ WHERE c.FORM_FIELD_MASTER_ID = @MasterId
             .OrderBy(x => x.OPTION_TEXT)
             .ToList();
     }
-
-    public Task SaveDropdownSql(Guid dropdownId, string sql, CancellationToken ct)
+    
+    public Task SaveDropdownSql( Guid dropdownId, string sql, CancellationToken ct )
     {
         return _sqlHelper.UpdateById<FormFieldDropDownDto>(dropdownId)
             .Set(x => x.ISUSESQL, true)
@@ -1754,14 +1754,14 @@ WHERE c.FORM_FIELD_MASTER_ID = @MasterId
             .Set(x => x.DROPDOWNSQL, sql)
             .ExecuteAsync(ct);
     }
-
-    public Task SetDropdownMode(Guid dropdownId, bool isUseSql, CancellationToken ct)
+    
+    public Task SetDropdownMode( Guid dropdownId, bool isUseSql, CancellationToken ct )
     {
         return _sqlHelper.UpdateById<FormFieldDropDownDto>(dropdownId)
             .Set(x => x.ISUSESQL, isUseSql)
             .ExecuteAsync(ct);
     }
-
+    
     public ValidateSqlResultViewModel ValidateDropdownSql(string sql)
     {
         var result = new ValidateSqlResultViewModel();
@@ -2038,8 +2038,8 @@ WHERE c.FORM_FIELD_MASTER_ID = @MasterId
                 transaction: tx,
                 cancellationToken: ct));
     }
-
-    public async Task<Guid> SaveFormHeader(FormHeaderViewModel model, CancellationToken ct)
+        
+    public async Task<Guid> SaveFormHeader( FormHeaderViewModel model, CancellationToken ct )
     {
         var whereBase = new WhereBuilder<FormFieldMasterDto>()
             .AndEq(x => x.ID, model.BASE_TABLE_ID)
@@ -2048,7 +2048,7 @@ WHERE c.FORM_FIELD_MASTER_ID = @MasterId
         var whereView = new WhereBuilder<FormFieldMasterDto>()
             .AndEq(x => x.ID, model.VIEW_TABLE_ID)
             .AndNotDeleted();
-
+        
         var baseMaster = await _sqlHelper.SelectFirstOrDefaultAsync(whereBase)
                          ?? throw new InvalidOperationException("主表查無資料");
         var viewMaster = await _sqlHelper.SelectFirstOrDefaultAsync(whereView)
@@ -2056,12 +2056,12 @@ WHERE c.FORM_FIELD_MASTER_ID = @MasterId
 
         var baseTableName = baseMaster.BASE_TABLE_NAME;
         var viewTableName = viewMaster.VIEW_TABLE_NAME;
-
+        
         // 確保主表與顯示用 View 皆能成功查詢，避免儲存無效設定
-        if (GetTableSchema(baseTableName!).Count == 0)
+        if ( GetTableSchema(baseTableName!).Count == 0 )
             throw new InvalidOperationException("主表名稱查無資料");
 
-        if (GetTableSchema(viewTableName!).Count == 0)
+        if ( GetTableSchema(viewTableName!).Count == 0)
             throw new InvalidOperationException("顯示用 View 名稱查無資料");
 
         // 若未指定 ID 則產生新 ID
@@ -2073,38 +2073,38 @@ WHERE c.FORM_FIELD_MASTER_ID = @MasterId
         var id = _con.ExecuteScalar<Guid>(Sql.UpsertFormMaster, new
         {
             model.ID,
-
+            
             model.FORM_NAME,
             model.FORM_CODE,
             model.FORM_DESCRIPTION,
-
+            
             model.BASE_TABLE_ID,
             model.VIEW_TABLE_ID,
             MAPPING_TABLE_ID = (Guid?)null,
-
+            
             BASE_TABLE_NAME = baseTableName,
             VIEW_TABLE_NAME = viewTableName,
             MAPPING_TABLE_NAME = (string?)null,
-
+            
             STATUS = (int)TableStatusType.Active,
             SCHEMA_TYPE = TableSchemaQueryType.All,
             FUNCTION_TYPE = FormFunctionType.MasterMaintenance,
-
+            
             CREATE_TIME = DateTime.Now,
             EDIT_TIME = DateTime.Now,
             CREATE_USER = GetCurrentUserId(),
             EDIT_USER = GetCurrentUserId()
         });
-
+        
         return id;
     }
 
-    public async Task<Guid> SaveMasterDetailFormHeader(MasterDetailFormHeaderViewModel model, CancellationToken ct)
+    public async Task<Guid> SaveMasterDetailFormHeader( MasterDetailFormHeaderViewModel model, CancellationToken ct )
     {
         var whereBase = new WhereBuilder<FormFieldMasterDto>()
             .AndEq(x => x.ID, model.BASE_TABLE_ID)
             .AndNotDeleted();
-
+        
         var whereDetail = new WhereBuilder<FormFieldMasterDto>()
             .AndEq(x => x.ID, model.DETAIL_TABLE_ID)
             .AndNotDeleted();
@@ -2112,14 +2112,14 @@ WHERE c.FORM_FIELD_MASTER_ID = @MasterId
         var whereView = new WhereBuilder<FormFieldMasterDto>()
             .AndEq(x => x.ID, model.VIEW_TABLE_ID)
             .AndNotDeleted();
-
+        
         var baseMaster = await _sqlHelper.SelectFirstOrDefaultAsync(whereBase)
                          ?? throw new InvalidOperationException("主表查無資料");
         var detailMaster = await _sqlHelper.SelectFirstOrDefaultAsync(whereDetail)
                          ?? throw new InvalidOperationException("明細表無資料");
         var viewMaster = await _sqlHelper.SelectFirstOrDefaultAsync(whereView)
                          ?? throw new InvalidOperationException("檢視表查無資料");
-
+        
         var masterTableName = baseMaster.BASE_TABLE_NAME;
         var detailTableName = detailMaster.DETAIL_TABLE_NAME;
         var viewTableName = viewMaster.VIEW_TABLE_NAME;
@@ -2147,23 +2147,23 @@ WHERE c.FORM_FIELD_MASTER_ID = @MasterId
             model.FORM_NAME,
             model.FORM_CODE,
             model.FORM_DESCRIPTION,
-
+            
             model.BASE_TABLE_ID,
             model.DETAIL_TABLE_ID,
             model.VIEW_TABLE_ID,
-
+            
             MASTER_TABLE_NAME = masterTableName,
             DETAIL_TABLE_NAME = detailTableName,
             VIEW_TABLE_NAME = viewTableName,
-
+            
             MAPPING_TABLE_NAME = (string?)null,
             MAPPING_TABLE_ID = (Guid?)null,
-
+            
             STATUS = (int)TableStatusType.Active,
             SCHEMA_TYPE = TableSchemaQueryType.All,
             FUNCTION_TYPE = FormFunctionType.MasterDetailMaintenance
         });
-
+        
         return id;
     }
 
@@ -2175,7 +2175,7 @@ WHERE c.FORM_FIELD_MASTER_ID = @MasterId
     /// 會同步檢查主表、目標表與關聯表的實體存在性與關聯欄位，
     /// 並在有設定顯示欄位時驗證欄位存在性，避免後續顯示或維護時出錯。
     /// </remarks>
-    public async Task<Guid> SaveMultipleMappingFormHeader(MultipleMappingFormHeaderViewModel model, CancellationToken ct)
+    public async Task<Guid> SaveMultipleMappingFormHeader( MultipleMappingFormHeaderViewModel model, CancellationToken ct )
     {
         if (string.IsNullOrWhiteSpace(model.MAPPING_BASE_FK_COLUMN) ||
             string.IsNullOrWhiteSpace(model.MAPPING_DETAIL_FK_COLUMN))
@@ -2184,7 +2184,7 @@ WHERE c.FORM_FIELD_MASTER_ID = @MasterId
         }
 
         ValidateColumnName(model.MAPPING_PK_COLUMN);
-
+        
         ValidateColumnName(model.MAPPING_BASE_FK_COLUMN);
         ValidateColumnName(model.MAPPING_DETAIL_FK_COLUMN);
 
@@ -2202,7 +2202,7 @@ WHERE c.FORM_FIELD_MASTER_ID = @MasterId
         {
             ValidateColumnName(model.TARGET_MAPPING_COLUMN_NAME);
         }
-
+        
         if (!string.IsNullOrWhiteSpace(model.SOURCE_DETAIL_COLUMN_CODE))
         {
             ValidateColumnName(model.SOURCE_DETAIL_COLUMN_CODE);
@@ -2212,7 +2212,7 @@ WHERE c.FORM_FIELD_MASTER_ID = @MasterId
         {
             ValidateColumnName(model.TARGET_MAPPING_COLUMN_CODE);
         }
-
+        
         var whereBase = new WhereBuilder<FormFieldMasterDto>()
             .AndEq(x => x.ID, model.BASE_TABLE_ID)
             .AndNotDeleted();
@@ -2230,7 +2230,7 @@ WHERE c.FORM_FIELD_MASTER_ID = @MasterId
                             ?? throw new InvalidOperationException("主表查無資料");
         var detailMaster = await _sqlHelper.SelectFirstOrDefaultAsync(whereDetail)
                             ?? throw new InvalidOperationException("目標表查無資料");
-        var mappingMaster = await _sqlHelper.SelectFirstOrDefaultAsync(whereMapping)
+        var mappingMaster = await _sqlHelper.SelectFirstOrDefaultAsync(whereMapping) 
                             ?? throw new InvalidOperationException("關聯表查無資料");
         var viewMaster = await _sqlHelper.SelectFirstOrDefaultAsync(whereView)
                             ?? throw new InvalidOperationException("檢視表查無資料");
@@ -2257,12 +2257,12 @@ WHERE c.FORM_FIELD_MASTER_ID = @MasterId
             throw new InvalidOperationException("檢視表名稱查無資料");
 
         EnsureColumnExists(mappingTableName, model.MAPPING_PK_COLUMN, "關聯表缺少主鍵欄位");
-
+        
         EnsureColumnExists(mappingTableName, model.MAPPING_BASE_FK_COLUMN, "關聯表缺少指向主表的外鍵欄位");
         EnsureColumnExists(mappingTableName, model.MAPPING_DETAIL_FK_COLUMN, "關聯表缺少指向明細表的外鍵欄位");
         EnsureColumnExists(baseTableName, model.MAPPING_BASE_FK_COLUMN, "主表缺少對應的主鍵欄位");
         EnsureColumnExists(detailTableName, model.MAPPING_DETAIL_FK_COLUMN, "目標表缺少對應的主鍵欄位");
-
+        
         if (!string.IsNullOrWhiteSpace(model.MAPPING_BASE_COLUMN_NAME))
         {
             EnsureColumnExists(baseTableName, model.MAPPING_BASE_COLUMN_NAME, "主表缺少對應的顯示欄位");
@@ -2283,44 +2283,44 @@ WHERE c.FORM_FIELD_MASTER_ID = @MasterId
             model.FORM_NAME,
             model.FORM_CODE,
             model.FORM_DESCRIPTION,
-
+            
             model.BASE_TABLE_ID,
             model.DETAIL_TABLE_ID,
             model.MAPPING_TABLE_ID,
             model.VIEW_TABLE_ID,
-
+            
             model.FORM_FIELD_MASTER_BUTTON_LINK_ID,
             model.FORM_FIELD_MASTER1_BUTTON_LINK_ID,
-
+            
             MASTER_TABLE_NAME = baseTableName,
             DETAIL_TABLE_NAME = detailTableName,
             MAPPING_TABLE_NAME = mappingTableName,
             VIEW_TABLE_NAME = viewTableName,
-
+            
             model.MAPPING_PK_COLUMN,
-
+            
             model.MAPPING_BASE_FK_COLUMN,
             model.MAPPING_DETAIL_FK_COLUMN,
             model.MAPPING_BASE_COLUMN_NAME,
             model.MAPPING_DETAIL_COLUMN_NAME,
-
+            
             model.TARGET_MAPPING_COLUMN_NAME,
-
+            
             model.SOURCE_DETAIL_COLUMN_CODE,
             model.TARGET_MAPPING_COLUMN_CODE,
-
+            
             STATUS = (int)TableStatusType.Active,
             SCHEMA_TYPE = TableSchemaQueryType.All,
             FUNCTION_TYPE = FormFunctionType.MultipleMappingMaintenance
         });
-
+        
         return id;
     }
-
+    
     public async Task<bool> CheckMasterDetailFormMasterExistsAsync(
-        Guid masterTableId,
-        Guid detailTableId,
-        Guid viewTableId,
+        Guid masterTableId, 
+        Guid detailTableId, 
+        Guid viewTableId, 
         Guid? excludeId = null)
     {
         // ExecuteScalarAsync 本身就是 async，不會阻塞 ThreadPool
@@ -2338,7 +2338,7 @@ WHERE c.FORM_FIELD_MASTER_ID = @MasterId
             new { baseTableId, viewTableId, excludeId });
         return count > 0;
     }
-
+    
     #endregion
 
     #region Private Helpers
@@ -2354,7 +2354,7 @@ WHERE c.FORM_FIELD_MASTER_ID = @MasterId
 
         var sql = Sql.TableSchemaSelect;
         var columns = _con.Query<DbColumnInfo>(sql, new { TableName = tableName }).ToList();
-
+        
         return columns;
     }
 
@@ -2408,8 +2408,8 @@ WHERE c.FORM_FIELD_MASTER_ID = @MasterId
         {
             where.AndEq(x => x.FORM_FIELD_MASTER_ID, formMasterId.Value);
         }
-
-        var res = await _sqlHelper.SelectWhereAsync(where);
+        
+        var res = await _sqlHelper.SelectWhereAsync( where );
         return res.ToDictionary(x => x.COLUMN_NAME, StringComparer.OrdinalIgnoreCase);
     }
 
@@ -2575,7 +2575,7 @@ WHERE TC.CONSTRAINT_TYPE = 'PRIMARY KEY'
 
         return rows.ToHashSet(StringComparer.OrdinalIgnoreCase);
     }
-
+    
     private FormFieldViewModel CreateDefaultFieldConfig(string columnName, string dataType, bool sourceIsNullable, bool isTvfQueryParameter, Guid masterId, string tableName, long index, TableSchemaQueryType schemaType)
     {
         return new FormFieldViewModel
@@ -2797,7 +2797,7 @@ WHEN NOT MATCHED THEN
         GETDATE(), GETDATE()
     )
 OUTPUT inserted.ID;";
-
+        
         public const string UpsertField = @"
 MERGE dbo.FORM_FIELD_CONFIG WITH (HOLDLOCK) AS target
 
@@ -2846,7 +2846,7 @@ WHEN NOT MATCHED THEN
         @CREATE_USER, @EDIT_USER
     );";
 
-        public const string CheckFieldExists = @"/**/
+        public const string CheckFieldExists         = @"/**/
 SELECT COUNT(1) FROM FORM_FIELD_CONFIG WHERE ID = @fieldId";
 
         public const string SetAllEditable = @"/**/
@@ -2867,17 +2867,17 @@ END
 UPDATE FORM_FIELD_CONFIG
 SET IS_REQUIRED = CASE WHEN @isRequired = 1 AND IS_EDITABLE = 1 THEN 1 ELSE 0 END
 WHERE FORM_FIELD_MASTER_ID = @formMasterId";
-
-        public const string CountValidationRules = @"/**/
+        
+        public const string CountValidationRules     = @"/**/
 SELECT COUNT(1) FROM FORM_FIELD_VALIDATION_RULE WHERE FORM_FIELD_CONFIG_ID = @fieldId AND IS_DELETE = 0";
 
-        public const string GetNextValidationOrder = @"/**/
+        public const string GetNextValidationOrder   = @"/**/
 SELECT ISNULL(MAX(VALIDATION_ORDER), 0) + 1 FROM FORM_FIELD_VALIDATION_RULE WHERE FORM_FIELD_CONFIG_ID = @fieldId";
-
-        public const string GetControlTypeByFieldId = @"/**/
+        
+        public const string GetControlTypeByFieldId  = @"/**/
 SELECT CONTROL_TYPE FROM FORM_FIELD_CONFIG WHERE ID = @fieldId";
 
-        public const string GetRequiredFieldIds = @"/**/
+        public const string GetRequiredFieldIds      = @"/**/
 SELECT FORM_FIELD_CONFIG_ID FROM FORM_FIELD_VALIDATION_RULE WHERE IS_DELETE = 0";
 
 
@@ -2891,7 +2891,7 @@ BEGIN
     VALUES (NEWID(), @fieldId, @isUseSql, @sql, 0, 0)
 END
 ";
-
+        
 
         public const string UpdatePreviousQueryDropdownSourceSql = @"/**/
 UPDATE FORM_FIELD_DROPDOWN
@@ -2899,7 +2899,7 @@ SET DROPDOWNSQL = @Sql,
     ISUSESQL = 1,
     IS_QUERY_DROPDOWN = @isQueryDropdwon
 WHERE ID = @DropdownId;";
-
+        
         /// <summary>
         /// 取 Moving / Prev / Next 的群組欄位（確保同一個 FORM_FIELD_MASTER_ID + TABLE_NAME）
         /// </summary>
