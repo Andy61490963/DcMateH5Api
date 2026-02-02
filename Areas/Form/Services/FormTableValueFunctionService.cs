@@ -45,12 +45,12 @@ public class FormTableValueFunctionService : IFormTableValueFunctionService
     }
 
     /// <inheritdoc />
-    public IEnumerable<TableValueFunctionConfigViewModel> GetFormMasters(CancellationToken ct = default)
+    public async Task<IEnumerable<TableValueFunctionConfigViewModel>> GetFormMasters(
+        CancellationToken ct = default)
     {
         ct.ThrowIfCancellationRequested();
 
         const string sql = @"
-/**/
 SELECT 
     M.ID             AS Id,
     M.FORM_NAME      AS FormName,
@@ -60,7 +60,6 @@ FROM FORM_FIELD_MASTER M
 WHERE M.FUNCTION_TYPE = @funcType
   AND M.IS_DELETE = 0;
 
-/**/
 SELECT
     C.FORM_FIELD_MASTER_ID AS MasterId,
     C.COLUMN_NAME          AS ParameterName
@@ -78,28 +77,26 @@ ORDER BY C.FORM_FIELD_MASTER_ID, C.FIELD_ORDER;";
             schemaType = TableSchemaQueryType.OnlyTvf.ToInt()
         };
 
-        using var grid = _con.QueryMultiple(new CommandDefinition(sql, args, cancellationToken: ct));
+        using var grid = await _con.QueryMultipleAsync(
+            new CommandDefinition(sql, args, cancellationToken: ct));
 
-        var masters = grid.Read<TableValueFunctionConfigViewModel>().ToList();
-
-        var paramRows = grid.Read<TvfParamRow>().ToList();
+        var masters = (await grid.ReadAsync<TableValueFunctionConfigViewModel>()).ToList();
+        var paramRows = (await grid.ReadAsync<TvfParamRow>()).ToList();
 
         var paramMap = paramRows
             .GroupBy(x => x.MasterId)
             .ToDictionary(
                 g => g.Key,
-                g => g.Select(x => x.ParameterName).Where(s => !string.IsNullOrWhiteSpace(s)).ToList());
+                g => g.Select(x => x.ParameterName)
+                    .Where(s => !string.IsNullOrWhiteSpace(s))
+                    .ToList());
 
         foreach (var m in masters)
         {
-            if (paramMap.TryGetValue(m.TableFunctionValueId, out var list))
-            {
-                m.Parameter = list;
-            }
-            else
-            {
-                m.Parameter = new List<string>();
-            }
+            // 行為保持原樣（即使 key 不一致）
+            m.Parameter = paramMap.TryGetValue(m.TableFunctionValueId, out var list)
+                ? list
+                : new List<string>();
         }
 
         return masters;
@@ -111,167 +108,145 @@ ORDER BY C.FORM_FIELD_MASTER_ID, C.FIELD_ORDER;";
     /// </summary>
     /// <param name="funcType">表單功能類型</param>
     /// <param name="request">查詢條件與分頁資訊（可選）</param>
-    public List<FormTvfListDataViewModel> GetTvfFormList(FormFunctionType funcType, FormTvfSearchRequest? request = null)
+    public async Task<List<FormTvfListDataViewModel>> GetTvfFormList(
+        FormFunctionType funcType,
+        FormTvfSearchRequest? request = null,
+        CancellationToken ct = default)
     {
-        // ------------------------------------------------------------
-        // 0. 入參防呆（分頁 / 條件 / 排序 / TVF params）
-        // ------------------------------------------------------------
+        ct.ThrowIfCancellationRequested();
+
         var page = request?.Page ?? 0;
         var pageSize = request?.PageSize ?? 20;
 
-        var conditions = request?.Conditions ?? new List<FormTvfQueryConditionViewModel>();
+        var conditions = request?.Conditions ?? new();
         var orderBys = request?.OrderBys;
-
-        // CHANGED: 先拿到原始 TvfParameters（可能為 null）
         var tvfParamKvsFromRequest = request?.TvfParameters;
-
-        // CHANGED: request 有帶 FormMasterId（必填），用它篩選 metas，避免原本掃全部 master
         var requestMasterId = request?.FormMasterId ?? Guid.Empty;
 
-        // ------------------------------------------------------------
-        // 1. 取得表單主設定（含欄位設定）
-        // ------------------------------------------------------------
-        var metas = _formFieldMasterService.GetFormMetaAggregates(
-            funcType,
-            TableSchemaQueryType.All
-        );
+        var metas = await _formFieldMasterService
+            .GetFormMetaAggregatesAsync(funcType, TableSchemaQueryType.All);
 
-        // CHANGED: 如果有指定 masterId，僅處理該 master（符合 request 期待）
         if (requestMasterId != Guid.Empty)
         {
-            metas = metas
-                .Where(x => x.Master.ID == requestMasterId)
-                .ToList();
+            metas = metas.Where(x => x.Master.ID == requestMasterId).ToList();
         }
 
         var results = new List<FormTvfListDataViewModel>();
 
         foreach (var (master, _) in metas)
         {
+            ct.ThrowIfCancellationRequested();
+
             var tvfName = master.TVF_TABLE_NAME;
-            if (string.IsNullOrWhiteSpace(tvfName))
+            if (string.IsNullOrWhiteSpace(tvfName) ||
+                !SafeSqlIdentifierRegex.IsMatch(tvfName))
             {
                 continue;
             }
 
-            if (!SafeSqlIdentifierRegex.IsMatch(tvfName))
-            {
-                continue;
-            }
+            var fieldConfigs = await LoadFieldConfigsAsync(master.TVF_TABLE_ID, ct);
+            var tvfParamKvs = ResolveTvfParametersOrThrow(
+                master.ID,
+                fieldConfigs,
+                tvfParamKvsFromRequest);
 
-            // configs：抓完整 config（不改 schema、不加套件，維持 Dapper）
-            var fieldConfigs = LoadFieldConfigs(master.TVF_TABLE_ID);
-
-            // CHANGED: TvfParameters == null 時，自動帶入 FORM_FIELD_CONFIG 的 TVF_CURRENT_VALUE
-            //          若找不到任何 IS_TVF_QUERY_PARAMETER=1 → 丟 400（你指定）
-            var tvfParamKvs = ResolveTvfParametersOrThrow(master.ID, fieldConfigs, tvfParamKvsFromRequest);
-
-            // --------------------------------------------------------
-            // 2. schema + query：同一個交易內完成（你要求 schema tx 版）
-            // --------------------------------------------------------
-            var rows = _txService.WithTransaction(tx =>
-            {
-                var schema = _schemaService
-                    .GetObjectSchemaInTxAsync(_con, tx, DefaultSchemaName, tvfName, CancellationToken.None)
-                    .GetAwaiter()
-                    .GetResult();
-
-                if (schema.Count == 0)
+            var rows = await _txService.WithTransactionAsync(
+                async (conn, tx, ct) =>
                 {
-                    return new List<IDictionary<string, object?>>();
-                }
+                    var schema = await _schemaService.GetObjectSchemaInTxAsync(
+                        conn, tx, DefaultSchemaName, tvfName, ct);
 
-                var tvfParams = schema
-                    .Where(x => x.isTvfQueryParameter)
-                    .OrderBy(x => x.ORDINAL_POSITION)
-                    .ToList();
+                    if (schema.Count == 0)
+                    {
+                        return new List<IDictionary<string, object?>>();
+                    }
 
-                var returnColumns = schema
-                    .Where(x => !x.isTvfQueryParameter)
-                    .OrderBy(x => x.ORDINAL_POSITION)
-                    .ToList();
+                    var tvfParams = schema
+                        .Where(x => x.isTvfQueryParameter)
+                        .OrderBy(x => x.ORDINAL_POSITION)
+                        .ToList();
 
-                if (returnColumns.Count == 0)
-                {
-                    return new List<IDictionary<string, object?>>();
-                }
+                    var returnColumns = schema
+                        .Where(x => !x.isTvfQueryParameter)
+                        .OrderBy(x => x.ORDINAL_POSITION)
+                        .ToList();
 
-                var templates = BuildFieldTemplates(fieldConfigs, returnColumns);
-                if (templates.Count == 0)
-                {
-                    return new List<IDictionary<string, object?>>();
-                }
+                    if (returnColumns.Count == 0)
+                    {
+                        return new List<IDictionary<string, object?>>();
+                    }
 
-                var query = BuildTvfQuery(
-                    DefaultSchemaName,
-                    tvfName,
-                    tvfParams,
-                    returnColumns,
-                    tvfParamKvs,
-                    conditions,
-                    orderBys,
-                    page,
-                    pageSize);
+                    var query = BuildTvfQuery(
+                        DefaultSchemaName,
+                        tvfName,
+                        tvfParams,
+                        returnColumns,
+                        tvfParamKvs,
+                        conditions,
+                        orderBys,
+                        page,
+                        pageSize);
 
-                return ExecuteRowsInTx(_con, tx, query.Sql, query.Parameters);
-            });
+                    return await ExecuteRowsInTxAsync(conn, tx, query.Sql, query.Parameters, ct);
+                },
+                ct);
 
             if (rows.Count == 0)
             {
                 continue;
             }
 
-            var templatesForVm = BuildFieldTemplates(fieldConfigs, GetReturnColumnsFromConfigs(fieldConfigs));
-            var dropdownMaps = BuildDropdownOptionMaps(templatesForVm);
+            var templates = BuildFieldTemplates(
+                fieldConfigs,
+                GetReturnColumnsFromConfigs(fieldConfigs));
+
+            var dropdownMaps = BuildDropdownOptionMaps(templates);
 
             foreach (var row in rows)
             {
-                var rowFields = templatesForVm
-                    .Select(t =>
+                var fields = templates.Select(t =>
+                {
+                    row.TryGetValue(t.Column, out var value);
+
+                    if (t.IsDropdown &&
+                        dropdownMaps.TryGetValue(t.FieldConfigId, out var map))
                     {
-                        row.TryGetValue(t.Column, out var currentValue);
-
-                        if (t.IsDropdown && dropdownMaps.TryGetValue(t.FieldConfigId, out var map))
+                        var key = value?.ToString();
+                        if (!string.IsNullOrWhiteSpace(key) &&
+                            map.TryGetValue(key, out var text))
                         {
-                            var key = currentValue?.ToString();
-                            if (!string.IsNullOrWhiteSpace(key) && map.TryGetValue(key, out var text))
-                            {
-                                currentValue = text;
-                            }
+                            value = text;
                         }
+                    }
 
-                        return new FormFieldInputViewModel
-                        {
-                            FieldConfigId = t.FieldConfigId,
-                            Column = t.Column,
-                            DISPLAY_NAME = t.DisplayName,
-                            DATA_TYPE = t.DataType,
-                            CONTROL_TYPE = t.ControlType,
-                            CAN_QUERY = t.CanQuery,
-                            QUERY_COMPONENT = t.QueryComponent,
-                            QUERY_CONDITION = t.QueryCondition,
-                            DefaultValue = t.DefaultValue,
-                            IS_REQUIRED = t.IsRequired,
-                            IS_EDITABLE = t.IsEditable,
-                            IS_DISPLAYED = t.IsDisplayed,
-                            IS_PK = false,
-                            IS_RELATION = false,
-                            ValidationRules = t.ValidationRules,
-                            ISUSESQL = t.IsUseSql,
-                            DROPDOWNSQL = t.DropdownSql,
-                            OptionList = t.OptionList,
-                            SOURCE_TABLE = t.SourceTable,
-                            CurrentValue = currentValue,
-                            DETAIL_TO_RELATION_DEFAULT_COLUMN = t.DetailToRelationDefaultColumn
-                        };
-                    })
-                    .ToList();
+                    return new FormFieldInputViewModel
+                    {
+                        FieldConfigId = t.FieldConfigId,
+                        Column = t.Column,
+                        DISPLAY_NAME = t.DisplayName,
+                        DATA_TYPE = t.DataType,
+                        CONTROL_TYPE = t.ControlType,
+                        CAN_QUERY = t.CanQuery,
+                        QUERY_COMPONENT = t.QueryComponent,
+                        QUERY_CONDITION = t.QueryCondition,
+                        DefaultValue = t.DefaultValue,
+                        IS_REQUIRED = t.IsRequired,
+                        IS_EDITABLE = t.IsEditable,
+                        IS_DISPLAYED = t.IsDisplayed,
+                        ValidationRules = t.ValidationRules,
+                        ISUSESQL = t.IsUseSql,
+                        DROPDOWNSQL = t.DropdownSql,
+                        OptionList = t.OptionList,
+                        SOURCE_TABLE = t.SourceTable,
+                        CurrentValue = value
+                    };
+                }).ToList();
 
                 results.Add(new FormTvfListDataViewModel
                 {
                     FormMasterId = master.ID,
                     FormName = master.FORM_NAME,
-                    Fields = rowFields
+                    Fields = fields
                 });
             }
         }
@@ -279,10 +254,50 @@ ORDER BY C.FORM_FIELD_MASTER_ID, C.FIELD_ORDER;";
         return results;
     }
 
+
+    // ============================================================
+    // CHANGED: async transaction helper (avoid Task.FromResult + sync-over-async)
+    // ============================================================
+
+    private async Task<T> WithSqlTransactionAsync<T>(Func<SqlTransaction, Task<T>> action, CancellationToken ct)
+    {
+        ct.ThrowIfCancellationRequested();
+
+        // NOTE: 這裡不改 DB schema、不加套件；以 SqlTransaction 直接控 Commit/Rollback
+        //       交易隔離等策略若你專案有固定規範，可在這裡調整（目前保持預設行為）
+        var needOpen = _con.State != ConnectionState.Open;
+        if (needOpen)
+        {
+            await _con.OpenAsync(ct);
+        }
+
+        using var tx = _con.BeginTransaction();
+
+        try
+        {
+            var result = await action(tx);
+            tx.Commit();
+            return result;
+        }
+        catch
+        {
+            try
+            {
+                tx.Rollback();
+            }
+            catch
+            {
+                // 保持原本例外優先，不吃掉主例外
+            }
+
+            throw;
+        }
+    }
+
     // ============================================================
     // CHANGED: TvfParameters resolver
     // ============================================================
-    
+
     /// <summary>
     /// TvfParameters 為 null 時，自動從 FORM_FIELD_CONFIG 取 TVF_CURRENT_VALUE 補上；
     /// 若沒有任何 IS_TVF_QUERY_PARAMETER=1 則丟 400（依你的規則）。
@@ -313,10 +328,8 @@ ORDER BY C.FORM_FIELD_MASTER_ID, C.FIELD_ORDER;";
 
         foreach (var c in paramConfigs)
         {
-            // CHANGED: 統一正規化 key，移除開頭 '@'
             var key = NormalizeTvfParamName(c.COLUMN_NAME);
 
-            // CHANGED: 用正規化後的 key 做防呆（避免 '@P' / 'P' 重複）
             if (string.IsNullOrWhiteSpace(key))
             {
                 throw new HttpStatusCodeException(
@@ -331,7 +344,6 @@ ORDER BY C.FORM_FIELD_MASTER_ID, C.FIELD_ORDER;";
                     $"TVF 查詢參數設定錯誤：FormMasterId={formMasterId} 發現重複參數 COLUMN_NAME='{c.COLUMN_NAME}'（正規化後 key='{key}'）。");
             }
 
-            // 依你定義：value = TVF_CURRENT_VALUE（nvarchar）
             dict[key] = c.TVF_CURRENT_VALUE;
         }
 
@@ -339,21 +351,23 @@ ORDER BY C.FORM_FIELD_MASTER_ID, C.FIELD_ORDER;";
     }
 
     // ============================================================
-    // configs
+    // configs (async)
     // ============================================================
 
-    private List<FormFieldConfigDto> LoadFieldConfigs(Guid? masterId)
+    private async Task<List<FormFieldConfigDto>> LoadFieldConfigsAsync(
+        Guid? masterId,
+        CancellationToken ct)
     {
-        EnsureConnectionOpened(_con);
-
-        var sql = @"
-/**/
+        const string sql = @"
 SELECT *
 FROM FORM_FIELD_CONFIG
 WHERE FORM_FIELD_MASTER_ID = @MasterId
 ORDER BY FIELD_ORDER;";
 
-        return _con.Query<FormFieldConfigDto>(sql, new { MasterId = masterId }).ToList();
+        var rows = await _con.QueryAsync<FormFieldConfigDto>(
+            new CommandDefinition(sql, new { MasterId = masterId }, cancellationToken: ct));
+
+        return rows.ToList();
     }
 
     private static IReadOnlyList<DbColumnInfo> GetReturnColumnsFromConfigs(List<FormFieldConfigDto> fieldConfigs)
@@ -369,14 +383,6 @@ ORDER BY FIELD_ORDER;";
                 isTvfQueryParameter = false
             })
             .ToList();
-    }
-
-    private static void EnsureConnectionOpened(SqlConnection con)
-    {
-        if (con.State != ConnectionState.Open)
-        {
-            con.Open();
-        }
     }
 
     // ============================================================
@@ -665,28 +671,29 @@ ORDER BY FIELD_ORDER;";
     }
 
     // ============================================================
-    // Execute（tx 內，reader -> Dictionary）
+    // Execute（tx 內，reader -> Dictionary） (async)
     // ============================================================
 
-    private static List<IDictionary<string, object?>> ExecuteRowsInTx(
+    private static async Task<List<IDictionary<string, object?>>> ExecuteRowsInTxAsync(
         SqlConnection conn,
         SqlTransaction tx,
         string sql,
-        DynamicParameters param)
+        DynamicParameters param,
+        CancellationToken ct)
     {
-        using var reader = conn.ExecuteReader(new CommandDefinition(sql, param, transaction: tx));
+        using var reader = await conn.ExecuteReaderAsync(
+            new CommandDefinition(sql, param, transaction: tx, cancellationToken: ct));
 
         var rows = new List<IDictionary<string, object?>>();
 
-        while (reader.Read())
+        while (await reader.ReadAsync(ct))
         {
             var dict = new Dictionary<string, object?>(StringComparer.OrdinalIgnoreCase);
 
             for (var i = 0; i < reader.FieldCount; i++)
             {
-                var name = reader.GetName(i);
-                var value = reader.IsDBNull(i) ? null : reader.GetValue(i);
-                dict[name] = value;
+                var isNull = await reader.IsDBNullAsync(i, ct);
+                dict[reader.GetName(i)] = isNull ? null : reader.GetValue(i);
             }
 
             rows.Add(dict);

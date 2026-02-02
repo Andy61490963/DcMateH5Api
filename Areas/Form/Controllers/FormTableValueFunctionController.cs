@@ -14,32 +14,30 @@ namespace DcMateH5Api.Areas.Form.Controllers;
 [Route("[area]/[controller]")]
 public class FormTableValueFunctionController : BaseController
 {
-    private readonly IFormService _formService;
     private readonly IFormTableValueFunctionService _formTableValueFunctionService;
     private readonly FormFunctionType _funcType = FormFunctionType.TableValueFunctionMaintenance;
 
-    public FormTableValueFunctionController(IFormService formService, IFormTableValueFunctionService formTableValueFunctionService)
+    public FormTableValueFunctionController(IFormTableValueFunctionService formTableValueFunctionService)
     {
-        _formService = formService;
         _formTableValueFunctionService = formTableValueFunctionService;
     }
-    
+
     private static class Routes
     {
         public const string Masters = "masters";
         public const string Search = "search";
     }
-    
+
     /// <summary>
     /// 取得 Table Value Function 設定檔清單。
     /// </summary>
     [HttpGet(Routes.Masters)]
     [ProducesResponseType(typeof(IEnumerable<TableValueFunctionConfigViewModel>), StatusCodes.Status200OK)]
-    public ActionResult<IEnumerable<TableValueFunctionConfigViewModel>> GetFormMasters(CancellationToken ct)
+    public async Task<ActionResult<IEnumerable<TableValueFunctionConfigViewModel>>> GetFormMasters(CancellationToken ct)
     {
         try
         {
-            var masters = _formTableValueFunctionService.GetFormMasters(ct);
+            var masters = await _formTableValueFunctionService.GetFormMasters(ct);
             return Ok(masters);
         }
         catch (HttpStatusCodeException ex)
@@ -47,7 +45,7 @@ public class FormTableValueFunctionController : BaseController
             return StatusCode((int)ex.StatusCode, ex.Message);
         }
     }
-    
+
     /// <summary>
     /// 取得 Table Value Function 維護的資料列表
     /// </summary>
@@ -88,11 +86,12 @@ public class FormTableValueFunctionController : BaseController
     /// ```
     /// </remarks>
     /// <param name="request">查詢條件與分頁設定</param>
+    /// <param name="ct">CancellationToken</param>
     /// <returns>查詢結果</returns>
     [HttpPost(Routes.Search)]
     [ProducesResponseType(typeof(FormListDataViewModel), StatusCodes.Status200OK)]
     [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status400BadRequest)]
-    public IActionResult GetForms([FromBody] FormTvfSearchRequest? request)
+    public async Task<IActionResult> GetForms([FromBody] FormTvfSearchRequest? request, CancellationToken ct)
     {
         try
         {
@@ -105,7 +104,7 @@ public class FormTableValueFunctionController : BaseController
                 });
             }
 
-            var vm = _formTableValueFunctionService.GetTvfFormList(_funcType, request);
+            var vm = await _formTableValueFunctionService.GetTvfFormList(_funcType, request, ct);
             return Ok(vm);
         }
         catch (HttpStatusCodeException ex)

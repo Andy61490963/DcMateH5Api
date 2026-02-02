@@ -21,7 +21,7 @@ public class FormFieldMasterService : IFormFieldMasterService
     {
         _con = connection;
         _sqlHelper = sqlHelper;
-        _currentUser = currentUser; 
+        _currentUser = currentUser;
     }
 
     private Guid GetCurrentUserId()
@@ -29,7 +29,7 @@ public class FormFieldMasterService : IFormFieldMasterService
         var user = _currentUser.Get();
         return user.Id;
     }
-    
+
     public FormFieldMasterDto? GetFormFieldMaster(TableSchemaQueryType type)
     {
         return _con.QueryFirstOrDefault<FormFieldMasterDto>(
@@ -137,14 +137,14 @@ public class FormFieldMasterService : IFormFieldMasterService
                 model.DETAIL_TABLE_NAME,
                 model.MAPPING_TABLE_NAME,
                 model.TVF_TABLE_NAME, // 確保這裡 DTO 也有值
-            
+
                 // 下面這些 ID 的判斷邏輯維持不變
                 BASE_TABLE_ID = HasValue(model.BASE_TABLE_NAME) ? id : (Guid?)null,
                 VIEW_TABLE_ID = HasValue(model.VIEW_TABLE_NAME) ? id : (Guid?)null,
                 DETAIL_TABLE_ID = HasValue(model.DETAIL_TABLE_NAME) ? id : (Guid?)null,
                 MAPPING_TABLE_ID = HasValue(model.MAPPING_TABLE_NAME) ? id : (Guid?)null,
                 TVF_TABLE_ID = HasValue(model.TVF_TABLE_NAME) ? id : (Guid?)null,
-            
+
                 model.FUNCTION_TYPE,
                 CREATE_USER = GetCurrentUserId(),
                 EDIT_USER = GetCurrentUserId()
@@ -156,7 +156,7 @@ public class FormFieldMasterService : IFormFieldMasterService
         return id;
     }
 
-    public List<(FormFieldMasterDto Master, List<FormFieldConfigDto> FieldConfigs)> GetFormMetaAggregates( FormFunctionType funcType, TableSchemaQueryType type )
+    public List<(FormFieldMasterDto Master, List<FormFieldConfigDto> FieldConfigs)> GetFormMetaAggregates(FormFunctionType funcType, TableSchemaQueryType type)
     {
         var masters = _con.Query<FormFieldMasterDto>(
             "/**/SELECT * FROM FORM_FIELD_MASTER WHERE SCHEMA_TYPE = @TYPE AND FUNCTION_TYPE = @funcType",
@@ -170,6 +170,33 @@ public class FormFieldMasterService : IFormFieldMasterService
             var configs = _con.Query<FormFieldConfigDto>(
                 "/**/SELECT ID, COLUMN_NAME, CONTROL_TYPE, CAN_QUERY FROM FORM_FIELD_CONFIG WHERE FORM_FIELD_MASTER_ID = @id",
                 new { id = master.BASE_TABLE_ID })
+                .ToList();
+
+            result.Add((master, configs));
+        }
+
+        return result;
+    }
+
+    public async Task<List<(FormFieldMasterDto Master, List<FormFieldConfigDto> FieldConfigs)>> GetFormMetaAggregatesAsync(
+        FormFunctionType funcType, TableSchemaQueryType type, CancellationToken ct = default)
+    {
+        var masters = (await _con.QueryAsync<FormFieldMasterDto>(
+            new CommandDefinition(
+                "/**/SELECT * FROM FORM_FIELD_MASTER WHERE SCHEMA_TYPE = @TYPE AND FUNCTION_TYPE = @funcType",
+                new { TYPE = type.ToInt(), funcType = funcType.ToInt() },
+                cancellationToken: ct)))
+            .ToList();
+
+        var result = new List<(FormFieldMasterDto Master, List<FormFieldConfigDto> FieldConfigs)>();
+
+        foreach (var master in masters)
+        {
+            var configs = (await _con.QueryAsync<FormFieldConfigDto>(
+                new CommandDefinition(
+                    "/**/SELECT ID, COLUMN_NAME, CONTROL_TYPE, CAN_QUERY FROM FORM_FIELD_CONFIG WHERE FORM_FIELD_MASTER_ID = @id",
+                    new { id = master.BASE_TABLE_ID },
+                    cancellationToken: ct)))
                 .ToList();
 
             result.Add((master, configs));

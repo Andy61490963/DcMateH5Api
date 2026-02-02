@@ -11,7 +11,7 @@ public interface IFormFieldMasterService
 {
     FormFieldMasterDto? GetFormFieldMaster(TableSchemaQueryType type);
 
-    FormFieldMasterDto GetFormFieldMasterFromId(Guid? id, SqlTransaction? tx = null );
+    FormFieldMasterDto GetFormFieldMasterFromId(Guid? id, SqlTransaction? tx = null);
 
     /// <summary>
     /// 非交易版本：依主鍵取得 FORM_FIELD_MASTER。
@@ -43,4 +43,7 @@ public interface IFormFieldMasterService
 
     List<(FormFieldMasterDto Master, List<FormFieldConfigDto> FieldConfigs)> GetFormMetaAggregates(
         FormFunctionType funcType, TableSchemaQueryType type);
+
+    Task<List<(FormFieldMasterDto Master, List<FormFieldConfigDto> FieldConfigs)>> GetFormMetaAggregatesAsync(
+        FormFunctionType funcType, TableSchemaQueryType type, CancellationToken ct = default);
 }

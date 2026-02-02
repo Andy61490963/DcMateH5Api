@@ -14,4 +14,12 @@ public interface ITransactionService
     Task<T> WithTransactionAsync<T>(
         Func<SqlTransaction, CancellationToken, Task<T>> func,
         CancellationToken ct = default);
+
+    Task WithTransactionAsync(
+        Func<SqlConnection, SqlTransaction, CancellationToken, Task> action,
+        CancellationToken ct = default);
+
+    Task<T> WithTransactionAsync<T>(
+        Func<SqlConnection, SqlTransaction, CancellationToken, Task<T>> func,
+        CancellationToken ct = default);
 }

@@ -6,7 +6,6 @@ namespace DcMateH5Api.Areas.Form.Services.Transaction;
 
 /// <summary>
 /// 實作資料庫交易邏輯，封裝 Commit / Rollback 控制
-/// 這邊先不要拿掉
 /// </summary>
 public class TransactionService : ITransactionService
 {
@@ -17,23 +16,29 @@ public class TransactionService : ITransactionService
         _con = connection;
     }
 
-    /// <summary>
-    /// 確保連線已開啟（同步）
-/// </summary>
+    // ============================================================
+    // Connection helpers
+    // ============================================================
+
     private void EnsureConnectionOpen()
     {
         if (_con.State != ConnectionState.Open)
+        {
             _con.Open();
+        }
     }
 
-    /// <summary>
-    /// 確保連線已開啟（非同步）
-/// </summary>
     private async Task EnsureConnectionOpenAsync(CancellationToken ct)
     {
         if (_con.State != ConnectionState.Open)
+        {
             await _con.OpenAsync(ct);
+        }
     }
+
+    // ============================================================
+    // Existing sync APIs（完全保留）
+    // ============================================================
 
     public void WithTransaction(Action<SqlTransaction> action)
     {
@@ -70,6 +75,10 @@ public class TransactionService : ITransactionService
         }
     }
 
+    // ============================================================
+    // Existing async APIs（保留，但僅適合「不需要 connection」的情境）
+    // ============================================================
+
     public async Task WithTransactionAsync(
         Func<SqlTransaction, CancellationToken, Task> action,
         CancellationToken ct = default)
@@ -84,7 +93,7 @@ public class TransactionService : ITransactionService
         }
         catch
         {
-            try { await tx.RollbackAsync(ct); } catch { /* rollback 也可能失敗，別蓋掉原始例外 */ }
+            try { await tx.RollbackAsync(ct); } catch { }
             throw;
         }
     }
@@ -99,6 +108,49 @@ public class TransactionService : ITransactionService
         try
         {
             var result = await func(tx, ct);
+            await tx.CommitAsync(ct);
+            return result;
+        }
+        catch
+        {
+            try { await tx.RollbackAsync(ct); } catch { }
+            throw;
+        }
+    }
+
+    // ============================================================
+    // 新增：正確的 async API（conn + tx 一起給）
+    // ============================================================
+
+    public async Task WithTransactionAsync(
+        Func<SqlConnection, SqlTransaction, CancellationToken, Task> action,
+        CancellationToken ct = default)
+    {
+        await EnsureConnectionOpenAsync(ct);
+
+        await using var tx = (SqlTransaction)await _con.BeginTransactionAsync(ct);
+        try
+        {
+            await action(_con, tx, ct);
+            await tx.CommitAsync(ct);
+        }
+        catch
+        {
+            try { await tx.RollbackAsync(ct); } catch { }
+            throw;
+        }
+    }
+
+    public async Task<T> WithTransactionAsync<T>(
+        Func<SqlConnection, SqlTransaction, CancellationToken, Task<T>> func,
+        CancellationToken ct = default)
+    {
+        await EnsureConnectionOpenAsync(ct);
+
+        await using var tx = (SqlTransaction)await _con.BeginTransactionAsync(ct);
+        try
+        {
+            var result = await func(_con, tx, ct);
             await tx.CommitAsync(ct);
             return result;
         }
