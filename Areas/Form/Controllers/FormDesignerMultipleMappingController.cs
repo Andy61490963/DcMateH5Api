@@ -283,14 +283,14 @@ public class FormDesignerMultipleMappingController : ControllerBase
     /// 設定下拉選單資料來源模式（SQL/設定檔）
     /// </summary>
     [HttpPut(Routes.SetDropdownMode)]
-    [ProducesResponseType(StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status204NoContent)]
     [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status400BadRequest)]
     public async Task<IActionResult> SetDropdownMode([FromRoute] Guid dropdownId, [FromQuery] bool isUseSql, CancellationToken ct)
     {
         try
         {
             await _formDesignerService.SetDropdownMode(dropdownId, isUseSql, ct);
-            return Ok();
+            return NoContent();
         }
         catch (HttpStatusCodeException ex)
         {
