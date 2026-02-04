@@ -33,7 +33,7 @@ public class FormDesignerTableValueFunctionController : BaseController
 
         // Tables / Fields
         public const string SearchTables = "tables/tableName";
-        public const string TableFields = "tables/{tableName}/fields";
+        public const string TableFields = "tables/{tvfName}/fields";
         public const string GetField = "fields/{fieldId}";
         public const string UpsertField = "fields";
         public const string MoveField = "fields/move";
