@@ -553,7 +553,7 @@ public class FormDesignerService : IFormDesignerService
             var vm = new FormFieldViewModel
             {
                 ID = fieldId,
-                FORM_FIELD_MASTER_ID = cfg.FORM_FIELD_MASTER_ID,
+                FORM_FIELD_MASTER_ID = formMasterId,
                 FORM_FIELD_DROPDOWN_ID = dropdownId == Guid.Empty ? null : dropdownId,
 
                 TableName = tvfName,
