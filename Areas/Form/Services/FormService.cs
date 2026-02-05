@@ -165,14 +165,19 @@ public class FormService : IFormService
             var sidColumnsToHide = spec.SidColumnsToHide;
 
             // --------------------------------------------------------
-            // 2. 讀取實際資料列
+            // 2. 讀取實際資料列與總筆數
             // --------------------------------------------------------
             var rawRows = _formDataService.GetRows(
                 dataTableName,
                 request?.Conditions,
-                request?.OrderBys
+                request?.OrderBys,
+                request?.Page,
+                request?.PageSize
             );
 
+            // 計算總頁數 (TotalPageSize)
+            int totalCount = _formDataService.GetTotalCount(dataTableName, request?.Conditions);
+            
             // --------------------------------------------------------
             // 3. 一律用 BASE_TABLE 的 PK 當 RowId
             // --------------------------------------------------------
@@ -245,6 +250,7 @@ public class FormService : IFormService
                     FormName = master.FORM_NAME,
                     BaseId = master.BASE_TABLE_ID,
                     Pk = row.PkId.ToString(),
+                    TotalPageSize = totalCount,
                     Fields = rowFields
                 });
             }

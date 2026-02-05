@@ -4,6 +4,8 @@ namespace DcMateH5Api.Areas.Form.Models;
 
 public sealed record FormSearchRequest(
     Guid FormMasterId,
+    int Page = 1,
+    int PageSize = 20,
     List<FormQueryConditionViewModel>? Conditions = null,
     List<FormOrderBy>? OrderBys = null
 );
