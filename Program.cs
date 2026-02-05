@@ -24,6 +24,9 @@ using Microsoft.OpenApi.Models;
 using System.Reflection;
 using DcMateH5Api.Areas.Form.Interfaces.Excel;
 using DcMateH5Api.Areas.Form.Services.Excel;
+using DCMATEH5API.Areas.Menu.Services;
+using DcMateH5Api.Areas.Wip.Interfaces;
+using DcMateH5Api.Areas.Wip.Services;
 using DcMateH5Api.Services.Cache.Redis.Interfaces;
 using DcMateH5Api.Services.Cache.Redis.Services;
 using DcMateH5Api.Services.CurrentUser.Interfaces;
@@ -116,7 +119,11 @@ builder.Services.AddScoped<IDropdownSqlSyncService, DropdownSqlSyncService>();
 builder.Services.AddScoped<IFormTableValueFunctionService, FormTableValueFunctionService>();
 
 // Menu Tree
-builder.Services.AddScoped<DCMATEH5API.Areas.Menu.Services.IMenuService, DCMATEH5API.Areas.Menu.Services.MenuService>();
+builder.Services.AddScoped<IMenuService, MenuService>();
+
+// Wip
+builder.Services.AddScoped<IBaseInfoCheckExistService, BaseInfoCheckExistService>();
+builder.Services.AddScoped<IWipBaseSettingService, WipBaseSettingService>();
 
 // 工作站與交易
 builder.Services.AddScoped<ITransactionService, TransactionService>();
@@ -197,7 +204,7 @@ var swaggerGroups = new[]
     SwaggerGroups.ApiStatus, SwaggerGroups.Enum, SwaggerGroups.Log,
     SwaggerGroups.Security, SwaggerGroups.Menu,
     SwaggerGroups.Form, SwaggerGroups.FormWithMasterDetail, SwaggerGroups.FormWithMultipleMapping,
-    SwaggerGroups.FormTableValueFunction
+    SwaggerGroups.FormTableValueFunction, SwaggerGroups.Wip
 };
 
 builder.Services.AddEndpointsApiExplorer();

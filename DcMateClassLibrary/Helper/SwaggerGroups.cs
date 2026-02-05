@@ -18,6 +18,7 @@ public static class SwaggerGroups
     public const string Security = nameof(Security);
     public const string Menu = nameof(Menu);
 
+    public const string Wip = nameof(Wip);
     
     
     public static readonly Dictionary<string, string> DisplayNames = new()
@@ -33,6 +34,8 @@ public static class SwaggerGroups
         { FormTableValueFunction, "TVP 維護" },
         
         { Security, "登入、測試 API 權限" },
-        { Menu, "群組、功能、權限設定" }
+        { Menu, "群組、功能、權限設定" },
+        
+        { Wip, "報工" }
     };
 }

@@ -37,6 +37,7 @@
 
     <ItemGroup>
       <Folder Include="Areas\Log\ViewModels\" />
+      <Folder Include="Areas\Wip\Model\" />
     </ItemGroup>
 
     <ItemGroup>
