@@ -170,9 +170,7 @@ public class FormService : IFormService
             var rawRows = _formDataService.GetRows(
                 dataTableName,
                 request?.Conditions,
-                request?.OrderBys,
-                request?.Page,
-                request?.PageSize
+                request?.OrderBys
             );
 
             // --------------------------------------------------------
