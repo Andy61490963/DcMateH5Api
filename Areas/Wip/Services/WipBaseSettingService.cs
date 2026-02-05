@@ -206,7 +206,7 @@ public class WipBaseSettingService : IWipBaseSettingService
             .ExecuteAsync(ct);
     }
     
-    public async Task EditOkDetailsAsync(WipEditDetailInputDto input, CancellationToken ct = default)
+    public async Task EditDetailsAsync(WipEditDetailInputDto input, CancellationToken ct = default)
     {
         // 1. Update Detail Table (WIP_OPI_WDOEACICO_HIST_DETAIL)
         var detailSid = input.WIP_OPI_WDOEACICO_HIST_DETAIL_SID;

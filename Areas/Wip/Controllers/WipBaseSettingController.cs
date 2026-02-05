@@ -51,14 +51,14 @@ namespace DcMateH5Api.Areas.Wip.Controllers
             }
         }
 
-        [HttpPost("EditOkDetails")]
+        [HttpPost("EditWipDetails")]
         [ProducesResponseType(StatusCodes.Status200OK)]
         [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status400BadRequest)]
-        public async Task<IActionResult> EditOkDetails([FromBody] WipEditDetailInputDto input, CancellationToken ct)
+        public async Task<IActionResult> EditDetails([FromBody] WipEditDetailInputDto input, CancellationToken ct)
         {
             try
             {
-                await _wipBaseSettingService.EditOkDetailsAsync(input, ct);
+                await _wipBaseSettingService.EditDetailsAsync(input, ct);
                 return Ok();
             }
             catch (HttpStatusCodeException ex)

@@ -8,7 +8,7 @@ namespace DcMateH5Api.Areas.Wip.Interfaces
     {
         Task CheckInAsync(WipCheckInInputDto input, CancellationToken ct = default);
         Task AddDetailsAsync(WipAddDetailInputDto input, CancellationToken ct = default);
+        Task EditDetailsAsync(WipEditDetailInputDto input, CancellationToken ct = default);
         Task CheckOutAsync(WipCheckOutInputDto input, CancellationToken ct = default);
-        Task EditOkDetailsAsync(WipEditDetailInputDto input, CancellationToken ct = default);
     }
 }
