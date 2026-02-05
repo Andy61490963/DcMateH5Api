@@ -10,13 +10,16 @@ public class WipBaseSettingService : IWipBaseSettingService
 {
     private readonly SQLGenerateHelper _sqlHelper;
     private readonly IBaseInfoCheckExistService _baseInfoCheckExistService;
+    private readonly ISelectDtoService _selectDtoService;
 
     public WipBaseSettingService(
         SQLGenerateHelper sqlHelper,
-        IBaseInfoCheckExistService baseInfoCheckExistService)
+        IBaseInfoCheckExistService baseInfoCheckExistService,
+        ISelectDtoService selectDtoService)
     {
         _sqlHelper = sqlHelper;
         _baseInfoCheckExistService = baseInfoCheckExistService;
+        _selectDtoService = selectDtoService;
     }
     
     public async Task CheckInAsync(WipCheckInInputDto input, CancellationToken ct = default)
@@ -160,5 +163,99 @@ public class WipBaseSettingService : IWipBaseSettingService
                  await _sqlHelper.InsertAsync(histUser, ct);
              }
         }
+    }
+
+    public async Task AddDetailsAsync(WipAddDetailInputDto input, CancellationToken ct = default)
+    {
+        var sid = RandomHelper.GenerateRandomDecimal();
+        var entity = new WipOpiWdoeacicoHistDetailDto
+        {
+            WIP_OPI_WDOEACICO_HIST_DETAIL_SID = sid,
+            WIP_OPI_WDOEACICO_HIST_SID = input.WIP_OPI_WDOEACICO_HIST_SID,
+            OK_QTY = input.OK_QTY,
+            NG_QTY = input.NG_QTY,
+            NG_REASON_QTY = input.NgDetails?.Sum(x => x.NG_QTY) ?? 0,
+            COMMENT = input.COMMENT ?? string.Empty
+        };
+        await _sqlHelper.InsertAsync(entity, ct);
+        
+        if (input.NgDetails != null)
+        {
+            foreach (var detail in input.NgDetails)
+            {
+                var entity1 = new WipOpiWdoeacicoHistNgReasonDetailDto
+                {
+                    WIP_OPI_WDOEACICO_HIST_NG_REASON_DETAIL_SID = RandomHelper.GenerateRandomDecimal(),
+                    WIP_OPI_WDOEACICO_HIST_DETAIL_SID = sid,
+                    NG_QTY = detail.NG_QTY,
+                    NG_CODE = detail.NG_CODE,
+                    COMMENT = detail.Comment
+                };
+                await _sqlHelper.InsertAsync(entity1, ct);
+            }
+        }
+        
+        var wipOpiHistDto = await _selectDtoService.SelectWipOpiHistOkAsync(input.WIP_OPI_WDOEACICO_HIST_SID, ct);
+        var totalOkQty = wipOpiHistDto.Select(x => x.OK_QTY).Sum();
+        var totalNgQty = wipOpiHistDto.Select(x => x.NG_QTY).Sum();
+        
+        // 2. Update Total OK Qty in HIST
+        await _sqlHelper.UpdateById<WipOpiWdoeacicoHistDto>(input.WIP_OPI_WDOEACICO_HIST_SID)
+            .Set(x => x.TOTAL_OK_QTY!, totalOkQty)
+            .Set(x => x.TOTAL_NG_QTY!, totalNgQty)
+            .ExecuteAsync(ct);
+    }
+    
+    public async Task EditOkDetailsAsync(WipEditDetailInputDto input, CancellationToken ct = default)
+    {
+        // 1. Update Detail Table (WIP_OPI_WDOEACICO_HIST_DETAIL)
+        var detailSid = input.WIP_OPI_WDOEACICO_HIST_DETAIL_SID;
+        await _sqlHelper.UpdateById<WipOpiWdoeacicoHistDetailDto>(detailSid)
+            .Set(x => x.OK_QTY, input.OK_QTY)
+            .Set(x => x.NG_QTY, input.NG_QTY)
+            .Set(x => x.NG_REASON_QTY, input.NgDetails?.Sum(x => x.NG_QTY) ?? 0)
+            .Set(x => x.COMMENT, input.COMMENT ?? "")
+            .ExecuteAsync(ct);
+
+        // 2. Delete Existing NG Reason Details
+        var deleteWhere = new WhereBuilder<WipOpiWdoeacicoHistNgReasonDetailDto>()
+            .AndEq(x => x.WIP_OPI_WDOEACICO_HIST_DETAIL_SID, detailSid);
+        await _sqlHelper.DeleteWhereAsync(deleteWhere, ct);
+
+        // 3. Insert New NG Reason Details
+        if (input.NgDetails != null)
+        {
+            foreach (var detail in input.NgDetails)
+            {
+                var entity = new WipOpiWdoeacicoHistNgReasonDetailDto
+                {
+                    WIP_OPI_WDOEACICO_HIST_NG_REASON_DETAIL_SID = RandomHelper.GenerateRandomDecimal(),
+                    WIP_OPI_WDOEACICO_HIST_DETAIL_SID = detailSid,
+                    NG_QTY = detail.NG_QTY,
+                    NG_CODE = detail.NG_CODE,
+                    COMMENT = detail.Comment,
+                    ENABLE_FLAG = "Y" // Assuming defaulting to Y
+                };
+                await _sqlHelper.InsertAsync(entity, ct);
+            }
+        }
+
+        // 4. Recalculate and Update Total Qty in HIST
+        var wipOpiHistDto = await _selectDtoService.SelectWipOpiHistOkAsync(input.WIP_OPI_WDOEACICO_HIST_SID, ct);
+        var totalOkQty = wipOpiHistDto.Select(x => x.OK_QTY).Sum();
+        var totalNgQty = wipOpiHistDto.Select(x => x.NG_QTY).Sum();
+
+        await _sqlHelper.UpdateById<WipOpiWdoeacicoHistDto>(input.WIP_OPI_WDOEACICO_HIST_SID)
+            .Set(x => x.TOTAL_OK_QTY!, totalOkQty)
+            .Set(x => x.TOTAL_NG_QTY!, totalNgQty)
+            .ExecuteAsync(ct);
+    }
+    
+    public async Task CheckOutAsync(WipCheckOutInputDto input, CancellationToken ct = default)
+    {
+        await _sqlHelper.UpdateById<WipOpiWdoeacicoHistDto>(input.WIP_OPI_WDOEACICO_HIST_SID)
+            .Set(x => x.CHECK_OUT_TIME!, input.CHECK_OUT_TIME)
+            .Set(x => x.COMPLETED!, "Y")
+            .ExecuteAsync(ct);
     }
 }

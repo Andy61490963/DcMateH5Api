@@ -1,7 +1,6 @@
 using DcMateH5Api.Areas.Wip.Interfaces;
 using DcMateH5Api.Helper;
 using Microsoft.AspNetCore.Mvc;
-using Microsoft.AspNetCore.Authorization;
 using DcMateH5Api.Areas.Wip.Model;
 
 namespace DcMateH5Api.Areas.Wip.Controllers
@@ -20,7 +19,7 @@ namespace DcMateH5Api.Areas.Wip.Controllers
             _wipBaseSettingService = wipBaseSettingService;
         }
 
-        [HttpPost("CheckIn")]
+        [HttpPost("CheckInWip")]
         [ProducesResponseType(StatusCodes.Status200OK)]
         [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status400BadRequest)]
         public async Task<IActionResult> CheckIn([FromBody] WipCheckInInputDto input, CancellationToken ct)
@@ -28,6 +27,54 @@ namespace DcMateH5Api.Areas.Wip.Controllers
             try
             {
                 await _wipBaseSettingService.CheckInAsync(input, ct);
+                return Ok();
+            }
+            catch (HttpStatusCodeException ex)
+            {
+                return StatusCode((int)ex.StatusCode, ex.Message);
+            }
+        }
+
+        [HttpPost("AddWipDetails")]
+        [ProducesResponseType(StatusCodes.Status200OK)]
+        [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status400BadRequest)]
+        public async Task<IActionResult> AddOkDetails([FromBody] WipAddDetailInputDto input, CancellationToken ct)
+        {
+            try
+            {
+                await _wipBaseSettingService.AddDetailsAsync(input, ct);
+                return Ok();
+            }
+            catch (HttpStatusCodeException ex)
+            {
+                return StatusCode((int)ex.StatusCode, ex.Message);
+            }
+        }
+
+        [HttpPost("EditOkDetails")]
+        [ProducesResponseType(StatusCodes.Status200OK)]
+        [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status400BadRequest)]
+        public async Task<IActionResult> EditOkDetails([FromBody] WipEditDetailInputDto input, CancellationToken ct)
+        {
+            try
+            {
+                await _wipBaseSettingService.EditOkDetailsAsync(input, ct);
+                return Ok();
+            }
+            catch (HttpStatusCodeException ex)
+            {
+                return StatusCode((int)ex.StatusCode, ex.Message);
+            }
+        }
+        
+        [HttpPost("CheckOut")]
+        [ProducesResponseType(StatusCodes.Status200OK)]
+        [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status400BadRequest)]
+        public async Task<IActionResult> CheckOut([FromBody] WipCheckOutInputDto input, CancellationToken ct)
+        {
+            try
+            {
+                await _wipBaseSettingService.CheckOutAsync(input, ct);
                 return Ok();
             }
             catch (HttpStatusCodeException ex)

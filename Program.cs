@@ -122,6 +122,7 @@ builder.Services.AddScoped<IFormTableValueFunctionService, FormTableValueFunctio
 builder.Services.AddScoped<IMenuService, MenuService>();
 
 // Wip
+builder.Services.AddScoped<ISelectDtoService, SelectDtoService>();
 builder.Services.AddScoped<IBaseInfoCheckExistService, BaseInfoCheckExistService>();
 builder.Services.AddScoped<IWipBaseSettingService, WipBaseSettingService>();
 
