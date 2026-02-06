@@ -14,7 +14,7 @@ public interface IFormService
     /// <param name="funcType">功能類型</param>
     /// <param name="request">查詢條件與分頁設定。</param>
     /// <returns>每個表單對應的欄位與資料列集合。</returns>
-    List<FormListDataViewModel> GetFormList(FormFunctionType funcType, FormSearchRequest? request = null, bool returnBaseTableWhenMultipleMapping = false);
+    List<FormListResponseViewModel> GetFormList(FormFunctionType funcType, FormSearchRequest? request = null, bool returnBaseTableWhenMultipleMapping = false);
     
     /// <summary>
     /// 取得 單一
@@ -34,7 +34,7 @@ public interface IFormService
         DeleteWithGuardRequestViewModel request,
         CancellationToken ct);
     
-    ExportFileResult ExportFormListToExcel(FormFunctionType funcType, FormSearchRequest request);
+    // ExportFileResult ExportFormListToExcel(FormFunctionType funcType, FormSearchRequest request);
     
     /// <summary>
     /// 儲存或更新表單資料

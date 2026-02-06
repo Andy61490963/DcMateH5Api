@@ -21,7 +21,7 @@ public interface IFormMultipleMappingService
     /// <summary>
     /// 取得可進行多對多關聯的主檔資料清單，供前端選擇 Base 主鍵。
     /// </summary>
-    List<FormListDataViewModel> GetForms(FormSearchRequest? request = null, CancellationToken ct = default);
+    List<FormListResponseViewModel> GetForms(FormSearchRequest? request = null, CancellationToken ct = default);
 
     /// <summary>
     /// 依設定檔與主鍵取得已關聯/未關聯的左右清單。

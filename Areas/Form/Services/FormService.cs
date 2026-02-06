@@ -3,10 +3,8 @@ using Dapper;
 using DcMateH5Api.Helper;
 using DcMateH5Api.Areas.Form.Models;
 using DcMateH5Api.Areas.Form.Interfaces;
-using DcMateH5Api.Areas.Form.Interfaces.Excel;
 using DcMateH5Api.Areas.Form.Interfaces.FormLogic;
 using DcMateH5Api.Areas.Form.Interfaces.Transaction;
-using DcMateH5Api.Areas.Form.Models.Excel;
 using DcMateH5Api.Areas.Form.ViewModels;
 using Microsoft.Data.SqlClient;
 
@@ -23,13 +21,12 @@ public class FormService : IFormService
     private readonly IDropdownService _dropdownService;
     private readonly IDropdownSqlSyncService _dropdownSqlSyncService;
     private readonly IFormDeleteGuardService _formDeleteGuardService;
-    private readonly IExcelExportService _excelExportService;
     private readonly IConfiguration _configuration;
     private readonly List<string> _excludeColumns;
     private readonly List<string> _excludeColumnsId;
     
     
-    public FormService(SqlConnection connection, ITransactionService txService, IFormFieldMasterService formFieldMasterService, ISchemaService schemaService, IFormFieldConfigService formFieldConfigService, IDropdownService dropdownService, IFormDataService formDataService, IConfiguration configuration, IDropdownSqlSyncService dropdownSqlSyncService, IFormDeleteGuardService formDeleteGuardService, IExcelExportService excelExportService)
+    public FormService(SqlConnection connection, ITransactionService txService, IFormFieldMasterService formFieldMasterService, ISchemaService schemaService, IFormFieldConfigService formFieldConfigService, IDropdownService dropdownService, IFormDataService formDataService, IConfiguration configuration, IDropdownSqlSyncService dropdownSqlSyncService, IFormDeleteGuardService formDeleteGuardService)
     {
         _con = connection;
         _txService = txService;
@@ -40,7 +37,6 @@ public class FormService : IFormService
         _dropdownService = dropdownService;
         _dropdownSqlSyncService = dropdownSqlSyncService;
         _formDeleteGuardService = formDeleteGuardService;
-        _excelExportService = excelExportService;
         _configuration = configuration;
         _excludeColumns = _configuration.GetSection("FormDesignerSettings:RequiredColumns").Get<List<string>>() ?? new();
         _excludeColumnsId = _configuration.GetSection("DropdownSqlSettings:ExcludeColumns").Get<List<string>>() ?? new();
@@ -106,25 +102,16 @@ public class FormService : IFormService
     /// <returns>
     /// 表單列表頁所需的資料清單，每一筆代表一筆資料列及其對應欄位值。
     /// </returns>
-    public List<FormListDataViewModel> GetFormList(FormFunctionType funcType, FormSearchRequest? request = null, bool returnBaseTableWhenMultipleMapping = false)
+    public List<FormListResponseViewModel> GetFormList(
+        FormFunctionType funcType,
+        FormSearchRequest? request = null,
+        bool returnBaseTableWhenMultipleMapping = false)
     {
-        // ------------------------------------------------------------
-        // 1. 取得表單主設定（含欄位設定）
-        // ------------------------------------------------------------
-        // 回傳結構為：
-        // IEnumerable<(FormMaster master, List<FormFieldConfig> fieldConfigs)>
-        // 每一組代表一張「表單定義」
         var metas = _formFieldMasterService.GetFormMetaAggregates(
             funcType,
             TableSchemaQueryType.All
         );
 
-        // ------------------------------------------------------------
-        // 1.1 若指定 FormMasterId，僅處理該表單
-        // ------------------------------------------------------------
-        // 常見於：
-        // - 單一表單列表頁
-        // - 後台指定某張表單查詢
         if (request?.FormMasterId != null && request.FormMasterId != Guid.Empty)
         {
             metas = metas
@@ -132,92 +119,48 @@ public class FormService : IFormService
                 .ToList();
         }
 
-        // ------------------------------------------------------------
-        // 2. 準備最終回傳結果容器
-        // ------------------------------------------------------------
-        // 注意：這是一個「跨多張表單」的平坦清單
-        var results = new List<FormListDataViewModel>();
+        var responses = new List<FormListResponseViewModel>();
 
-        // ------------------------------------------------------------
-        // 3. 逐一處理每一張表單設定
-        // ------------------------------------------------------------
         foreach (var (master, fieldConfigs) in metas)
         {
-            // --------------------------------------------------------
-            // 1. 因為多對多前端要 BASE TABLE資料，走策略模式
-            // --------------------------------------------------------
-            FormListModeSpec spec;
+            var spec = ResolveListModeSpec(funcType, master, returnBaseTableWhenMultipleMapping);
 
-            if (returnBaseTableWhenMultipleMapping && funcType == FormFunctionType.MultipleMappingMaintenance)
-            {
-                // 僅在這裡使用 BuildModeSpec
-                spec = BuildModeSpec(funcType, master);
-            }
-            else
-            {
-                // 原本行為（View → View）
-                spec = BuildDefaultSpec(master);
-            }
-
-            var dataTableName = spec.DataTableName;
-            var schemaTableId = spec.SchemaTableId;
-            var schemaQueryType = spec.SchemaQueryType;
-            var sidColumnsToHide = spec.SidColumnsToHide;
-
-            // --------------------------------------------------------
-            // 2. 讀取實際資料列與總筆數
-            // --------------------------------------------------------
             var rawRows = _formDataService.GetRows(
-                dataTableName,
+                spec.DataTableName,
                 request?.Conditions,
                 request?.OrderBys,
                 request?.Page,
                 request?.PageSize
             );
 
-            // 計算總頁數 (TotalPageSize)
-            int totalCount = _formDataService.GetTotalCount(dataTableName, request?.Conditions);
-            
-            // --------------------------------------------------------
-            // 3. 一律用 BASE_TABLE 的 PK 當 RowId
-            // --------------------------------------------------------
+            var totalCount = _formDataService.GetTotalCount(spec.DataTableName, request?.Conditions);
+
             var pk = _schemaService.GetPrimaryKeyColumn(master.BASE_TABLE_NAME!);
             if (pk == null)
             {
-                throw new InvalidOperationException(
-                    $"缺失 PK 欄位，請檢查 BASE_TABLE_NAME -> [{master.BASE_TABLE_NAME}]"
-                );
+                throw new InvalidOperationException($"缺失 PK 欄位，請檢查 BASE_TABLE_NAME -> [{master.BASE_TABLE_NAME}]");
             }
 
-            var rows = _dropdownService.ToFormDataRows(
-                rawRows,
-                pk,
-                out var rowIds
-            );
+            var rows = _dropdownService.ToFormDataRows(rawRows, pk, out _);
 
-            // --------------------------------------------------------
-            // 5. 取得欄位模板（依 schemaQueryType）
-            // --------------------------------------------------------
             var fieldTemplates = GetFields(
-                schemaTableId,
-                schemaQueryType,
-                dataTableName
+                spec.SchemaTableId,
+                spec.SchemaQueryType,
+                spec.DataTableName
             );
 
-            // --------------------------------------------------------
-            // 6. 組 ViewModel
-            // --------------------------------------------------------
+            var items = new List<FormListRowViewModel>(rows.Count);
+
             foreach (var row in rows)
             {
                 if (row.PkId == null)
                 {
-                    throw new InvalidOperationException(
-                        $"缺失 PK 欄位，請檢查資料來源表 -> [{dataTableName}]"
-                    );
+                    throw new InvalidOperationException($"缺失 PK 欄位，請檢查資料來源表 -> [{spec.DataTableName}]");
                 }
 
                 var rowFields = fieldTemplates
-                    // .Where(f => !sidColumnsToHide.Contains(f.Column))
+                    // 若你要套用 SID 隱藏，請把這行打開：
+                    // .Where(f => !spec.SidColumnsToHide.Contains(f.Column))
                     .Select(f => new FormFieldInputViewModel
                     {
                         FieldConfigId = f.FieldConfigId,
@@ -244,22 +187,37 @@ public class FormService : IFormService
                     })
                     .ToList();
 
-                results.Add(new FormListDataViewModel
+                items.Add(new FormListRowViewModel
                 {
-                    FormMasterId = master.ID,
-                    FormName = master.FORM_NAME,
-                    BaseId = master.BASE_TABLE_ID,
-                    Pk = row.PkId.ToString(),
-                    TotalPageSize = totalCount,
+                    Pk = row.PkId.ToString()!,
                     Fields = rowFields
                 });
             }
+
+            responses.Add(new FormListResponseViewModel
+            {
+                FormMasterId = master.ID,
+                FormName = master.FORM_NAME,
+                BaseId = master.BASE_TABLE_ID,
+                TotalPageSize = totalCount,
+                Items = items
+            });
         }
-        
-        // ------------------------------------------------------------
-        // 4. 回傳完整表單資料清單
-        // ------------------------------------------------------------
-        return results;
+
+        return responses;
+    }
+
+    private FormListModeSpec ResolveListModeSpec(
+        FormFunctionType funcType,
+        FormFieldMasterDto master,
+        bool returnBaseTableWhenMultipleMapping)
+    {
+        if (returnBaseTableWhenMultipleMapping && funcType == FormFunctionType.MultipleMappingMaintenance)
+        {
+            return BuildModeSpec(funcType, master);
+        }
+
+        return BuildDefaultSpec(master);
     }
     
     private sealed class FormListModeSpec
@@ -846,12 +804,6 @@ FROM (
                 Deleted = affected > 0
             };
         }, ct);
-    }
-
-    public ExportFileResult ExportFormListToExcel(FormFunctionType funcType, FormSearchRequest request)
-    {
-        var rows = GetFormList(funcType, request);
-        return _excelExportService.ExportFormList(rows);
     }
     
     private static void ValidateSqlIdentifier(string identifier)

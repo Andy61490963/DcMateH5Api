@@ -65,7 +65,7 @@ public class FormMultipleMappingController : ControllerBase
     /// 取得多對多維護的資料列表，回傳 baseTable 內容
     /// </summary>
     [HttpPost(Routes.SearchBase)]
-    [ProducesResponseType(typeof(FormListDataViewModel), StatusCodes.Status200OK)]
+    [ProducesResponseType(typeof(FormListResponseViewModel), StatusCodes.Status200OK)]
     [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status400BadRequest)]
     public IActionResult SearchBaseForms([FromBody] FormSearchRequest? request)
     {
@@ -90,7 +90,7 @@ public class FormMultipleMappingController : ControllerBase
     /// 取得多對多維護的資料列表，回傳 viewTable 內容
     /// </summary>
     [HttpPost(Routes.SearchView)]
-    [ProducesResponseType(typeof(FormListDataViewModel), StatusCodes.Status200OK)]
+    [ProducesResponseType(typeof(FormListResponseViewModel), StatusCodes.Status200OK)]
     [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status400BadRequest)]
     public IActionResult SearchViewForms([FromBody] FormSearchRequest? request, CancellationToken ct)
     {

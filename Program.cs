@@ -22,8 +22,6 @@ using Microsoft.Data.SqlClient;
 using Microsoft.Extensions.Diagnostics.HealthChecks;
 using Microsoft.OpenApi.Models;
 using System.Reflection;
-using DcMateH5Api.Areas.Form.Interfaces.Excel;
-using DcMateH5Api.Areas.Form.Services.Excel;
 using DCMATEH5API.Areas.Menu.Services;
 using DcMateH5Api.Areas.Wip.Interfaces;
 using DcMateH5Api.Areas.Wip.Services;
@@ -99,7 +97,6 @@ builder.Services.AddScoped<SQLGenerateHelper>();
 
 // 核心功能註冊
 builder.Services.AddHostedService<FormOrphanCleanupHostedService>();
-builder.Services.AddScoped<IExcelExportService, ExcelExportService>();
 builder.Services.AddScoped<IFormOrphanCleanupService, FormOrphanCleanupService>();
 builder.Services.AddScoped<ILogService, LogService>();
 builder.Services.AddScoped<IFormDesignerService, FormDesignerService>();

@@ -67,7 +67,7 @@ public class FormMasterDetailService : IFormMasterDetailService
     }
 
     /// <inheritdoc />
-    public List<FormListDataViewModel> GetFormList(FormFunctionType funcType, FormSearchRequest? request = null)
+    public List<FormListResponseViewModel> GetFormList(FormFunctionType funcType, FormSearchRequest? request = null)
     {
         return _formService.GetFormList(funcType, request);
     }

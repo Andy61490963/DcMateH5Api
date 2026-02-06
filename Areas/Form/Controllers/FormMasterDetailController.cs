@@ -121,7 +121,7 @@ public class FormMasterDetailController : ControllerBase
     /// ```
     /// </remarks>
     [HttpPost("search")]
-    [ProducesResponseType(typeof(FormListDataViewModel), StatusCodes.Status200OK)]
+    [ProducesResponseType(typeof(FormListResponseViewModel), StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status400BadRequest)]
     public IActionResult GetForms([FromBody] FormSearchRequest? request)
     {

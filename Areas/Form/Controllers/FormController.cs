@@ -54,7 +54,7 @@ public class FormController : BaseController
     /// <param name="request">查詢條件與分頁設定</param>
     /// <returns>查詢結果</returns>
     [HttpPost(Routes.Search)]
-    [ProducesResponseType(typeof(FormListDataViewModel), StatusCodes.Status200OK)]
+    [ProducesResponseType(typeof(FormListResponseViewModel), StatusCodes.Status200OK)]
     [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status400BadRequest)]
     public IActionResult GetForms([FromBody] FormSearchRequest? request)
     {
@@ -161,27 +161,27 @@ public class FormController : BaseController
     /// <summary>
     /// 匯出 Excel
     /// </summary>
-    [HttpPost(Routes.Export)]
-    [Produces(MediaTypeNames.Application.Octet)]
-    [ProducesResponseType(StatusCodes.Status200OK)]
-    [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status400BadRequest)]
-    public IActionResult ExportForms([FromBody] FormSearchRequest? request)
-    {
-        try
-        {
-            if (request == null)
-            {
-                return BadRequest(new { Detail = "Request body is null" });
-            }
-
-            var file = _formService.ExportFormListToExcel(_funcType, request);
-            return File(file.Content, file.ContentType, file.FileName);
-        }
-        catch (HttpStatusCodeException ex)
-        {
-            return StatusCode((int)ex.StatusCode, ex.Message);
-        }
-    }
+    // [HttpPost(Routes.Export)]
+    // [Produces(MediaTypeNames.Application.Octet)]
+    // [ProducesResponseType(StatusCodes.Status200OK)]
+    // [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status400BadRequest)]
+    // public IActionResult ExportForms([FromBody] FormSearchRequest? request)
+    // {
+    //     try
+    //     {
+    //         if (request == null)
+    //         {
+    //             return BadRequest(new { Detail = "Request body is null" });
+    //         }
+    //
+    //         var file = _formService.ExportFormListToExcel(_funcType, request);
+    //         return File(file.Content, file.ContentType, file.FileName);
+    //     }
+    //     catch (HttpStatusCodeException ex)
+    //     {
+    //         return StatusCode((int)ex.StatusCode, ex.Message);
+    //     }
+    // }
 
     /// <summary>
     /// 提交表單

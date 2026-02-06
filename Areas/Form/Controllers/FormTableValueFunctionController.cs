@@ -89,7 +89,7 @@ public class FormTableValueFunctionController : BaseController
     /// <param name="ct">CancellationToken</param>
     /// <returns>查詢結果</returns>
     [HttpPost(Routes.Search)]
-    [ProducesResponseType(typeof(FormListDataViewModel), StatusCodes.Status200OK)]
+    [ProducesResponseType(typeof(FormListResponseViewModel), StatusCodes.Status200OK)]
     [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status400BadRequest)]
     public async Task<IActionResult> GetForms([FromBody] FormTvfSearchRequest? request, CancellationToken ct)
     {

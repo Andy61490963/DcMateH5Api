@@ -15,7 +15,7 @@ public interface IFormMasterDetailService
     /// <param name="funcType">功能類型</param>
     /// <param name="request">查詢條件與分頁設定。</param>
     /// <returns>表單資料列表。</returns>
-    List<FormListDataViewModel> GetFormList(FormFunctionType funcType, FormSearchRequest? request = null);
+    List<FormListResponseViewModel> GetFormList(FormFunctionType funcType, FormSearchRequest? request = null);
 
     /// <summary>
     /// 取得主表與明細表的填寫畫面與資料。

@@ -68,7 +68,7 @@ SELECT ID AS Id,
     }
 
     /// <inheritdoc />
-    public List<FormListDataViewModel> GetForms(FormSearchRequest? request = null, CancellationToken ct = default)
+    public List<FormListResponseViewModel> GetForms(FormSearchRequest? request = null, CancellationToken ct = default)
     {
         ct.ThrowIfCancellationRequested();
         return _formService.GetFormList(FormFunctionType.MultipleMappingMaintenance, request);
