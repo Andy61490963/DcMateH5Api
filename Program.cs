@@ -282,7 +282,7 @@ app.UseSwaggerUI(options =>
         options.SwaggerEndpoint($"swagger/{g}/swagger.json", $"{g} API v1");
     options.RoutePrefix = string.Empty;
 });
-
+//
 app.MapControllers();
 app.MapHealthChecks("/healthz");
 
