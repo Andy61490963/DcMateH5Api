@@ -37,3 +37,8 @@ public class WipCheckInInputDto
     /// </summary>
     public string? Comment { get; set; }
 }
+
+public class WipCheckInCancelInputDto
+{
+    public decimal WIP_OPI_WDOEACICO_HIST_SID { get; set; }
+}
