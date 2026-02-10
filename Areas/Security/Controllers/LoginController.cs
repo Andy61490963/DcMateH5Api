@@ -64,5 +64,17 @@ namespace DcMateH5Api.Areas.Security.Controllers
             return Unauthorized(result.Message);
         }
 
+        /// <summary>
+        /// 登出
+        /// </summary>
+        /// <returns>結果。</returns>
+        [Authorize]
+        [HttpPost("logout")]
+        public async Task<IActionResult> Logout()
+        {
+            await _authService.LogoutAsync();
+            return Ok();
+        }
+
     }
 }

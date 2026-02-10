@@ -17,5 +17,10 @@ namespace DcMateH5Api.Areas.Security.Interfaces
         Task<Result<LoginResponseViewModel>> AuthenticateAsync(string account, string password, CancellationToken ct = default);
 
         Task<Result<LoginResponseViewModel>> ExtendSessionAsync();
+
+        /// <summary>
+        /// 登出。
+        /// </summary>
+        Task LogoutAsync();
     }
 }

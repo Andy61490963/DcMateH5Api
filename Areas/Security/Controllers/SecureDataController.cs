@@ -20,7 +20,6 @@ namespace DcMateH5Api.Areas.Security.Controllers
         /// 取得受保護的資料。
         /// </summary>
         /// <returns>簡單的訊息。</returns>
-        [RequireControllerPermission(ActionType.View)]
         [HttpGet("data")]
         public IActionResult GetSecureData()
         {

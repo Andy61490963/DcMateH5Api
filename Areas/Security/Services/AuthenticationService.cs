@@ -41,20 +41,57 @@ public class AuthenticationService : Interfaces.IAuthenticationService
         var user = await _sqlHelper.SelectFirstOrDefaultAsync(where, ct);
 
         if (user == null)
-            return Result<LoginResponseViewModel>.Fail(AuthenticationErrorCode.UserNotFound, "�b���αK�X���~");
+            return Result<LoginResponseViewModel>.Fail(AuthenticationErrorCode.UserNotFound, "bαKX~");
         
         bool isValid = _passwordHasher.VerifyPassword(password, user.PasswordHash, user.PasswordSalt);
 
         if (!isValid)
-            return Result<LoginResponseViewModel>.Fail(AuthenticationErrorCode.UserNotFound, "�b���αK�X���~");
+            return Result<LoginResponseViewModel>.Fail(AuthenticationErrorCode.UserNotFound, "帳號或密碼錯誤");
+
+        // ---------------------------------------------------------
+        // Concurrent Login Check
+        // ---------------------------------------------------------
+        int expireMinutes = _config.GetValue<int>("AuthSettings:ExpireTimeSpanMinutes");
+        int maxConcurrentLogins = _config.GetValue<int>("AuthSettings:MaxConcurrentLogins", 3); // Default 3 if not set
         
+        var cutoffTime = DateTime.Now.AddMinutes(-expireMinutes);
+        
+        // Count active sessions (GLOBAL)
+        var countWhere = new WhereBuilder<UserLoginLogDto>()
+            .AndEq(x => x.LOGOUT_TIME, null)
+            .AndGt(x => x.LAST_ACTIVE_TIME, cutoffTime);
+
+        var activeCount = await _sqlHelper.SelectCountAsync(countWhere, ct);
+
+        if (activeCount >= maxConcurrentLogins)
+        {
+             return Result<LoginResponseViewModel>.Fail(AuthenticationErrorCode.Unauthorized, $"已達最大同時登入限制 ({maxConcurrentLogins})，請稍後再試或登出其他裝置。");
+        }
+
+        // Create Login Log
+        var loginLogSid = Guid.NewGuid();
+        var loginLog = new UserLoginLogDto
+        {
+            ADM_USER_LOGIN_LOG_SID = loginLogSid,
+            ADM_USER_SID = user.Id,
+            ACCOUNT_NO = user.Account,
+            LOGIN_TIME = DateTime.Now,
+            LAST_ACTIVE_TIME = DateTime.Now,
+            IP_ADDRESS = _httpContextAccessor.HttpContext.Connection.RemoteIpAddress?.ToString()
+        };
+
+        await _sqlHelper.InsertAsync(loginLog, ct);
+
+        // ---------------------------------------------------------
+
         string userLv = user.LV?.ToString() ?? "0";
 
         var claims = new List<Claim>
         {
             new Claim(AppClaimTypes.Account, user.Account),
             new Claim(AppClaimTypes.UserId, user.Id.ToString()),
-            new Claim(AppClaimTypes.UserLv, userLv)
+            new Claim(AppClaimTypes.UserLv, userLv),
+            new Claim("LoginLogSid", loginLogSid.ToString()) // Add Login Log SID claim
         };
 
         var claimsIdentity = new ClaimsIdentity(claims, CookieAuthenticationDefaults.AuthenticationScheme);
@@ -62,7 +99,7 @@ public class AuthenticationService : Interfaces.IAuthenticationService
         var authProperties = new AuthenticationProperties
         {
             IsPersistent = true, 
-            ExpiresUtc = DateTimeOffset.UtcNow.AddMinutes(_config.GetValue<int>("AuthSettings:ExpireTimeSpanMinutes")),
+            ExpiresUtc = DateTimeOffset.UtcNow.AddMinutes(expireMinutes),
         };
 
         await _httpContextAccessor.HttpContext.SignInAsync(
@@ -97,6 +134,18 @@ public class AuthenticationService : Interfaces.IAuthenticationService
 
     public async Task LogoutAsync()
     {
+        var user = _httpContextAccessor.HttpContext.User;
+        if (user.Identity.IsAuthenticated)
+        {
+            var loginLogSidStr = user.FindFirst("LoginLogSid")?.Value;
+            if (Guid.TryParse(loginLogSidStr, out var loginLogSid))
+            {
+                await _sqlHelper.UpdateById<UserLoginLogDto>(loginLogSid)
+                    .Set(x => x.LOGOUT_TIME, DateTime.Now)
+                    .ExecuteAsync();
+            }
+        }
+
         await _httpContextAccessor.HttpContext.SignOutAsync(CookieAuthenticationDefaults.AuthenticationScheme);
     }
 

@@ -401,6 +401,14 @@ namespace DcMateH5Api.SqlHelper
             return res.HasValue;
         }
 
+        public async Task<int> SelectCountAsync<T>(WhereBuilder<T> where, CancellationToken ct = default)
+        {
+            var (table, _, _, _, _) = Reflect<T>();
+            var (w, param) = where.Build();
+            var sql = $"SELECT COUNT(1) FROM {table} {w};";
+            return await _db.ExecuteScalarAsync<int>(sql, param, ct: ct);
+        }
+
         /// <summary>
         /// 判斷是否存在符合條件的資料（交易內版本）。
         /// </summary>
