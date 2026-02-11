@@ -49,6 +49,25 @@ public class DropdownService : IDropdownService
     /// <summary>
     /// 依答案中的 OptionId 批次查詢下拉顯示文字。
     /// </summary>
+    public async Task<Dictionary<Guid, string>> GetOptionTextMapAsync(IEnumerable<DropdownAnswerDto> answers, CancellationToken ct = default)
+    {
+        var optionIds = answers.Select(a => a.OptionId).Distinct().ToList();
+        if (!optionIds.Any())
+        {
+            return new Dictionary<Guid, string>();
+        }
+
+        var rows = await _dbExecutor.QueryAsync<(Guid Id, string Text)>(
+                "SELECT ID, OPTION_TEXT AS Text FROM FORM_FIELD_DROPDOWN_OPTIONS WHERE ID IN @Ids",
+                new { Ids = optionIds },
+                ct: ct);
+
+        return rows.ToDictionary(x => x.Id, x => x.Text);
+    }
+
+    /// <summary>
+    /// 同步版本（相容舊呼叫端）。
+    /// </summary>
     public Dictionary<Guid, string> GetOptionTextMap(IEnumerable<DropdownAnswerDto> answers)
     {
         var optionIds = answers.Select(a => a.OptionId).Distinct().ToList();
@@ -57,12 +76,11 @@ public class DropdownService : IDropdownService
             return new Dictionary<Guid, string>();
         }
 
-        return _dbExecutor.QueryAsync<(Guid Id, string Text)>(
-                "SELECT ID, OPTION_TEXT AS Text FROM FORM_FIELD_DROPDOWN_OPTIONS WHERE ID IN @Ids",
-                new { Ids = optionIds })
-            .GetAwaiter()
-            .GetResult()
-            .ToDictionary(x => x.Id, x => x.Text);
+        var rows = _dbExecutor.Query<(Guid Id, string Text)>(
+            "SELECT ID, OPTION_TEXT AS Text FROM FORM_FIELD_DROPDOWN_OPTIONS WHERE ID IN @Ids",
+            new { Ids = optionIds });
+
+        return rows.ToDictionary(x => x.Id, x => x.Text);
     }
 
     /// <summary>

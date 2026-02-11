@@ -23,12 +23,13 @@ public class FormDataService : IFormDataService
         _dbExecutor = dbExecutor;
     }
 
-    public List<IDictionary<string, object?>> GetRows(
+    public async Task<List<IDictionary<string, object?>>> GetRowsAsync(
         string tableName,
         IEnumerable<FormQueryConditionViewModel>? conditions = null,
         IEnumerable<FormOrderBy>? orderBys = null,
         int? page = null,
-        int? pageSize = null)
+        int? pageSize = null,
+        CancellationToken ct = default)
     {
         // tableName 也是 injection 入口，至少做基本驗證（你目前是直接塞進 []）
         if (string.IsNullOrWhiteSpace(tableName))
@@ -48,13 +49,11 @@ public class FormDataService : IFormDataService
         AppendOrderBy(sql, orderBys, page, pageSize);
         AppendPaging(sql, param, page, pageSize);
 
-        var rows = _dbExecutor.QueryAsync<dynamic>(sql.ToString(), param)
-            .GetAwaiter()
-            .GetResult();
+        var rows = await _dbExecutor.QueryAsync<dynamic>(sql.ToString(), param, ct: ct);
         return rows.Cast<IDictionary<string, object?>>().ToList();
     }
 
-    public int GetTotalCount(string tableName, IEnumerable<FormQueryConditionViewModel>? conditions = null)
+    public async Task<int> GetTotalCountAsync(string tableName, IEnumerable<FormQueryConditionViewModel>? conditions = null, CancellationToken ct = default)
     {
         if (string.IsNullOrWhiteSpace(tableName))
         {
@@ -71,23 +70,87 @@ public class FormDataService : IFormDataService
 
         AppendWhere(sql, param, conditions);
 
-        return _dbExecutor.ExecuteScalarAsync<int>(sql.ToString(), param)
-            .GetAwaiter()
-            .GetResult();
+        return await _dbExecutor.ExecuteScalarAsync<int>(sql.ToString(), param, ct: ct);
     }
 
-    public Dictionary<string, string> LoadColumnTypes(string tableName)
+    public async Task<Dictionary<string, string>> LoadColumnTypesAsync(string tableName, CancellationToken ct = default)
     {
-        return _dbExecutor.QueryAsync<(string COLUMN_NAME, string DATA_TYPE)>(
+        var rows = await _dbExecutor.QueryAsync<(string COLUMN_NAME, string DATA_TYPE)>(
                 @"/**/SELECT COLUMN_NAME, DATA_TYPE
                   FROM INFORMATION_SCHEMA.COLUMNS
                   WHERE TABLE_NAME = @TableName",
-                new { TableName = tableName })
-            .GetAwaiter()
-            .GetResult()
-            .ToDictionary(x => x.COLUMN_NAME, x => x.DATA_TYPE, StringComparer.OrdinalIgnoreCase);
+                new { TableName = tableName },
+                ct: ct);
+
+        return rows.ToDictionary(x => x.COLUMN_NAME, x => x.DATA_TYPE, StringComparer.OrdinalIgnoreCase);
     }
 
+
+    /// <summary>
+    /// 同步版本（相容舊呼叫端）。
+    /// </summary>
+    public List<IDictionary<string, object?>> GetRows(
+        string tableName,
+        IEnumerable<FormQueryConditionViewModel>? conditions = null,
+        IEnumerable<FormOrderBy>? orderBys = null,
+        int? page = null,
+        int? pageSize = null)
+    {
+        if (string.IsNullOrWhiteSpace(tableName))
+        {
+            throw new ArgumentException("tableName 不可為空", nameof(tableName));
+        }
+
+        if (!SafeSqlIdentifierRegex.IsMatch(tableName))
+        {
+            throw new ArgumentException("tableName 含非法字元", nameof(tableName));
+        }
+
+        var sql = new StringBuilder($"SELECT * FROM [{tableName}]");
+        var param = new DynamicParameters();
+        AppendWhere(sql, param, conditions);
+        AppendOrderBy(sql, orderBys, page, pageSize);
+        AppendPaging(sql, param, page, pageSize);
+
+        var rows = _dbExecutor.Query<dynamic>(sql.ToString(), param);
+        return rows.Cast<IDictionary<string, object?>>().ToList();
+    }
+
+    /// <summary>
+    /// 同步版本（相容舊呼叫端）。
+    /// </summary>
+    public int GetTotalCount(string tableName, IEnumerable<FormQueryConditionViewModel>? conditions = null)
+    {
+        if (string.IsNullOrWhiteSpace(tableName))
+        {
+            throw new ArgumentException("tableName 不可為空", nameof(tableName));
+        }
+
+        if (!SafeSqlIdentifierRegex.IsMatch(tableName))
+        {
+            throw new ArgumentException("tableName 含非法字元", nameof(tableName));
+        }
+
+        var sql = new StringBuilder($"SELECT COUNT(*) FROM [{tableName}]");
+        var param = new DynamicParameters();
+        AppendWhere(sql, param, conditions);
+
+        return _dbExecutor.ExecuteScalar<int>(sql.ToString(), param);
+    }
+
+    /// <summary>
+    /// 同步版本（相容舊呼叫端）。
+    /// </summary>
+    public Dictionary<string, string> LoadColumnTypes(string tableName)
+    {
+        var rows = _dbExecutor.Query<(string COLUMN_NAME, string DATA_TYPE)>(
+            @"/**/SELECT COLUMN_NAME, DATA_TYPE
+                  FROM INFORMATION_SCHEMA.COLUMNS
+                  WHERE TABLE_NAME = @TableName",
+            new { TableName = tableName });
+
+        return rows.ToDictionary(x => x.COLUMN_NAME, x => x.DATA_TYPE, StringComparer.OrdinalIgnoreCase);
+    }
     private static void AppendWhere(
         StringBuilder sql,
         DynamicParameters param,

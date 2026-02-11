@@ -2,18 +2,24 @@
 
 namespace DcMateH5.Abstractions.Form.FormLogic;
 
-
 public interface IFormDataService
 {
-    /// <summary>
-    /// 取得資料列，允許依條件過濾。
-    /// </summary>
-    /// <param name="tableName">目標資料表或檢視表名稱。</param>
-    /// <param name="conditions">查詢條件集合。</param>
-    /// <param name="orderBys">排序。</param>
-    /// <param name="page">頁碼（從 1 開始）。</param>
-    /// <param name="pageSize">每頁筆數。</param>
-    /// <returns>符合條件的資料列。</returns>
+    Task<List<IDictionary<string, object?>>> GetRowsAsync(
+        string tableName,
+        IEnumerable<FormQueryConditionViewModel>? conditions = null,
+        IEnumerable<FormOrderBy>? orderBys = null,
+        int? page = null,
+        int? pageSize = null,
+        CancellationToken ct = default);
+
+    Task<int> GetTotalCountAsync(
+        string tableName,
+        IEnumerable<FormQueryConditionViewModel>? conditions = null,
+        CancellationToken ct = default);
+
+    Task<Dictionary<string, string>> LoadColumnTypesAsync(string tableName, CancellationToken ct = default);
+
+    // 相容舊呼叫端（逐步淘汰）
     List<IDictionary<string, object?>> GetRows(
         string tableName,
         IEnumerable<FormQueryConditionViewModel>? conditions = null,

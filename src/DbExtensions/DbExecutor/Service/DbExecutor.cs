@@ -154,6 +154,16 @@ public sealed class DbExecutor : IDbExecutor
         }
     }
 
+    private void EnsureOpen()
+    {
+        if (_connection.State == ConnectionState.Open)
+        {
+            return;
+        }
+
+        _connection.Open();
+    }
+
     private async Task EnsureOpenAsync(CancellationToken ct)
     {
         if (_connection.State == ConnectionState.Open)
@@ -162,6 +172,36 @@ public sealed class DbExecutor : IDbExecutor
         }
 
         await _connection.OpenAsync(ct);
+    }
+
+    private TResult ExecuteWithLog<TResult>(
+        string sql,
+        object? param,
+        Func<TResult> action,
+        Func<TResult, int> affectedRows)
+    {
+        var log = CreateLogEntry(sql, param);
+        var sw = Stopwatch.StartNew();
+
+        try
+        {
+            var result = action();
+            log.AffectedRows = affectedRows(result);
+            log.IsSuccess = true;
+            return result;
+        }
+        catch (Exception ex)
+        {
+            log.IsSuccess = false;
+            log.ErrorMessage = ex.Message;
+            throw;
+        }
+        finally
+        {
+            sw.Stop();
+            log.DurationMs = sw.ElapsedMilliseconds;
+            _ = TryLogAsync(log);
+        }
     }
 
     private async Task<TResult> ExecuteWithLogAsync<TResult>(
@@ -193,6 +233,81 @@ public sealed class DbExecutor : IDbExecutor
             log.DurationMs = sw.ElapsedMilliseconds;
             await TryLogAsync(log);
         }
+    }
+
+    public List<T> Query<T>(string sql, object? param = null, int? timeoutSeconds = null,
+        CommandType commandType = CommandType.Text)
+    {
+        return ExecuteWithLog(
+            sql,
+            param,
+            () =>
+            {
+                EnsureOpen();
+                var cmd = BuildCmd(sql, param, timeoutSeconds, commandType, _txContext.Current, CancellationToken.None);
+                return _connection.Query<T>(cmd).AsList();
+            },
+            r => r.Count);
+    }
+
+    public T? QueryFirstOrDefault<T>(string sql, object? param = null, int? timeoutSeconds = null,
+        CommandType commandType = CommandType.Text)
+    {
+        return ExecuteWithLog(
+            sql,
+            param,
+            () =>
+            {
+                EnsureOpen();
+                var cmd = BuildCmd(sql, param, timeoutSeconds, commandType, _txContext.Current, CancellationToken.None);
+                return _connection.QueryFirstOrDefault<T>(cmd);
+            },
+            r => r == null ? 0 : 1);
+    }
+
+    public T? QuerySingleOrDefault<T>(string sql, object? param = null, int? timeoutSeconds = null,
+        CommandType commandType = CommandType.Text)
+    {
+        return ExecuteWithLog(
+            sql,
+            param,
+            () =>
+            {
+                EnsureOpen();
+                var cmd = BuildCmd(sql, param, timeoutSeconds, commandType, _txContext.Current, CancellationToken.None);
+                return _connection.QuerySingleOrDefault<T>(cmd);
+            },
+            r => r == null ? 0 : 1);
+    }
+
+    public int Execute(string sql, object? param = null, int? timeoutSeconds = null,
+        CommandType commandType = CommandType.Text)
+    {
+        return ExecuteWithLog(
+            sql,
+            param,
+            () =>
+            {
+                EnsureOpen();
+                var cmd = BuildCmd(sql, param, timeoutSeconds, commandType, _txContext.Current, CancellationToken.None);
+                return _connection.Execute(cmd);
+            },
+            r => r);
+    }
+
+    public T? ExecuteScalar<T>(string sql, object? param = null, int? timeoutSeconds = null,
+        CommandType commandType = CommandType.Text)
+    {
+        return ExecuteWithLog(
+            sql,
+            param,
+            () =>
+            {
+                EnsureOpen();
+                var cmd = BuildCmd(sql, param, timeoutSeconds, commandType, _txContext.Current, CancellationToken.None);
+                return _connection.ExecuteScalar<T>(cmd);
+            },
+            r => r == null ? 0 : 1);
     }
 
     // ✅ 無交易 API：自動吃 ambient tx（如果有 TxAsync 包著）
@@ -335,6 +450,56 @@ public sealed class DbExecutor : IDbExecutor
         {
             _txContext.Clear();
         }
+    }
+
+    public int ExecuteInTx(SqlConnection conn, SqlTransaction tx, string sql, object? param = null,
+        int? timeoutSeconds = null, CommandType commandType = CommandType.Text)
+    {
+        return ExecuteWithLog(sql, param, () =>
+        {
+            var cmd = BuildCmd(sql, param, timeoutSeconds, commandType, tx, CancellationToken.None);
+            return conn.Execute(cmd);
+        }, r => r);
+    }
+
+    public T? ExecuteScalarInTx<T>(SqlConnection conn, SqlTransaction tx, string sql, object? param = null,
+        int? timeoutSeconds = null, CommandType commandType = CommandType.Text)
+    {
+        return ExecuteWithLog(sql, param, () =>
+        {
+            var cmd = BuildCmd(sql, param, timeoutSeconds, commandType, tx, CancellationToken.None);
+            return conn.ExecuteScalar<T>(cmd);
+        }, r => r == null ? 0 : 1);
+    }
+
+    public List<T> QueryInTx<T>(SqlConnection conn, SqlTransaction tx, string sql, object? param = null,
+        int? timeoutSeconds = null, CommandType commandType = CommandType.Text)
+    {
+        return ExecuteWithLog(sql, param, () =>
+        {
+            var cmd = BuildCmd(sql, param, timeoutSeconds, commandType, tx, CancellationToken.None);
+            return conn.Query<T>(cmd).AsList();
+        }, r => r.Count);
+    }
+
+    public T? QueryFirstOrDefaultInTx<T>(SqlConnection conn, SqlTransaction tx, string sql, object? param = null,
+        int? timeoutSeconds = null, CommandType commandType = CommandType.Text)
+    {
+        return ExecuteWithLog(sql, param, () =>
+        {
+            var cmd = BuildCmd(sql, param, timeoutSeconds, commandType, tx, CancellationToken.None);
+            return conn.QueryFirstOrDefault<T>(cmd);
+        }, r => r == null ? 0 : 1);
+    }
+
+    public T? QuerySingleOrDefaultInTx<T>(SqlConnection conn, SqlTransaction tx, string sql, object? param = null,
+        int? timeoutSeconds = null, CommandType commandType = CommandType.Text)
+    {
+        return ExecuteWithLog(sql, param, () =>
+        {
+            var cmd = BuildCmd(sql, param, timeoutSeconds, commandType, tx, CancellationToken.None);
+            return conn.QuerySingleOrDefault<T>(cmd);
+        }, r => r == null ? 0 : 1);
     }
 
     // ✅ 舊 InTx API 保留（不逼你馬上改 SQLGenerateHelper）
