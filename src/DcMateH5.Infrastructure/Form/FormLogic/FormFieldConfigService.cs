@@ -1,56 +1,72 @@
-using Dapper;
+using DbExtensions.DbExecutor.Interface;
 using DcMateH5.Abstractions.Form.FormLogic;
 using DcMateH5.Abstractions.Form.Models;
-using Microsoft.Data.SqlClient;
 
 namespace DcMateH5.Infrastructure.Form.FormLogic;
 
 public class FormFieldConfigService : IFormFieldConfigService
 {
-    private readonly SqlConnection _con;
-    
-    public FormFieldConfigService(SqlConnection connection)
+    private readonly IDbExecutor _dbExecutor;
+
+    public FormFieldConfigService(IDbExecutor dbExecutor)
     {
-        _con = connection;
+        _dbExecutor = dbExecutor;
     }
 
+    /// <summary>
+    /// 依表單主檔 ID 取得欄位設定清單。
+    /// </summary>
+    /// <param name="id">表單主檔識別碼。</param>
+    /// <returns>欄位設定列表。</returns>
     public List<FormFieldConfigDto> GetFormFieldConfig(Guid? id)
     {
-        return _con.Query<FormFieldConfigDto>(
-            "/**/SELECT * FROM FORM_FIELD_CONFIG WHERE FORM_FIELD_MASTER_ID = @id",
-            new { id }).ToList();
+        return _dbExecutor.QueryAsync<FormFieldConfigDto>(
+                "/**/SELECT * FROM FORM_FIELD_CONFIG WHERE FORM_FIELD_MASTER_ID = @id",
+                new { id })
+            .GetAwaiter()
+            .GetResult();
     }
-    
+
+    /// <summary>
+    /// 一次載入欄位設定、驗證規則、下拉設定與選項資料。
+    /// </summary>
+    /// <param name="masterId">表單主檔識別碼。</param>
+    /// <returns>組合後的欄位設定資料。</returns>
+    /// <remarks>
+    /// 業務邏輯：維持原本資料集合內容與排序邏輯，僅調整為經由 DbExecutor 進行資料存取。
+    /// </remarks>
     public FieldConfigData LoadFieldConfigData(Guid? masterId)
     {
-        const string sql = @"SELECT FFC.*, FFM.FORM_NAME
+        var configs = _dbExecutor.QueryAsync<FormFieldConfigDto>(@"SELECT FFC.*, FFM.FORM_NAME
                     FROM FORM_FIELD_CONFIG FFC
                     JOIN FORM_FIELD_MASTER FFM ON FFM.ID = FFC.FORM_FIELD_MASTER_ID
                     WHERE FFM.ID = @ID
-                    ORDER BY FIELD_ORDER;
+                    ORDER BY FIELD_ORDER;", new { ID = masterId })
+            .GetAwaiter()
+            .GetResult();
 
-                    SELECT R.*
+        var rules = _dbExecutor.QueryAsync<FormFieldValidationRuleDto>(@"SELECT R.*
                     FROM FORM_FIELD_VALIDATION_RULE R
                     JOIN FORM_FIELD_CONFIG C ON R.FORM_FIELD_CONFIG_ID = C.ID
-                    WHERE C.FORM_FIELD_MASTER_ID = @ID;
+                    WHERE C.FORM_FIELD_MASTER_ID = @ID;", new { ID = masterId })
+            .GetAwaiter()
+            .GetResult();
 
-                    SELECT D.*
+        var dropdowns = _dbExecutor.QueryAsync<FormFieldDropDownDto>(@"SELECT D.*
                     FROM FORM_FIELD_DROPDOWN D
                     JOIN FORM_FIELD_CONFIG C ON D.FORM_FIELD_CONFIG_ID = C.ID
-                    WHERE C.FORM_FIELD_MASTER_ID = @ID;
+                    WHERE C.FORM_FIELD_MASTER_ID = @ID;", new { ID = masterId })
+            .GetAwaiter()
+            .GetResult();
 
-                    SELECT O.*
+        var options = _dbExecutor.QueryAsync<FormFieldDropdownOptionsDto>(@"SELECT O.*
                     FROM FORM_FIELD_DROPDOWN_OPTIONS O
                     JOIN FORM_FIELD_DROPDOWN D ON O.FORM_FIELD_DROPDOWN_ID = D.ID
                     JOIN FORM_FIELD_CONFIG C ON D.FORM_FIELD_CONFIG_ID = C.ID
-                    WHERE C.FORM_FIELD_MASTER_ID = @ID;";
+                    WHERE C.FORM_FIELD_MASTER_ID = @ID;", new { ID = masterId })
+            .GetAwaiter()
+            .GetResult();
 
-        using var multi = _con.QueryMultiple(sql, new { ID = masterId });
-
-        return new FieldConfigData(
-            multi.Read<FormFieldConfigDto>().ToList(),
-            multi.Read<FormFieldValidationRuleDto>().ToList(),
-            multi.Read<FormFieldDropDownDto>().ToList(),
-            multi.Read<FormFieldDropdownOptionsDto>().ToList());
+        return new FieldConfigData(configs, rules, dropdowns, options);
     }
 }

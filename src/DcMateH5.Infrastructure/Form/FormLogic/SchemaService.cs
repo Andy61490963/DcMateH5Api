@@ -1,4 +1,5 @@
 using Dapper;
+using DbExtensions.DbExecutor.Interface;
 using DcMateClassLibrary.Helper.FormHelper;
 using DcMateH5.Abstractions.Form.FormLogic;
 using DcMateH5.Abstractions.Form.ViewModels;
@@ -8,25 +9,33 @@ namespace DcMateH5.Infrastructure.Form.FormLogic;
 
 public class SchemaService : ISchemaService
 {
-    private readonly SqlConnection _con;
-    
-    public SchemaService(SqlConnection connection)
-    {
-        _con = connection;
-    }
+    private readonly IDbExecutor _dbExecutor;
 
-    public List<string> GetFormFieldMaster(string table, SqlTransaction? tx = null)
+    public SchemaService(IDbExecutor dbExecutor)
     {
-        return _con.Query<string>(
-            "/**/SELECT COLUMN_NAME FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_NAME = @table",
-            new { table }, transaction: tx).ToList();
+        _dbExecutor = dbExecutor;
     }
 
     /// <summary>
-    /// 取得資料表的主鍵欄位名稱（僅限單一主鍵）
+    /// 取得指定資料表所有欄位名稱。
     /// </summary>
-    /// <param name="tableName">資料表名稱</param>
-    /// <returns>主鍵欄位名稱，若無主鍵則為 null</returns>
+    public List<string> GetFormFieldMaster(string table, SqlTransaction? tx = null)
+    {
+        const string sql = "/**/SELECT COLUMN_NAME FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_NAME = @table";
+
+        if (tx == null)
+        {
+            return _dbExecutor.QueryAsync<string>(sql, new { table }).GetAwaiter().GetResult();
+        }
+
+        return _dbExecutor.QueryInTxAsync<string>(tx.Connection!, tx, sql, new { table })
+            .GetAwaiter()
+            .GetResult();
+    }
+
+    /// <summary>
+    /// 取得資料表的主鍵欄位名稱（僅限單一主鍵）。
+    /// </summary>
     public string? GetPrimaryKeyColumn(string tableName)
     {
         const string sql = @"
@@ -37,10 +46,12 @@ JOIN INFORMATION_SCHEMA.KEY_COLUMN_USAGE KU
 WHERE TC.CONSTRAINT_TYPE = 'PRIMARY KEY'
   AND TC.TABLE_NAME = @tableName";
 
-        return _con.QueryFirstOrDefault<string>(sql, new { tableName });
+        return _dbExecutor.QueryFirstOrDefaultAsync<string>(sql, new { tableName }).GetAwaiter().GetResult();
     }
-    
-    /// <summary>抓取指定 Table 的主鍵欄位名稱集合 (忽略大小寫)</summary>
+
+    /// <summary>
+    /// 抓取指定 Table 的主鍵欄位名稱集合（忽略大小寫）。
+    /// </summary>
     public HashSet<string> GetPrimaryKeyColumns(string tableName)
     {
         const string sqlPk = @"/**/
@@ -51,19 +62,15 @@ JOIN INFORMATION_SCHEMA.KEY_COLUMN_USAGE KU
 WHERE TC.CONSTRAINT_TYPE = 'PRIMARY KEY'
   AND TC.TABLE_NAME = @tableName";
 
-        return _con.Query<string>(sqlPk, new { tableName })
+        return _dbExecutor.QueryAsync<string>(sqlPk, new { tableName })
+            .GetAwaiter()
+            .GetResult()
             .ToHashSet(StringComparer.OrdinalIgnoreCase);
     }
 
     /// <summary>
-    /// 查詢主鍵欄位名稱、型別，並將 id 轉型成正確型別
+    /// 查詢資料表實體主鍵欄位名稱與型別，並將 rawId 轉型為正確型別（支援單一主鍵）。
     /// </summary>
-    /// <summary>
-    /// 查詢資料表實體主鍵欄位名稱與型別，並將 rawId 轉型為正確型別（支援單一主鍵）
-    /// </summary>
-    /// <param name="tableName">表單主檔</param>
-    /// <param name="rawId">原始主鍵字串</param>
-    /// <returns>主鍵名稱、型別與轉型後的值</returns>
     public (string PkName, string PkType, object? Value) ResolvePk(string tableName, string? rawId, SqlTransaction? tx = null)
     {
         const string sql = @"/**/
@@ -80,10 +87,10 @@ WHERE TC.CONSTRAINT_TYPE = 'PRIMARY KEY'
           AND pk.TABLE_SCHEMA = ISNULL(@Schema, 'dbo')
         ORDER BY kcu.ORDINAL_POSITION";
 
-        // 自動取得 schema 名稱（若 FORM_FIELD_MASTER 有的話）
         var schema = "dbo";
-
-        var pkList = _con.Query<(string Name, string Type)>(sql, new { TableName = tableName, Schema = schema }, transaction: tx).ToList();
+        var pkList = tx == null
+            ? _dbExecutor.QueryAsync<(string Name, string Type)>(sql, new { TableName = tableName, Schema = schema }).GetAwaiter().GetResult()
+            : _dbExecutor.QueryInTxAsync<(string Name, string Type)>(tx.Connection!, tx, sql, new { TableName = tableName, Schema = schema }).GetAwaiter().GetResult();
 
         if (!pkList.Any())
             throw new InvalidOperationException($"查無主鍵欄位：{schema}.{tableName}");
@@ -91,45 +98,33 @@ WHERE TC.CONSTRAINT_TYPE = 'PRIMARY KEY'
         if (pkList.Count > 1)
             throw new NotSupportedException($"目前 ResolvePk 僅支援單一主鍵（實際為 {pkList.Count} 欄）");
 
-        var pk = pkList.First();
-
-        var typedId = rawId != null
-            ? ConvertToColumnTypeHelper.ConvertPkType(rawId, pk.Type)
-            : null;
-
+        var pk = pkList[0];
+        var typedId = rawId != null ? ConvertToColumnTypeHelper.ConvertPkType(rawId, pk.Type) : null;
         return (pk.Name, pk.Type, typedId);
     }
-    
+
     /// <summary>
-    /// 判斷指定的資料表欄位是否為 Identity（自動遞增主鍵）
+    /// 判斷指定資料表欄位是否為 Identity（自動遞增）。
     /// </summary>
-    /// <param name="tableName">資料表名稱（建議含 schema，例如 dbo.Users）</param>
-    /// <param name="columnName">欄位名稱</param>
-    /// <returns>true：為 Identity；false：非 Identity 或查無資料</returns>
     public bool IsIdentityColumn(string tableName, string columnName, SqlTransaction? tx = null)
     {
-        var sql = @"
+        const string sql = @"
         SELECT COLUMNPROPERTY(
             OBJECT_ID(@TableName), 
             @ColumnName, 
             'IsIdentity'
         ) AS IsIdentity";
 
-        var isIdentity = _con.ExecuteScalar<int>(sql, new
-        {
-            TableName = tableName,
-            ColumnName = columnName
-        }, transaction: tx);
+        var isIdentity = tx == null
+            ? _dbExecutor.ExecuteScalarAsync<int>(sql, new { TableName = tableName, ColumnName = columnName }).GetAwaiter().GetResult()
+            : _dbExecutor.ExecuteScalarInTxAsync<int>(tx.Connection!, tx, sql, new { TableName = tableName, ColumnName = columnName }).GetAwaiter().GetResult();
 
         return isIdentity == 1;
     }
-    
+
     /// <summary>
-    /// 由 TableId（BASE/DETAIL/VIEW 的 *_TABLE_ID）反查資料表名稱
+    /// 由 TableId（BASE/DETAIL/VIEW）反查資料表名稱。
     /// </summary>
-    /// <param name="tableId">資料表 ID（Guid）</param>
-    /// <param name="tx">交易</param>
-    /// <returns>資料表名稱（不含 schema，例如：WOR_MASTER）</returns>
     public string GetTableNameByTableId(Guid tableId, SqlTransaction? tx = null)
     {
         if (tableId == Guid.Empty)
@@ -155,59 +150,45 @@ ORDER BY
         ELSE 99
     END;";
 
-        var tableName = _con.QueryFirstOrDefault<string>(sql, new { Id = tableId }, transaction: tx);
+        var tableName = tx == null
+            ? _dbExecutor.QueryFirstOrDefaultAsync<string>(sql, new { Id = tableId }).GetAwaiter().GetResult()
+            : _dbExecutor.QueryFirstOrDefaultInTxAsync<string>(tx.Connection!, tx, sql, new { Id = tableId }).GetAwaiter().GetResult();
 
         tableName = tableName?.Trim();
-
         if (string.IsNullOrWhiteSpace(tableName))
-            throw new InvalidOperationException($"查無 TableName：FORM_FIELD_MASTER 中找不到 TableId = {tableId}");
+            throw new InvalidOperationException($"找不到 tableId 對應的資料表名稱：{tableId}");
 
         return tableName;
     }
 
-    public async Task<List<DbColumnInfo>> GetObjectSchemaInTxAsync(SqlConnection conn, SqlTransaction tx, string schemaName, string objectName, CancellationToken ct)
+    public Task<List<DbColumnInfo>> GetObjectSchemaInTxAsync(SqlConnection conn, SqlTransaction tx, string schemaName,
+        string objectName, CancellationToken ct)
     {
-        const string sql = @"
-/**/
--- (1) TVF input parameters
+        const string sql = @"/**/
 SELECT
-    p.name AS COLUMN_NAME,
-    t.name AS DATA_TYPE,
-    p.parameter_id AS ORDINAL_POSITION,
-    'YES' AS IS_NULLABLE,
-    CONVERT(bit, 1) AS isTvfQueryParameter
-FROM sys.objects o
-JOIN sys.parameters p ON o.object_id = p.object_id
-JOIN sys.types t ON p.user_type_id = t.user_type_id
-WHERE o.name = @ObjectName
-  AND SCHEMA_NAME(o.schema_id) = @SchemaName
-  AND o.type IN ('IF','TF')
+    c.ORDINAL_POSITION AS [Order],
+    c.COLUMN_NAME,
+    c.DATA_TYPE,
+    c.IS_NULLABLE,
+    c.CHARACTER_MAXIMUM_LENGTH,
+    COLUMNPROPERTY(OBJECT_ID(c.TABLE_SCHEMA + '.' + c.TABLE_NAME), c.COLUMN_NAME, 'IsIdentity') AS IsIdentity,
+    CASE WHEN pk.COLUMN_NAME IS NULL THEN 0 ELSE 1 END AS IsPk
+FROM INFORMATION_SCHEMA.COLUMNS c
+LEFT JOIN (
+    SELECT ku.TABLE_SCHEMA, ku.TABLE_NAME, ku.COLUMN_NAME
+    FROM INFORMATION_SCHEMA.TABLE_CONSTRAINTS tc
+    JOIN INFORMATION_SCHEMA.KEY_COLUMN_USAGE ku
+      ON tc.CONSTRAINT_NAME = ku.CONSTRAINT_NAME
+     AND tc.TABLE_SCHEMA = ku.TABLE_SCHEMA
+    WHERE tc.CONSTRAINT_TYPE = 'PRIMARY KEY'
+) pk
+  ON pk.TABLE_SCHEMA = c.TABLE_SCHEMA
+ AND pk.TABLE_NAME = c.TABLE_NAME
+ AND pk.COLUMN_NAME = c.COLUMN_NAME
+WHERE c.TABLE_SCHEMA = @schemaName
+  AND c.TABLE_NAME = @objectName
+ORDER BY c.ORDINAL_POSITION";
 
-UNION ALL
-
--- (2) Returned table columns (Table/View/TVF)
-SELECT
-    c.name AS COLUMN_NAME,
-    t.name AS DATA_TYPE,
-    c.column_id AS ORDINAL_POSITION,
-    CASE WHEN c.is_nullable = 1 THEN 'YES' ELSE 'NO' END AS IS_NULLABLE,
-    CONVERT(bit, 0) AS isTvfQueryParameter
-FROM sys.objects o
-JOIN sys.columns c ON o.object_id = c.object_id
-JOIN sys.types t ON c.user_type_id = t.user_type_id
-WHERE o.name = @ObjectName
-  AND SCHEMA_NAME(o.schema_id) = @SchemaName
-  AND o.type IN ('U','V','IF','TF')
-
-ORDER BY isTvfQueryParameter DESC, ORDINAL_POSITION;
-";
-        
-        var columns = await conn.QueryAsync<DbColumnInfo>(new CommandDefinition(
-            sql,
-            new { SchemaName = schemaName, ObjectName = objectName },
-            transaction: tx,
-            cancellationToken: ct)).ConfigureAwait(false);
-
-        return columns.ToList();
+        return _dbExecutor.QueryInTxAsync<DbColumnInfo>(conn, tx, sql, new { schemaName, objectName }, ct: ct);
     }
 }

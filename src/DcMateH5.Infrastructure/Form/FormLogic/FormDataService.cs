@@ -7,7 +7,7 @@ using DcMateClassLibrary.Enums.Form;
 using DcMateClassLibrary.Helper.FormHelper;
 using DcMateH5.Abstractions.Form.FormLogic;
 using DcMateH5.Abstractions.Form.ViewModels;
-using Microsoft.Data.SqlClient;
+using DbExtensions.DbExecutor.Interface;
 
 namespace DcMateH5.Infrastructure.Form.FormLogic;
 
@@ -16,11 +16,11 @@ public class FormDataService : IFormDataService
     private static readonly Regex SafeSqlIdentifierRegex
         = new("^[A-Za-z0-9_]+$", RegexOptions.CultureInvariant | RegexOptions.Compiled);
 
-    private readonly SqlConnection _con;
+    private readonly IDbExecutor _dbExecutor;
 
-    public FormDataService(SqlConnection connection)
+    public FormDataService(IDbExecutor dbExecutor)
     {
-        _con = connection;
+        _dbExecutor = dbExecutor;
     }
 
     public List<IDictionary<string, object?>> GetRows(
@@ -48,7 +48,9 @@ public class FormDataService : IFormDataService
         AppendOrderBy(sql, orderBys, page, pageSize);
         AppendPaging(sql, param, page, pageSize);
 
-        var rows = _con.Query(sql.ToString(), param);
+        var rows = _dbExecutor.QueryAsync<dynamic>(sql.ToString(), param)
+            .GetAwaiter()
+            .GetResult();
         return rows.Cast<IDictionary<string, object?>>().ToList();
     }
 
@@ -69,16 +71,20 @@ public class FormDataService : IFormDataService
 
         AppendWhere(sql, param, conditions);
 
-        return _con.ExecuteScalar<int>(sql.ToString(), param);
+        return _dbExecutor.ExecuteScalarAsync<int>(sql.ToString(), param)
+            .GetAwaiter()
+            .GetResult();
     }
 
     public Dictionary<string, string> LoadColumnTypes(string tableName)
     {
-        return _con.Query<(string COLUMN_NAME, string DATA_TYPE)>(
+        return _dbExecutor.QueryAsync<(string COLUMN_NAME, string DATA_TYPE)>(
                 @"/**/SELECT COLUMN_NAME, DATA_TYPE
                   FROM INFORMATION_SCHEMA.COLUMNS
                   WHERE TABLE_NAME = @TableName",
                 new { TableName = tableName })
+            .GetAwaiter()
+            .GetResult()
             .ToDictionary(x => x.COLUMN_NAME, x => x.DATA_TYPE, StringComparer.OrdinalIgnoreCase);
     }
 
