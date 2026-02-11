@@ -61,13 +61,13 @@ public class FormMasterDetailService : IFormMasterDetailService
     }
 
     /// <inheritdoc />
-    public List<FormListResponseViewModel> GetFormList(FormFunctionType funcType, FormSearchRequest? request = null)
+    public Task<List<FormListResponseViewModel>> GetFormListAsync(FormFunctionType funcType, FormSearchRequest? request = null, CancellationToken ct = default)
     {
-        return _formService.GetFormList(funcType, request);
+        return _formService.GetFormListAsync(funcType, request, ct: ct);
     }
 
     /// <inheritdoc />
-    public FormMasterDetailSubmissionViewModel GetFormSubmission(Guid formMasterDetailId, string? pk = null)
+    public async Task<FormMasterDetailSubmissionViewModel> GetFormSubmissionAsync(Guid formMasterDetailId, string? pk = null, CancellationToken ct = default)
     {
         // 取得主明細表頭設定，包含主表與明細表的 FormId
         var header = _formFieldMasterService.GetFormFieldMasterFromId(formMasterDetailId);
@@ -79,7 +79,7 @@ public class FormMasterDetailService : IFormMasterDetailService
         
         var relationColumn = GetRelationColumn(masterTable, detailTable);
 
-        var masterVm = _formService.GetFormSubmission(header.BASE_TABLE_ID, pk);
+        var masterVm = await _formService.GetFormSubmissionAsync(header.BASE_TABLE_ID, pk);
         MarkRelationField(masterVm.Fields, relationColumn);
 
         var result = new FormMasterDetailSubmissionViewModel
@@ -91,15 +91,15 @@ public class FormMasterDetailService : IFormMasterDetailService
         // 若為新增，僅回傳空白的明細欄位模板
         if (string.IsNullOrEmpty(pk))
         {
-            var emptyDetail = _formService.GetFormSubmission(header.DETAIL_TABLE_ID);
+            var emptyDetail = await _formService.GetFormSubmissionAsync(header.DETAIL_TABLE_ID);
             MarkRelationField(emptyDetail.Fields, relationColumn);
             result.Details.Add(emptyDetail);
             return result;
         }
-        var detailPk = _schemaService.GetPrimaryKeyColumn(header.DETAIL_TABLE_NAME)
+        var detailPk = await _schemaService.GetPrimaryKeyColumnAsync(header.DETAIL_TABLE_NAME, ct)
             ?? throw new InvalidOperationException("Detail table has no primary key.");
 
-        var (pkName, pkType, pkVal) = _schemaService.ResolvePk(header.BASE_TABLE_NAME, pk);
+        var (pkName, pkType, pkVal) = await _schemaService.ResolvePkAsync(header.BASE_TABLE_NAME, pk, ct: ct);
         var relationObj = _con.ExecuteScalar<object?>(
             $"SELECT [{relationColumn}] FROM [{header.BASE_TABLE_NAME}] WHERE [{pkName}] = @id",
             new { id = pkVal });
@@ -107,8 +107,8 @@ public class FormMasterDetailService : IFormMasterDetailService
         if (relationValue == null)
             return result;
 
-        var detailColumnTypes = _formDataService.LoadColumnTypes(header.DETAIL_TABLE_NAME);
-        var rows = _formDataService.GetRows(
+        var detailColumnTypes = await _formDataService.LoadColumnTypesAsync(header.DETAIL_TABLE_NAME, ct);
+        var rows = await _formDataService.GetRowsAsync(
             header.DETAIL_TABLE_NAME,
             new List<FormQueryConditionViewModel>
             {
@@ -124,7 +124,7 @@ public class FormMasterDetailService : IFormMasterDetailService
         foreach (var row in rows)
         {
             var detailPkValue = row[detailPk]?.ToString();
-            var detailVm = _formService.GetFormSubmission(header.DETAIL_TABLE_ID, detailPkValue);
+            var detailVm = await _formService.GetFormSubmissionAsync(header.DETAIL_TABLE_ID, detailPkValue);
             MarkRelationField(detailVm.Fields, relationColumn);
             result.Details.Add(detailVm);
         }
@@ -138,9 +138,9 @@ public class FormMasterDetailService : IFormMasterDetailService
     /// 1) MasterPk 有值 → 只處理 Master 更新（若有欄位） + 新增/更新 Detail
     /// 2) MasterPk 空 → 先新增 Master 取 relationValue → 灌入所有 Detail 後再寫 Detail
     /// </summary>
-    public void SubmitForm(FormMasterDetailSubmissionInputModel input)
+    public async Task SubmitFormAsync(FormMasterDetailSubmissionInputModel input, CancellationToken ct = default)
     {
-        _txService.WithTransaction(tx =>
+        await _txService.WithTransactionAsync(async (tx, innerCt) =>
         {
             // 1) 讀設定：找出主檔/明細要用的關聯欄位名稱
             var header = _formFieldMasterService.GetFormFieldMasterFromId(input.MasterId, tx)
@@ -171,7 +171,7 @@ public class FormMasterDetailService : IFormMasterDetailService
                 // 若 relationValue 還沒有，就用 MasterPk 回查 DB 的 relationColumn
                 if (relationValue is null)
                 {
-                    var (pkName, _, pkVal) = _schemaService.ResolvePk(header.BASE_TABLE_NAME!, input.MasterPk, tx);
+                    var (pkName, _, pkVal) = await _schemaService.ResolvePkAsync(header.BASE_TABLE_NAME!, input.MasterPk, tx, innerCt);
                     relationValue = _con.ExecuteScalar<object?>($@"/**/
 SELECT [{relationColumn}] FROM [{header.BASE_TABLE_NAME}] WHERE [{pkName}] = @id", new { id = pkVal }, transaction: tx)
                                     ?? throw new InvalidOperationException($"Master not found by PK: {input.MasterPk}");
@@ -186,7 +186,7 @@ SELECT [{relationColumn}] FROM [{header.BASE_TABLE_NAME}] WHERE [{pkName}] = @id
                         Pk = input.MasterPk,
                         InputFields = input.MasterFields
                     };
-                    _formService.SubmitForm(masterUpdate, tx);
+                    await _formService.SubmitFormAsync(masterUpdate, tx, innerCt);
                 }
             }
             else
@@ -206,7 +206,7 @@ SELECT [{relationColumn}] FROM [{header.BASE_TABLE_NAME}] WHERE [{pkName}] = @id
                         Pk = null,
                         InputFields = input.MasterFields
                     };
-                    _formService.SubmitForm(masterInsert, tx); // 沿用你現有方法
+                    await _formService.SubmitFormAsync(masterInsert, tx, innerCt); // 沿用你現有方法
                 }
             }
 
@@ -228,9 +228,9 @@ SELECT [{relationColumn}] FROM [{header.BASE_TABLE_NAME}] WHERE [{pkName}] = @id
                     Pk = string.IsNullOrWhiteSpace(row.Pk) ? null : row.Pk,
                     InputFields = row.Fields
                 };
-                _formService.SubmitForm(detailInput, tx);
+                await _formService.SubmitFormAsync(detailInput, tx, innerCt);
             }
-        });
+        }, ct);
     }
 
     /// <summary>

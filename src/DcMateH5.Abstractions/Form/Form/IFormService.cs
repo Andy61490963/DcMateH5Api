@@ -12,7 +12,7 @@ public interface IFormService
     /// <param name="funcType">功能類型</param>
     /// <param name="request">查詢條件與分頁設定。</param>
     /// <returns>每個表單對應的欄位與資料列集合。</returns>
-    List<FormListResponseViewModel> GetFormList(FormFunctionType funcType, FormSearchRequest? request = null, bool returnBaseTableWhenMultipleMapping = false);
+    Task<List<FormListResponseViewModel>> GetFormListAsync(FormFunctionType funcType, FormSearchRequest? request = null, bool returnBaseTableWhenMultipleMapping = false, CancellationToken ct = default);
     
     /// <summary>
     /// 取得 單一
@@ -20,7 +20,7 @@ public interface IFormService
     /// <param name="id"></param>
     /// <param name="pk"></param>
     /// <returns></returns>
-    FormSubmissionViewModel GetFormSubmission(Guid? id, string? pk = null);
+    Task<FormSubmissionViewModel> GetFormSubmissionAsync(Guid? id, string? pk = null, CancellationToken ct = default);
 
     /// <summary>
     /// 驗證規則 + 刪除
@@ -37,17 +37,18 @@ public interface IFormService
     /// <summary>
     /// 儲存或更新表單資料
     /// </summary>
-    object SubmitForm(FormSubmissionInputModel input);
+    Task<object> SubmitFormAsync(FormSubmissionInputModel input, CancellationToken ct = default);
 
     /// <summary>
     /// 儲存或更新表單資料，允許呼叫端提供交易物件以便進行複合交易控制。
     /// </summary>
     /// <param name="input">前端送出的表單資料</param>
     /// <param name="tx">資料庫交易物件</param>
-    object SubmitForm(FormSubmissionInputModel input, SqlTransaction tx);
+    Task<object> SubmitFormAsync(FormSubmissionInputModel input, SqlTransaction tx, CancellationToken ct = default);
     
-    List<FormFieldInputViewModel> GetFieldTemplates(
+    Task<List<FormFieldInputViewModel>> GetFieldTemplatesAsync(
         Guid? masterId,
         TableSchemaQueryType schemaType,
-        string tableName);
+        string tableName,
+        CancellationToken ct = default);
 }

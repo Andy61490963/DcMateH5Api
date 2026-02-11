@@ -45,7 +45,7 @@ public class FormMultipleMappingService : IFormMultipleMappingService
     }
 
     /// <inheritdoc />
-    public IEnumerable<MultipleMappingConfigViewModel> GetFormMasters(CancellationToken ct = default)
+    public async Task<IEnumerable<MultipleMappingConfigViewModel>> GetFormMastersAsync(CancellationToken ct = default)
     {
         ct.ThrowIfCancellationRequested();
 
@@ -63,26 +63,25 @@ SELECT ID AS Id,
  WHERE FUNCTION_TYPE = @funcType
    AND IS_DELETE = 0";
 
-        return _con.Query<MultipleMappingConfigViewModel>(sql,
-            new { funcType = FormFunctionType.MultipleMappingMaintenance.ToInt() });
+        return await _con.QueryAsync<MultipleMappingConfigViewModel>(new CommandDefinition(sql, new { funcType = FormFunctionType.MultipleMappingMaintenance.ToInt() }, cancellationToken: ct));
     }
 
     /// <inheritdoc />
-    public List<FormListResponseViewModel> GetForms(FormSearchRequest? request = null, CancellationToken ct = default)
+    public Task<List<FormListResponseViewModel>> GetFormsAsync(FormSearchRequest? request = null, CancellationToken ct = default)
     {
         ct.ThrowIfCancellationRequested();
-        return _formService.GetFormList(FormFunctionType.MultipleMappingMaintenance, request);
+        return _formService.GetFormListAsync(FormFunctionType.MultipleMappingMaintenance, request, ct: ct);
     }
 
     /// <inheritdoc />
-    public MultipleMappingListViewModel GetMappingList(Guid formMasterId, string baseId, Dictionary<string, string>? filters, MappingListType? type, CancellationToken ct = default)
+    public async Task<MultipleMappingListViewModel> GetMappingListAsync(Guid formMasterId, string baseId, Dictionary<string, string>? filters, MappingListType? type, CancellationToken ct = default)
     {
         ct.ThrowIfCancellationRequested();
 
         var header = GetMappingHeader(formMasterId);
 
-        var (basePkName, _, basePkValue) = _schemaService.ResolvePk(header.BASE_TABLE_NAME!, baseId);
-        var (detailPkName, _, _) = _schemaService.ResolvePk(header.DETAIL_TABLE_NAME!, null);
+        var (basePkName, _, basePkValue) = await _schemaService.ResolvePkAsync(header.BASE_TABLE_NAME!, baseId, ct: ct);
+        var (detailPkName, _, _) = await _schemaService.ResolvePkAsync(header.DETAIL_TABLE_NAME!, null, ct: ct);
 
         EnsureRowExists(header.BASE_TABLE_NAME!, basePkName, basePkValue!);
 
@@ -181,7 +180,7 @@ SELECT ID AS Id,
     }
     
     /// <inheritdoc />
-    public void AddMappings(
+    public async Task AddMappingsAsync(
         Guid formMasterId,
         MultipleMappingUpsertViewModel request,
         bool isSeq,
@@ -190,15 +189,15 @@ SELECT ID AS Id,
         ct.ThrowIfCancellationRequested();
         ValidateUpsertRequest(request);
 
-        _txService.WithTransaction(tx =>
+        await _txService.WithTransactionAsync(async (tx, innerCt) =>
         {
             var header = GetMappingHeader(formMasterId, tx);
 
             var (basePkName, _, basePkValue) =
-                _schemaService.ResolvePk(header.BASE_TABLE_NAME!, request.BaseId, tx);
+                await _schemaService.ResolvePkAsync(header.BASE_TABLE_NAME!, request.BaseId, tx, innerCt);
 
             var (detailPkName, detailPkType, _) =
-                _schemaService.ResolvePk(header.DETAIL_TABLE_NAME!, null, tx);
+                await _schemaService.ResolvePkAsync(header.DETAIL_TABLE_NAME!, null, tx, innerCt);
 
             EnsureRowExists(header.BASE_TABLE_NAME!, basePkName, basePkValue!, tx);
 
@@ -296,20 +295,20 @@ SELECT ID AS Id,
                     },
                     transaction: tx);
             }
-        });
+        }, ct);
     }
     
     /// <inheritdoc />
-    public void RemoveMappings(Guid formMasterId, MultipleMappingUpsertViewModel request, CancellationToken ct = default)
+    public async Task RemoveMappingsAsync(Guid formMasterId, MultipleMappingUpsertViewModel request, CancellationToken ct = default)
     {
         ct.ThrowIfCancellationRequested();
         ValidateUpsertRequest(request);
 
-        _txService.WithTransaction(tx =>
+        await _txService.WithTransactionAsync(async (tx, innerCt) =>
         {
             var header = GetMappingHeader(formMasterId, tx);
-            var (basePkName, _, basePkValue) = _schemaService.ResolvePk(header.BASE_TABLE_NAME!, request.BaseId, tx);
-            var (detailPkName, detailPkType, _) = _schemaService.ResolvePk(header.DETAIL_TABLE_NAME!, null, tx);
+            var (basePkName, _, basePkValue) = await _schemaService.ResolvePkAsync(header.BASE_TABLE_NAME!, request.BaseId, tx, innerCt);
+            var (detailPkName, detailPkType, _) = await _schemaService.ResolvePkAsync(header.DETAIL_TABLE_NAME!, null, tx, innerCt);
 
             EnsureRowExists(header.BASE_TABLE_NAME!, basePkName, basePkValue!, tx);
             var detailIds = ConvertDetailIds(request.DetailIds, detailPkType);
@@ -323,7 +322,7 @@ WHERE [{header.MAPPING_BASE_FK_COLUMN}] = @BaseId
   AND [{header.MAPPING_DETAIL_FK_COLUMN}] = @DetailId",
                     new { BaseId = basePkValue, DetailId = detailId }, transaction: tx);
             }
-        });
+        }, ct);
     }
 
     /// <summary>
@@ -332,18 +331,18 @@ WHERE [{header.MAPPING_BASE_FK_COLUMN}] = @BaseId
     /// <param name="request">包含設定檔、排序後 欄位 SID 清單與 Base 主鍵值的請求模型。</param>
     /// <param name="ct">取消權杖。</param>
     /// <returns>實際更新的筆數。</returns>
-    public int ReorderMappingSequence(MappingSequenceReorderRequest request, CancellationToken ct = default)
+    public async Task<int> ReorderMappingSequenceAsync(MappingSequenceReorderRequest request, CancellationToken ct = default)
     {
         ct.ThrowIfCancellationRequested();
         ValidateReorderRequest(request);
 
-        return _txService.WithTransaction(tx =>
+        return await _txService.WithTransactionAsync(async (tx, innerCt) =>
         {
             var header = GetMappingHeader(request.FormMasterId, tx);
             EnsureReorderColumns(header, tx);
 
             var (basePkName, _, basePkValue) =
-                _schemaService.ResolvePk(header.BASE_TABLE_NAME!, request.Scope.BasePkValue, tx);
+                await _schemaService.ResolvePkAsync(header.BASE_TABLE_NAME!, request.Scope.BasePkValue, tx, innerCt);
 
             EnsureRowExists(header.BASE_TABLE_NAME!, basePkName, basePkValue!, tx);
 
@@ -433,7 +432,7 @@ WHERE [{header.MAPPING_PK_COLUMN}] IN @Ids
     /// 1) 用 MappingRowId 精準定位要更新的那一筆
     /// 2) 用 Fields(key:value)  
     /// </remarks>
-    public async Task<int> UpdateMappingTableData(Guid formMasterId, MappingTableUpdateRequest request, CancellationToken ct = default)
+    public async Task<int> UpdateMappingTableDataAsync(Guid formMasterId, MappingTableUpdateRequest request, CancellationToken ct = default)
     {
         ct.ThrowIfCancellationRequested();
         ValidateUpdateMappingRequestV2(formMasterId, request);
@@ -462,7 +461,7 @@ WHERE [{header.MAPPING_PK_COLUMN}] IN @Ids
         }
 
         // 3) 取 PK 型別（只取 meta）
-        var (_, pkType, _) = _schemaService.ResolvePk(mappingTableName, null);
+        var (_, pkType, _) = await _schemaService.ResolvePkAsync(mappingTableName, null, ct: ct);
 
         // 4) 轉 PK 值（支援 int/decimal/guid）
         var pkValue = ConvertToColumnTypeHelper.ConvertPkType(request.MappingRowId, pkType);
@@ -545,8 +544,8 @@ WHERE [{header.MAPPING_PK_COLUMN}] IN @Ids
         EnsureColumnExists(header.BASE_TABLE_NAME!, header.MAPPING_BASE_FK_COLUMN!, "主表缺少對應的鍵欄位", tx);
         EnsureColumnExists(header.DETAIL_TABLE_NAME!, header.MAPPING_DETAIL_FK_COLUMN!, "明細表缺少對應的鍵欄位", tx);
 
-        // _schemaService.ResolvePk(header.BASE_TABLE_NAME!, null, tx);
-        // _schemaService.ResolvePk(header.DETAIL_TABLE_NAME!, null, tx);
+        // await _schemaService.ResolvePkAsync(header.BASE_TABLE_NAME!, null, tx);
+        // await _schemaService.ResolvePkAsync(header.DETAIL_TABLE_NAME!, null, tx, innerCt);
 
         return header;
     }
@@ -825,7 +824,7 @@ WHERE b.[{header.MAPPING_BASE_FK_COLUMN}] = @BaseId;";
         TableSchemaQueryType schemaType,
         string tableName)
     {
-        var templates = _formService.GetFieldTemplates(masterId, schemaType, tableName);
+        var templates = await _formService.GetFieldTemplatesAsync(masterId, schemaType, tableName, ct);
 
         return templates
             .Where(t => !string.IsNullOrWhiteSpace(t.Column))

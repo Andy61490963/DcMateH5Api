@@ -103,14 +103,16 @@ public class FormService : IFormService
     /// <returns>
     /// 表單列表頁所需的資料清單，每一筆代表一筆資料列及其對應欄位值。
     /// </returns>
-    public List<FormListResponseViewModel> GetFormList(
+    public async Task<List<FormListResponseViewModel>> GetFormListAsync(
         FormFunctionType funcType,
         FormSearchRequest? request = null,
-        bool returnBaseTableWhenMultipleMapping = false)
+        bool returnBaseTableWhenMultipleMapping = false,
+        CancellationToken ct = default)
     {
-        var metas = _formFieldMasterService.GetFormMetaAggregates(
+        var metas = await _formFieldMasterService.GetFormMetaAggregatesAsync(
             funcType,
-            TableSchemaQueryType.All
+            TableSchemaQueryType.All,
+            ct
         );
 
         if (request?.FormMasterId != null && request.FormMasterId != Guid.Empty)
@@ -126,17 +128,18 @@ public class FormService : IFormService
         {
             var spec = ResolveListModeSpec(funcType, master, returnBaseTableWhenMultipleMapping);
 
-            var rawRows = _formDataService.GetRows(
+            var rawRows = await _formDataService.GetRowsAsync(
                 spec.DataTableName,
                 request?.Conditions,
                 request?.OrderBys,
                 request?.Page,
-                request?.PageSize
+                request?.PageSize,
+                ct
             );
 
-            var totalCount = _formDataService.GetTotalCount(spec.DataTableName, request?.Conditions);
+            var totalCount = await _formDataService.GetTotalCountAsync(spec.DataTableName, request?.Conditions, ct);
 
-            var pk = _schemaService.GetPrimaryKeyColumn(master.BASE_TABLE_NAME!);
+            var pk = await _schemaService.GetPrimaryKeyColumnAsync(master.BASE_TABLE_NAME!, ct);
             if (pk == null)
             {
                 throw new InvalidOperationException($"缺失 PK 欄位，請檢查 BASE_TABLE_NAME -> [{master.BASE_TABLE_NAME}]");
@@ -144,10 +147,11 @@ public class FormService : IFormService
 
             var rows = _dropdownService.ToFormDataRows(rawRows, pk, out _);
 
-            var fieldTemplates = GetFields(
+            var fieldTemplates = await GetFieldsAsync(
                 spec.SchemaTableId,
                 spec.SchemaQueryType,
-                spec.DataTableName
+                spec.DataTableName,
+                ct
             );
 
             var items = new List<FormListRowViewModel>(rows.Count);
@@ -287,7 +291,7 @@ public class FormService : IFormService
     /// 根據表單設定抓取主表欄位與現有資料（編輯時用）
     /// 僅處理主表欄位，Dropdown 不再額外查 Answer 表
     /// </summary>
-    public FormSubmissionViewModel GetFormSubmission(Guid? formMasterId, string? pk = null)
+    public async Task<FormSubmissionViewModel> GetFormSubmissionAsync(Guid? formMasterId, string? pk = null, CancellationToken ct = default)
     {
         // 1. 查主設定
         var master = _formFieldMasterService.GetFormFieldMasterFromId(formMasterId)
@@ -297,14 +301,14 @@ public class FormService : IFormService
         var (targetId, targetTable, schemaType) = ResolveTargetTable(master);
 
         // 3. 取得欄位設定
-        var fields = GetFields(targetId, schemaType, targetTable);
+        var fields = await GetFieldsAsync(targetId, schemaType, targetTable, ct);
 
         // 4. 撈主表資料（僅編輯模式）
         IDictionary<string, object?>? dataRow = null;
 
         if (!string.IsNullOrWhiteSpace(pk))
         {
-            var (pkName, pkType, pkValue) = _schemaService.ResolvePk(targetTable, pk);
+            var (pkName, pkType, pkValue) = await _schemaService.ResolvePkAsync(targetTable, pk, ct: ct);
 
             var sql = $"SELECT * FROM [{targetTable}] WHERE [{pkName}] = @id";
             dataRow = _con.QueryFirstOrDefault(sql, new { id = pkValue })
@@ -347,11 +351,11 @@ public class FormService : IFormService
     /// </summary>
     /// <param name="masterId"></param>
     /// <returns></returns>
-   private List<FormFieldInputViewModel> GetFields(Guid? masterId, TableSchemaQueryType schemaType, string tableName)
+    private async Task<List<FormFieldInputViewModel>> GetFieldsAsync(Guid? masterId, TableSchemaQueryType schemaType, string tableName, CancellationToken ct = default)
     {
-        var columnTypes = _formDataService.LoadColumnTypes(tableName);
-        var configData = _formFieldConfigService.LoadFieldConfigData(masterId);
-        var primaryKeys = _schemaService.GetPrimaryKeyColumns(tableName);
+        var columnTypes = await _formDataService.LoadColumnTypesAsync(tableName, ct);
+        var configData = await _formFieldConfigService.LoadFieldConfigDataAsync(masterId, ct);
+        var primaryKeys = await _schemaService.GetPrimaryKeyColumnsAsync(tableName, ct);
 
         
         // 只保留可編輯欄位，將不可編輯欄位直接過濾掉以避免出現在前端
@@ -555,24 +559,24 @@ FROM (
     /// </summary>
     /// <param name="input">前端送出的表單資料</param>
     /// <param name="tx">交易物件</param>
-    public object SubmitForm(FormSubmissionInputModel input, SqlTransaction tx)
+    public async Task<object> SubmitFormAsync(FormSubmissionInputModel input, SqlTransaction tx, CancellationToken ct = default)
     {
-        return SubmitFormCore(input, tx);
+        return await SubmitFormCoreAsync(input, tx, ct);
     }
 
     /// <summary>
     /// 儲存或更新表單資料（含下拉選項答案），由本服務自行開啟交易。
     /// </summary>
     /// <param name="input">前端送出的表單資料</param>
-    public object SubmitForm(FormSubmissionInputModel input)
+    public async Task<object> SubmitFormAsync(FormSubmissionInputModel input, CancellationToken ct = default)
     {
-        return _txService.WithTransaction(tx => SubmitFormCore(input, tx));
+        return await _txService.WithTransactionAsync(async (tx, innerCt) => await SubmitFormCoreAsync(input, tx, innerCt), ct);
     }
 
     /// <summary>
     /// 實際執行資料存取的核心邏輯，所有資料庫操作均以同一個交易物件進行。
     /// </summary>
-    private object SubmitFormCore(FormSubmissionInputModel input, SqlTransaction tx)
+    private async Task<object> SubmitFormCoreAsync(FormSubmissionInputModel input, SqlTransaction tx, CancellationToken ct)
     {
         // 查表單主設定
         var master = _formFieldMasterService.GetFormFieldMasterFromId(input.BaseId, tx);
@@ -589,9 +593,9 @@ FROM (
         var normalFields = MapInputFields(input.InputFields, configs);
 
         // 2. Insert/Update 決策
-        var (pkName, pkType, typedRowId) = _schemaService.ResolvePk(targetTable, input.Pk, tx);
+        var (pkName, pkType, typedRowId) = await _schemaService.ResolvePkAsync(targetTable, input.Pk, tx, ct);
         bool isInsert = string.IsNullOrEmpty(input.Pk);
-        bool isIdentity = _schemaService.IsIdentityColumn(targetTable, pkName, tx);
+        bool isIdentity = await _schemaService.IsIdentityColumnAsync(targetTable, pkName, tx, ct);
         object? realRowId = typedRowId;
 
         if (isInsert)
@@ -762,8 +766,8 @@ FROM (
         return await _txService.WithTransactionAsync(async (tx, innerCt) =>
         {
             // 1) 找實際表名 + PK 型別
-            var tableName = _schemaService.GetTableNameByTableId(baseTableId, tx);
-            var (pkName, _, typedPk) = _schemaService.ResolvePk(tableName, pk, tx);
+            var tableName = await _schemaService.GetTableNameByTableIdAsync(baseTableId, tx, innerCt);
+            var (pkName, _, typedPk) = await _schemaService.ResolvePkAsync(tableName, pk, tx, innerCt);
 
             // 2) 防 identifier 注入（表名/欄位名不能參數化）
             ValidateSqlIdentifier(tableName);
@@ -841,11 +845,12 @@ FROM (
             .ToHashSet(StringComparer.OrdinalIgnoreCase);
     }
 
-    public List<FormFieldInputViewModel> GetFieldTemplates(
+    public async Task<List<FormFieldInputViewModel>> GetFieldTemplatesAsync(
         Guid? masterId,
         TableSchemaQueryType schemaType,
-        string tableName)
+        string tableName,
+        CancellationToken ct = default)
     {
-        return GetFields(masterId, schemaType, tableName);
+        return await GetFieldsAsync(masterId, schemaType, tableName, ct);
     }
 }

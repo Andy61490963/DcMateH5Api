@@ -55,7 +55,7 @@ public class FormController : BaseController
     [HttpPost(Routes.Search)]
     [ProducesResponseType(typeof(FormListResponseViewModel), StatusCodes.Status200OK)]
     [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status400BadRequest)]
-    public IActionResult GetForms([FromBody] FormSearchRequest? request)
+    public async Task<IActionResult> GetForms([FromBody] FormSearchRequest? request, CancellationToken ct)
     {
         try
         {
@@ -68,7 +68,7 @@ public class FormController : BaseController
                 });
             }
 
-            var vm = _formService.GetFormList(_funcType, request);
+            var vm = await _formService.GetFormListAsync(_funcType, request, ct: ct);
             return Ok(vm);
         }
         catch (HttpStatusCodeException ex)
@@ -86,7 +86,7 @@ public class FormController : BaseController
     [HttpPost(Routes.GetForm)]
     [ProducesResponseType(typeof(FormSubmissionViewModel), StatusCodes.Status200OK)]
     [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status400BadRequest)]
-    public IActionResult GetForm([FromRoute] Guid formId, [FromQuery] string? pk)
+    public async Task<IActionResult> GetForm([FromRoute] Guid formId, [FromQuery] string? pk, CancellationToken ct)
     {
         try
         {
@@ -96,8 +96,8 @@ public class FormController : BaseController
             }
 
             var vm = !string.IsNullOrWhiteSpace(pk)
-                ? _formService.GetFormSubmission(formId, pk)
-                : _formService.GetFormSubmission(formId);
+                ? await _formService.GetFormSubmissionAsync(formId, pk, ct)
+                : await _formService.GetFormSubmissionAsync(formId, ct: ct);
 
             return Ok(vm);
         }
@@ -188,11 +188,11 @@ public class FormController : BaseController
     [HttpPost]
     [ProducesResponseType(StatusCodes.Status200OK)]
     [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status400BadRequest)]
-    public IActionResult SubmitForm([FromBody] FormSubmissionInputModel input)
+    public async Task<IActionResult> SubmitForm([FromBody] FormSubmissionInputModel input, CancellationToken ct)
     {
         try
         {
-            var rowId = _formService.SubmitForm(input);
+            var rowId = await _formService.SubmitFormAsync(input, ct);
 
             return Ok(new SubmitFormResponse
             {

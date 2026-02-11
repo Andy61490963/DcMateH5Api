@@ -122,7 +122,7 @@ public class FormMasterDetailController : ControllerBase
     [HttpPost("search")]
     [ProducesResponseType(typeof(FormListResponseViewModel), StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status400BadRequest)]
-    public IActionResult GetForms([FromBody] FormSearchRequest? request)
+    public async Task<IActionResult> GetForms([FromBody] FormSearchRequest? request, CancellationToken ct)
     {
         if (request == null)
         {
@@ -132,7 +132,7 @@ public class FormMasterDetailController : ControllerBase
                 Hint  = "請確認傳入的 JSON 是否正確，至少需要提供查詢條件或分頁參數"
             });
         }
-        var vm = _service.GetFormList( _funcType, request );
+        var vm = await _service.GetFormListAsync(_funcType, request, ct);
         return Ok(vm);
     }
 
@@ -143,9 +143,9 @@ public class FormMasterDetailController : ControllerBase
     /// <param name="pk">主表資料主鍵，不傳為新增。</param>
     [HttpPost("{formId}")]
     [ProducesResponseType(typeof(FormMasterDetailSubmissionViewModel), StatusCodes.Status200OK)]
-    public IActionResult GetForm(Guid formId, string? pk)
+    public async Task<IActionResult> GetForm(Guid formId, string? pk, CancellationToken ct)
     {
-        var vm = _service.GetFormSubmission(formId, pk);
+        var vm = await _service.GetFormSubmissionAsync(formId, pk, ct);
         return Ok(vm);
     }
 
@@ -220,9 +220,9 @@ public class FormMasterDetailController : ControllerBase
     [HttpPost]
     [ProducesResponseType(StatusCodes.Status204NoContent)]
     [ProducesResponseType(StatusCodes.Status400BadRequest)]
-    public IActionResult SubmitForm([FromBody] FormMasterDetailSubmissionInputModel input)
+    public async Task<IActionResult> SubmitForm([FromBody] FormMasterDetailSubmissionInputModel input, CancellationToken ct)
     {
-        _service.SubmitForm(input);
+        await _service.SubmitFormAsync(input, ct);
         return NoContent();
     }
 }

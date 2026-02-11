@@ -11,27 +11,27 @@ public interface IFormMultipleMappingService
     /// <summary>
     /// 取得所有多對多設定檔清單。
     /// </summary>
-    IEnumerable<MultipleMappingConfigViewModel> GetFormMasters(CancellationToken ct = default);
+    Task<IEnumerable<MultipleMappingConfigViewModel>> GetFormMastersAsync(CancellationToken ct = default);
 
     /// <summary>
     /// 取得可進行多對多關聯的主檔資料清單，供前端選擇 Base 主鍵。
     /// </summary>
-    List<FormListResponseViewModel> GetForms(FormSearchRequest? request = null, CancellationToken ct = default);
+    Task<List<FormListResponseViewModel>> GetFormsAsync(FormSearchRequest? request = null, CancellationToken ct = default);
 
     /// <summary>
     /// 依設定檔與主鍵取得已關聯/未關聯的左右清單。
     /// </summary>
-    MultipleMappingListViewModel GetMappingList(Guid formMasterId, string baseId, Dictionary<string, string>? filters, MappingListType? type, CancellationToken ct = default);
+    Task<MultipleMappingListViewModel> GetMappingListAsync(Guid formMasterId, string baseId, Dictionary<string, string>? filters, MappingListType? type, CancellationToken ct = default);
 
     /// <summary>
     /// 批次新增對應關係（右 → 左）。
     /// </summary>
-    void AddMappings(Guid formMasterId, MultipleMappingUpsertViewModel request, bool isSeq, CancellationToken ct = default);
+    Task AddMappingsAsync(Guid formMasterId, MultipleMappingUpsertViewModel request, bool isSeq, CancellationToken ct = default);
 
     /// <summary>
     /// 批次移除對應關係（左 → 右）。
     /// </summary>
-    void RemoveMappings(Guid formMasterId, MultipleMappingUpsertViewModel request, CancellationToken ct = default);
+    Task RemoveMappingsAsync(Guid formMasterId, MultipleMappingUpsertViewModel request, CancellationToken ct = default);
 
     /// <summary>
     /// 依指定順序重新整理 Mapping 資料列的 SEQ 欄位，限定於同一個 Base 主鍵範圍內。
@@ -39,7 +39,7 @@ public interface IFormMultipleMappingService
     /// <param name="request">包含設定檔、排序後 SID 清單與 Base 主鍵值的請求模型。</param>
     /// <param name="ct">取消權杖。</param>
     /// <returns>更新的筆數。</returns>
-    int ReorderMappingSequence(MappingSequenceReorderRequest request, CancellationToken ct = default);
+    Task<int> ReorderMappingSequenceAsync(MappingSequenceReorderRequest request, CancellationToken ct = default);
 
     /// <summary>
     /// 依 FormMasterId + MappingRowId 更新關聯表指定欄位資料。
@@ -50,5 +50,5 @@ public interface IFormMultipleMappingService
     /// 2) 用 Fields(key:value) 避免 Columns/Values index 對齊風險。  
     /// 3) 白名單欄位 + 參數化 SQL，確保安全與一致性。  
     /// </remarks>
-    Task<int> UpdateMappingTableData(Guid formMasterId, MappingTableUpdateRequest request, CancellationToken ct = default);
+    Task<int> UpdateMappingTableDataAsync(Guid formMasterId, MappingTableUpdateRequest request, CancellationToken ct = default);
 }

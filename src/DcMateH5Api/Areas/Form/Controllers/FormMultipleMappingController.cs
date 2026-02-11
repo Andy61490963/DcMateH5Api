@@ -48,11 +48,11 @@ public class FormMultipleMappingController : ControllerBase
     /// </summary>
     [HttpGet(Routes.Masters)]
     [ProducesResponseType(typeof(IEnumerable<MultipleMappingConfigViewModel>), StatusCodes.Status200OK)]
-    public ActionResult<IEnumerable<MultipleMappingConfigViewModel>> GetFormMasters(CancellationToken ct)
+    public async Task<ActionResult<IEnumerable<MultipleMappingConfigViewModel>>> GetFormMasters(CancellationToken ct)
     {
         try
         {
-            var masters = _service.GetFormMasters(ct);
+            var masters = await _service.GetFormMastersAsync(ct);
             return Ok(masters);
         }
         catch (HttpStatusCodeException ex)
@@ -67,7 +67,7 @@ public class FormMultipleMappingController : ControllerBase
     [HttpPost(Routes.SearchBase)]
     [ProducesResponseType(typeof(FormListResponseViewModel), StatusCodes.Status200OK)]
     [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status400BadRequest)]
-    public IActionResult SearchBaseForms([FromBody] FormSearchRequest? request)
+    public async Task<IActionResult> SearchBaseForms([FromBody] FormSearchRequest? request, CancellationToken ct)
     {
         try
         {
@@ -77,7 +77,7 @@ public class FormMultipleMappingController : ControllerBase
                 return badRequest;
             }
 
-            var vm = _formService.GetFormList(_funcType, request!, true);
+            var vm = await _formService.GetFormListAsync(_funcType, request!, true, ct);
             return Ok(vm);
         }
         catch (HttpStatusCodeException ex)
@@ -92,7 +92,7 @@ public class FormMultipleMappingController : ControllerBase
     [HttpPost(Routes.SearchView)]
     [ProducesResponseType(typeof(FormListResponseViewModel), StatusCodes.Status200OK)]
     [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status400BadRequest)]
-    public IActionResult SearchViewForms([FromBody] FormSearchRequest? request, CancellationToken ct)
+    public async Task<IActionResult> SearchViewForms([FromBody] FormSearchRequest? request, CancellationToken ct)
     {
         try
         {
@@ -102,7 +102,7 @@ public class FormMultipleMappingController : ControllerBase
                 return badRequest;
             }
 
-            var vm = _service.GetForms(request!, ct);
+            var vm = await _service.GetFormsAsync(request!, ct);
             return Ok(vm);
         }
         catch (InvalidOperationException ex)
@@ -121,7 +121,7 @@ public class FormMultipleMappingController : ControllerBase
     [HttpPost(Routes.MappingItemsQuery)]
     [ProducesResponseType(typeof(MultipleMappingListViewModel), StatusCodes.Status200OK)]
     [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status400BadRequest)]
-    public IActionResult GetMappingList(
+    public async Task<IActionResult> GetMappingList(
         [FromRoute] Guid formMasterId,
         [FromQuery] MappingListQuery query,
         CancellationToken ct)
@@ -134,7 +134,7 @@ public class FormMultipleMappingController : ControllerBase
 
         try
         {
-            var result = _service.GetMappingList(
+            var result = await _service.GetMappingListAsync(
                 formMasterId,
                 query.BaseId!,
                 query.Filters,
@@ -159,7 +159,7 @@ public class FormMultipleMappingController : ControllerBase
     [HttpPost(Routes.MappingItems)]
     [ProducesResponseType(StatusCodes.Status204NoContent)]
     [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status400BadRequest)]
-    public IActionResult AddMappings(
+    public async Task<IActionResult> AddMappings(
         [FromRoute] Guid formMasterId,
         [FromBody] MultipleMappingUpsertViewModel? request,
         CancellationToken ct,
@@ -173,7 +173,7 @@ public class FormMultipleMappingController : ControllerBase
 
         try
         {
-            _service.AddMappings(formMasterId, request!, isSeq, ct);
+            await _service.AddMappingsAsync(formMasterId, request!, isSeq, ct);
             return NoContent();
         }
         catch (InvalidOperationException ex)
@@ -192,7 +192,7 @@ public class FormMultipleMappingController : ControllerBase
     [HttpPost(Routes.MappingItemsRemove)]
     [ProducesResponseType(StatusCodes.Status204NoContent)]
     [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status400BadRequest)]
-    public IActionResult RemoveMappings(
+    public async Task<IActionResult> RemoveMappings(
         [FromRoute] Guid formMasterId,
         [FromBody] MultipleMappingUpsertViewModel? request,
         CancellationToken ct)
@@ -205,7 +205,7 @@ public class FormMultipleMappingController : ControllerBase
 
         try
         {
-            _service.RemoveMappings(formMasterId, request!, ct);
+            await _service.RemoveMappingsAsync(formMasterId, request!, ct);
             return NoContent();
         }
         catch (InvalidOperationException ex)
@@ -224,7 +224,7 @@ public class FormMultipleMappingController : ControllerBase
     [HttpPost(Routes.SequenceReorder)]
     [ProducesResponseType(StatusCodes.Status204NoContent)]
     [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status400BadRequest)]
-    public IActionResult ReorderSequence([FromBody] MappingSequenceReorderRequest? request, CancellationToken ct)
+    public async Task<IActionResult> ReorderSequence([FromBody] MappingSequenceReorderRequest? request, CancellationToken ct)
     {
         if (request == null)
         {
@@ -233,7 +233,7 @@ public class FormMultipleMappingController : ControllerBase
 
         try
         {
-            _service.ReorderMappingSequence(request, ct);
+            await _service.ReorderMappingSequenceAsync(request, ct);
             return NoContent();
         }
         catch (InvalidOperationException ex)
@@ -265,7 +265,7 @@ public class FormMultipleMappingController : ControllerBase
 
         try
         {
-            var affected = await _service.UpdateMappingTableData(formMasterId, request!, ct);
+            var affected = await _service.UpdateMappingTableDataAsync(formMasterId, request!, ct);
             return Ok(new { Affected = affected });
         }
         catch (InvalidOperationException ex)
