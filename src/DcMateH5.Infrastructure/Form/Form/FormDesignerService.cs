@@ -1788,7 +1788,7 @@ WHERE c.FORM_FIELD_MASTER_ID = @MasterId
             var wasClosed = _dbExecutor.Connection.State != System.Data.ConnectionState.Open;
             if (wasClosed) _dbExecutor.Connection.Open();
 
-            using var cmd = new SqlCommand(sql, _con);
+            using var cmd = new SqlCommand(sql, _dbExecutor.Connection);
             using var reader = cmd.ExecuteReader();
 
             var columns = reader.GetColumnSchema();
@@ -1823,13 +1823,18 @@ WHERE c.FORM_FIELD_MASTER_ID = @MasterId
             result.Success = true;
             result.RowCount = rows.Count;
             result.Rows = rows.Take(10).ToList(); // Return at most 10 preview rows
-
-            if (wasClosed) _dbExecutor.Connection.Close();
         }
         catch (Exception ex)
         {
             result.Success = false;
             result.Message = ex.Message;
+        }
+        finally
+        {
+            if (wasClosed && _dbExecutor.Connection.State == System.Data.ConnectionState.Open)
+            {
+                _dbExecutor.Connection.Close();
+            }
         }
 
         return result;

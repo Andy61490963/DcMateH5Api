@@ -96,3 +96,8 @@
 1. 優先透過 `IDbExecutor` 的 Query/Execute API 執行 Dapper 操作。
 2. 必要時由 `IDbExecutor.Connection` 提供同一個 DI scope 連線，以維持既有 SQL 行為與交易邊界。
 3. 已有交易物件（`SqlTransaction`）的路徑優先使用 `ExecuteInTx / QueryInTx / ExecuteScalarInTx` 系列 API，避免交易遺漏。
+
+## 本次修正（FormDesignerService 編譯問題）
+
+- 修正 `ValidateDropdownSql` 內殘留的 `_con` 變數引用，改為 `_dbExecutor.Connection`。
+- 調整連線關閉時機到 `finally`，避免提早 `return` 時遺漏關閉連線。
