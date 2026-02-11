@@ -1,0 +1,44 @@
+<Project Sdk="Microsoft.NET.Sdk.Web">
+
+  <PropertyGroup>
+    <TargetFramework>net8.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+
+    <!-- 產生 XML 註解檔 -->
+    <GenerateDocumentationFile>true</GenerateDocumentationFile>
+    <NoWarn>$(NoWarn);1591</NoWarn>
+
+    <!-- 由 SDK 自動產生組件屬性，避免重複宣告 -->
+    <Company>DcMateH5Api</Company>
+    <Product>DcMateH5Api</Product>
+    <Version>1.0.0</Version>
+    <AssemblyTitle>DcMateH5Api</AssemblyTitle>
+    <Authors>WeYu</Authors>
+    <Description>DcMateH5Api Web Application</Description>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="ClosedXML" />
+	<PackageReference Include="Dapper" />
+	<PackageReference Include="Microsoft.Data.SqlClient" />
+	<PackageReference Include="Microsoft.SqlServer.TransactSql.ScriptDom" />
+	<PackageReference Include="StackExchangeRedisCache.Contrib" />
+	<PackageReference Include="Swashbuckle.AspNetCore" />
+	<PackageReference Include="Microsoft.AspNetCore.Authentication.JwtBearer" />
+  </ItemGroup>
+
+
+  <ItemGroup>
+    <ProjectReference Include="..\DcMateClassLibrary\DcMateClassLibrary.csproj" />
+    <ProjectReference Include="..\DbExtensions\DbExtensions.csproj" />
+    <ProjectReference Include="..\DcMateH5.Abstractions\DcMateH5.Abstractions.csproj" />
+    <ProjectReference Include="..\DcMateH5.Infrastructure\DcMateH5.Infrastructure.csproj" />
+  </ItemGroup>
+
+  <!-- 這段可留可不留；有些 IDE/CI 喜歡明確宣告 launchSettings -->
+  <ItemGroup>
+    <Content Include="Properties\launchSettings.json" />
+  </ItemGroup>
+
+</Project>

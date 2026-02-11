@@ -1,0 +1,16 @@
+<Project>
+  <PropertyGroup>
+    <ManagePackageVersionsCentrally>true</ManagePackageVersionsCentrally>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageVersion Include="ClosedXML" Version="0.105.0" />
+    <PackageVersion Include="Dapper" Version="2.1.66" />
+    <PackageVersion Include="Microsoft.Data.SqlClient" Version="6.1.0-preview2.25178.5" />
+    <PackageVersion Include="Microsoft.SqlServer.TransactSql.ScriptDom" Version="170.64.0" />
+    <PackageVersion Include="StackExchangeRedisCache.Contrib" Version="2.2008.10016" />
+    <PackageVersion Include="Swashbuckle.AspNetCore" Version="9.0.3" />
+    <PackageVersion Include="Microsoft.AspNetCore.Authentication.JwtBearer" Version="8.0.7" />
+    <PackageVersion Include="System.IdentityModel.Tokens.Jwt" Version="7.7.1" />
+  </ItemGroup>
+</Project>

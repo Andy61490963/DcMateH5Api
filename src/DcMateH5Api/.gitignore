@@ -1,0 +1,37 @@
+# Build outputs
+bin/
+obj/
+*.dll
+*.exe
+
+# Rider / JetBrains
+.idea/
+*.DotSettings.user
+
+# VS Code / VS
+.vscode/
+*.suo
+*.user
+
+# OS / 系統
+.DS_Store
+Thumbs.db
+
+# Log / dumps
+*.log
+*.dmp
+
+# Others
+AppData/
+*.pdb
+/docker-compose.yml
+/Dockerfile
+/nginx/
+/nginx.conf
+/.vs/DcMateH5Api/v17
+/.vs/DcMateH5Api/CopilotIndices/17.14.1561.44479
+/.vs/DcMateH5Api/FileContentIndex
+/.vs/ProjectEvaluation
+/.vs/DcMateH5Api
+/Properties/launchSettings.json
+/DcMateH5Api.Tests/ApiControllerTest/FormMultipleMappingControllerTests.cs

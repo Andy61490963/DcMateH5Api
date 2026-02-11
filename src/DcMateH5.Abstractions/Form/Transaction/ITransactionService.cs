@@ -1,0 +1,25 @@
+﻿using Microsoft.Data.SqlClient;
+
+namespace DcMateH5.Abstractions.Form.Transaction;
+
+public interface ITransactionService
+{
+    void WithTransaction(Action<SqlTransaction> action);
+    T WithTransaction<T>(Func<SqlTransaction, T> func);
+    
+    Task WithTransactionAsync(
+        Func<SqlTransaction, CancellationToken, Task> action,
+        CancellationToken ct = default);
+
+    Task<T> WithTransactionAsync<T>(
+        Func<SqlTransaction, CancellationToken, Task<T>> func,
+        CancellationToken ct = default);
+
+    Task WithTransactionAsync(
+        Func<SqlConnection, SqlTransaction, CancellationToken, Task> action,
+        CancellationToken ct = default);
+
+    Task<T> WithTransactionAsync<T>(
+        Func<SqlConnection, SqlTransaction, CancellationToken, Task<T>> func,
+        CancellationToken ct = default);
+}
