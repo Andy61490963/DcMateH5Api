@@ -93,18 +93,18 @@ SELECT ID AS Id,
 
         if (type == MappingListType.All)
         {
-            linkedItems = LoadLinkedDetailRows(header, detailPkName, basePkValue!, null);
-            unlinkedItems = LoadUnlinkedRows(header, detailPkName, basePkValue!, baseDisplayText, null);
+            linkedItems = await LoadLinkedDetailRowsAsync(header, detailPkName, basePkValue!, null, ct: ct);
+            unlinkedItems = await LoadUnlinkedRowsAsync(header, detailPkName, basePkValue!, baseDisplayText, null, ct: ct);
         }
         else if (type == MappingListType.LinkedOnly)
         {
             // linked 套 mapping filters
-            linkedItems = LoadLinkedDetailRows(header, detailPkName, basePkValue!, filters);
+            linkedItems = await LoadLinkedDetailRowsAsync(header, detailPkName, basePkValue!, filters, ct: ct);
         }
         else // MappingListType.UnlinkedOnly
         {
             // unlinked 套 detail filters
-            unlinkedItems = LoadUnlinkedRows(header, detailPkName, basePkValue!, baseDisplayText, filters);
+            unlinkedItems = await LoadUnlinkedRowsAsync(header, detailPkName, basePkValue!, baseDisplayText, filters, ct: ct);
         }
 
         return new MultipleMappingListViewModel
@@ -629,12 +629,13 @@ WHERE b.[{header.MAPPING_BASE_FK_COLUMN}] = @BaseId;";
     /// <param name="tx"></param>
     /// <returns></returns>
     /// <exception cref="InvalidOperationException"></exception>
-    private List<MultipleMappingItemViewModel> LoadLinkedDetailRows(
+    private async Task<List<MultipleMappingItemViewModel>> LoadLinkedDetailRowsAsync(
         FormFieldMasterDto header,
         string detailPkName,
         object basePkValue,
         Dictionary<string, string>? filters,
-        SqlTransaction? tx = null)
+        SqlTransaction? tx = null,
+        CancellationToken ct = default)
     {
         if (string.IsNullOrWhiteSpace(header.MAPPING_BASE_COLUMN_NAME))
             throw new InvalidOperationException("缺少 Base 顯示欄位設定");
@@ -651,10 +652,10 @@ WHERE b.[{header.MAPPING_BASE_FK_COLUMN}] = @BaseId;";
             mappingColumns);
 
         // mapping 的 dropdown meta（你現在最需要的是這個）
-        var mappingDropdownMeta = BuildDropdownMetaMap(
+        var mappingDropdownMeta = await BuildDropdownMetaMapAsync(
             header.MAPPING_TABLE_ID,
             TableSchemaQueryType.OnlyMapping,
-            header.MAPPING_TABLE_NAME!);
+            header.MAPPING_TABLE_NAME!, ct);
 
         // （可選）如果 detail 欄位也需要 dropdown
         // var detailDropdownMeta = BuildDropdownMetaMap(header.DETAIL_TABLE_ID, TableSchemaQueryType.OnlyDetail, header.DETAIL_TABLE_NAME!);
@@ -712,14 +713,18 @@ WHERE b.[{header.MAPPING_BASE_FK_COLUMN}] = @BaseId;";
 
         return result;
     }
-    
-        private List<MultipleMappingItemViewModel> LoadUnlinkedRows(
+
+    /// <summary>
+    /// 載入未關聯清單（Unlinked）並帶出欄位值模型。
+    /// </summary>
+    private async Task<List<MultipleMappingItemViewModel>> LoadUnlinkedRowsAsync(
         FormFieldMasterDto header,
         string detailPkName,
         object basePkValue,
         string? baseDisplayText,
         Dictionary<string, string>? filters,
-        SqlTransaction? tx = null)
+        SqlTransaction? tx = null,
+        CancellationToken ct = default)
     {
         var detailColumns  = _schemaService.GetFormFieldMaster(header.DETAIL_TABLE_NAME!, tx).ToList();
         var mappingColumns = _schemaService.GetFormFieldMaster(header.MAPPING_TABLE_NAME!, tx).ToList();
@@ -730,10 +735,10 @@ WHERE b.[{header.MAPPING_BASE_FK_COLUMN}] = @BaseId;";
             mappingColumns);
 
         // 這個就算 unlinked 也能讓前端知道 mapping 欄位有哪些 dropdown options
-        var mappingDropdownMeta = BuildDropdownMetaMap(
+        var mappingDropdownMeta = await BuildDropdownMetaMapAsync(
             header.MAPPING_TABLE_ID,
             TableSchemaQueryType.OnlyMapping,
-            header.MAPPING_TABLE_NAME!);
+            header.MAPPING_TABLE_NAME!, ct);
 
         var detailSelect = string.Join(", ", detailColumns.Select(c => $"d.[{c}] AS [d__{c}]"));
 
@@ -819,10 +824,18 @@ WHERE b.[{header.MAPPING_BASE_FK_COLUMN}] = @BaseId;";
             = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
     }
 
-    private Dictionary<string, DropdownMeta> BuildDropdownMetaMap(
+    /// <summary>
+    /// 建立欄位對應的下拉選項中繼資料（非同步）。
+    /// </summary>
+    /// <remarks>
+    /// 業務邏輯：此方法只組裝欄位設定中的 OptionList，不直接改寫資料列值，
+    /// 避免清單查詢與顯示轉換責任混雜。
+    /// </remarks>
+    private async Task<Dictionary<string, DropdownMeta>> BuildDropdownMetaMapAsync(
         Guid? masterId,
         TableSchemaQueryType schemaType,
-        string tableName)
+        string tableName,
+        CancellationToken ct = default)
     {
         var templates = await _formService.GetFieldTemplatesAsync(masterId, schemaType, tableName, ct);
 

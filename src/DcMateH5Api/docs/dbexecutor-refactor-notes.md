@@ -70,3 +70,11 @@
 ## 後續建議
 
 下一步可進一步把 FormLogic 仍保留的同步相容入口也移除（僅保留 `*Async`），讓整個 Form Domain 收斂為單一路徑的 async 架構。
+
+
+## 本次修正（編譯錯誤）
+
+- 修正 `FormMultipleMappingService` 中 `BuildDropdownMetaMap` 相關流程：
+  - 將方法改為 `BuildDropdownMetaMapAsync`。
+  - 將呼叫端（Linked/Unlinked 載入流程）改為 async/await。
+  - 消除「await 僅可在 async 方法內使用」的編譯錯誤。
