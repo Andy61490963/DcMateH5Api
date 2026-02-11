@@ -1,4 +1,5 @@
 ﻿using Dapper;
+using DbExtensions.DbExecutor.Interface;
 using DcMateH5.Abstractions.Form.Form;
 using DcMateH5.Abstractions.Form.Transaction;
 using Microsoft.Data.SqlClient;
@@ -11,12 +12,12 @@ namespace DcMateH5.Infrastructure.Form.Form;
 /// </summary>
 public sealed class FormOrphanCleanupService : IFormOrphanCleanupService
 {
-    private readonly SqlConnection _con;
+    private readonly IDbExecutor _dbExecutor;
     private readonly ITransactionService _tx;
 
-    public FormOrphanCleanupService(SqlConnection con, ITransactionService tx)
+    public FormOrphanCleanupService(IDbExecutor dbExecutor, ITransactionService tx)
     {
-        _con = con;
+        _dbExecutor = dbExecutor;
         _tx = tx;
     }
 
@@ -137,13 +138,7 @@ SELECT @Affected;
 
         var affected = await _tx.WithTransactionAsync(async (tx, token) =>
         {
-            var cmd = new CommandDefinition(
-                sql,
-                new { p_EditUser = editUser },
-                transaction: tx,
-                cancellationToken: token);
-
-            return await _con.ExecuteScalarAsync<int>(cmd);
+            return await _dbExecutor.ExecuteScalarInTxAsync<int>(tx.Connection!, tx, sql, new { p_EditUser = editUser }, ct: token);
         }, ct);
         
         return affected > 0;

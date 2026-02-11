@@ -1,4 +1,5 @@
 ﻿using Dapper;
+using DbExtensions.DbExecutor.Interface;
 using System.Text.RegularExpressions;
 using DbExtensions;
 using DcMateClassLibrary.Enums.Form;
@@ -18,7 +19,7 @@ namespace DcMateH5.Infrastructure.Form.Form;
 
 public class FormDesignerService : IFormDesignerService
 {
-    private readonly SqlConnection _con;
+    private readonly IDbExecutor _dbExecutor;
     private readonly IConfiguration _configuration;
     private readonly ISchemaService _schemaService;
     private readonly SQLGenerateHelper _sqlHelper;
@@ -28,14 +29,14 @@ public class FormDesignerService : IFormDesignerService
     
     public FormDesignerService(
         SQLGenerateHelper sqlHelper,
-        SqlConnection connection,
+        IDbExecutor dbExecutor,
         IConfiguration configuration,
         ISchemaService schemaService,
         IFormFieldMasterService formFieldMasterService,
         IOptions<FormSettings> formSettings,
         ICurrentUserAccessor currentUser)
     {
-        _con = connection;
+        _dbExecutor = dbExecutor;
         _configuration = configuration;
         _schemaService = schemaService;
         _sqlHelper = sqlHelper;
@@ -526,7 +527,7 @@ public class FormDesignerService : IFormDesignerService
 
         // 1. 取得結構 (Parameters + Columns)
         // 這裡使用 Sql.ObjectSchemaAndTvfInputsSelect
-        var columns = (await _con.QueryAsync<DbColumnInfo>(
+        var columns = (await _dbExecutor.Connection.QueryAsync<DbColumnInfo>(
             Sql.ObjectSchemaAndTvfInputsSelect, 
             new { SchemaName = schema, ObjectName = objectName }
         )).ToList();
@@ -659,7 +660,7 @@ WHERE
 ORDER BY s.name, o.name;
 ";
 
-        return _con.Query<string>(sql, new { objectType, schema, name }).ToList();
+        return _dbExecutor.Connection.Query<string>(sql, new { objectType, schema, name }).ToList();
     }
     
     /// <summary>
@@ -845,7 +846,7 @@ WHERE c.FORM_FIELD_MASTER_ID = @MasterId
   AND d.IS_DELETE = 0
   AND c.IS_DELETE = 0;";
 
-        var rows = await _con.QueryAsync<(Guid DropdownId, Guid FieldConfigId)>(
+        var rows = await _dbExecutor.Connection.QueryAsync<(Guid DropdownId, Guid FieldConfigId)>(
             new CommandDefinition(sql, new { MasterId = masterId }));
 
         return rows.ToDictionary(x => x.FieldConfigId, x => x.DropdownId);
@@ -1518,7 +1519,7 @@ WHERE c.FORM_FIELD_MASTER_ID = @MasterId
     /// </summary>
     public Guid GetFormFieldMasterChildren(Guid formMasterId)
     {
-        Guid children = _con.QueryFirstOrDefault<Guid>(Sql.GetFormFieldMasterChildren, new { formMasterId, SchemaType = TableSchemaQueryType.All.ToInt() });
+        Guid children = _dbExecutor.Connection.QueryFirstOrDefault<Guid>(Sql.GetFormFieldMasterChildren, new { formMasterId, SchemaType = TableSchemaQueryType.All.ToInt() });
         return children;
     }
     
@@ -1574,7 +1575,7 @@ WHERE c.FORM_FIELD_MASTER_ID = @MasterId
     /// <returns>若存在則為 true，否則為 false</returns>
     public bool CheckFieldExists(Guid fieldId)
     {
-        var res = _con.ExecuteScalar<int>(Sql.CheckFieldExists, new { fieldId }) > 0;
+        var res = _dbExecutor.Connection.ExecuteScalar<int>(Sql.CheckFieldExists, new { fieldId }) > 0;
         return res;
     }
 
@@ -1603,7 +1604,7 @@ WHERE c.FORM_FIELD_MASTER_ID = @MasterId
     /// <returns>若有規則則回傳 true</returns>
     public bool HasValidationRules(Guid fieldId)
     {
-        var res = _con.ExecuteScalar<int>(Sql.CountValidationRules, new { fieldId }) > 0;
+        var res = _dbExecutor.Connection.ExecuteScalar<int>(Sql.CountValidationRules, new { fieldId }) > 0;
         return res;
     }
 
@@ -1644,7 +1645,7 @@ WHERE c.FORM_FIELD_MASTER_ID = @MasterId
     /// <returns>回傳下一個排序值</returns>
     public int GetNextValidationOrder(Guid fieldId)
     {
-        var res = _con.ExecuteScalar<int>(Sql.GetNextValidationOrder, new { fieldId });
+        var res = _dbExecutor.Connection.ExecuteScalar<int>(Sql.GetNextValidationOrder, new { fieldId });
         return res;
     }
     
@@ -1655,7 +1656,7 @@ WHERE c.FORM_FIELD_MASTER_ID = @MasterId
     /// <returns>回傳控制類型 Enum</returns>
     public FormControlType GetControlTypeByFieldId(Guid fieldId)
     {
-        var value = _con.ExecuteScalar<int?>(Sql.GetControlTypeByFieldId, new { fieldId }) ?? 0;
+        var value = _dbExecutor.Connection.ExecuteScalar<int?>(Sql.GetControlTypeByFieldId, new { fieldId }) ?? 0;
         return (FormControlType)value;
     }
 
@@ -1693,7 +1694,7 @@ WHERE c.FORM_FIELD_MASTER_ID = @MasterId
     /// <param name="sql">預設 SQL 查詢語句，預設為 null</param>
     public void EnsureDropdownCreated(Guid fieldId, bool? isUseSql = false, string? sql = null)
     {
-        _con.Execute(Sql.EnsureDropdownExists, new { fieldId, isUseSql, sql });
+        _dbExecutor.Connection.Execute(Sql.EnsureDropdownExists, new { fieldId, isUseSql, sql });
     }
     
     public async Task<DropDownViewModel> GetDropdownSetting( Guid dropdownId, CancellationToken ct = default )
@@ -1784,8 +1785,8 @@ WHERE c.FORM_FIELD_MASTER_ID = @MasterId
                 return result;
             }
 
-            var wasClosed = _con.State != System.Data.ConnectionState.Open;
-            if (wasClosed) _con.Open();
+            var wasClosed = _dbExecutor.Connection.State != System.Data.ConnectionState.Open;
+            if (wasClosed) _dbExecutor.Connection.Open();
 
             using var cmd = new SqlCommand(sql, _con);
             using var reader = cmd.ExecuteReader();
@@ -1823,7 +1824,7 @@ WHERE c.FORM_FIELD_MASTER_ID = @MasterId
             result.RowCount = rows.Count;
             result.Rows = rows.Take(10).ToList(); // Return at most 10 preview rows
 
-            if (wasClosed) _con.Close();
+            if (wasClosed) _dbExecutor.Connection.Close();
         }
         catch (Exception ex)
         {
@@ -1872,15 +1873,15 @@ WHERE c.FORM_FIELD_MASTER_ID = @MasterId
         if (!validation.Success)
             return validation;
 
-        var wasClosed = _con.State != System.Data.ConnectionState.Open;
+        var wasClosed = _dbExecutor.Connection.State != System.Data.ConnectionState.Open;
         if (wasClosed)
-            _con.Open();
+            _dbExecutor.Connection.Open();
 
-        using var tx = _con.BeginTransaction();
+        using var tx = _dbExecutor.Connection.BeginTransaction();
         try
         {
             // 只存 SQL（不在這裡跑查詢）
-            _con.Execute(
+            _dbExecutor.Connection.Execute(
                 Sql.UpdatePreviousQueryDropdownSourceSql,
                 new { DropdownId = dropdownId, Sql = sql, isQueryDropdwon },
                 tx);
@@ -1907,7 +1908,7 @@ WHERE c.FORM_FIELD_MASTER_ID = @MasterId
         finally
         {
             if (wasClosed)
-                _con.Close();
+                _dbExecutor.Connection.Close();
         }
     }
 
@@ -2069,7 +2070,7 @@ WHERE c.FORM_FIELD_MASTER_ID = @MasterId
             model.ID = Guid.NewGuid();
         }
 
-        var id = _con.ExecuteScalar<Guid>(Sql.UpsertFormMaster, new
+        var id = _dbExecutor.Connection.ExecuteScalar<Guid>(Sql.UpsertFormMaster, new
         {
             model.ID,
             
@@ -2140,7 +2141,7 @@ WHERE c.FORM_FIELD_MASTER_ID = @MasterId
             model.ID = Guid.NewGuid();
         }
 
-        var id = _con.ExecuteScalar<Guid>(Sql.UpsertMasterDetailFormMaster, new
+        var id = _dbExecutor.Connection.ExecuteScalar<Guid>(Sql.UpsertMasterDetailFormMaster, new
         {
             model.ID,
             model.FORM_NAME,
@@ -2276,7 +2277,7 @@ WHERE c.FORM_FIELD_MASTER_ID = @MasterId
             model.ID = Guid.NewGuid();
         }
 
-        var id = _con.ExecuteScalar<Guid>(Sql.UpsertMultipleMappingFormMaster, new
+        var id = _dbExecutor.Connection.ExecuteScalar<Guid>(Sql.UpsertMultipleMappingFormMaster, new
         {
             model.ID,
             model.FORM_NAME,
@@ -2323,7 +2324,7 @@ WHERE c.FORM_FIELD_MASTER_ID = @MasterId
         Guid? excludeId = null)
     {
         // ExecuteScalarAsync 本身就是 async，不會阻塞 ThreadPool
-        var count = await _con.ExecuteScalarAsync<int>(
+        var count = await _dbExecutor.Connection.ExecuteScalarAsync<int>(
             Sql.CheckMasterDetailFormMasterExists,
             new { masterTableId, detailTableId, viewTableId, excludeId }
         );
@@ -2333,7 +2334,7 @@ WHERE c.FORM_FIELD_MASTER_ID = @MasterId
 
     public bool CheckFormMasterExists(Guid baseTableId, Guid viewTableId, Guid? excludeId = null)
     {
-        var count = _con.ExecuteScalar<int>(Sql.CheckFormMasterExists,
+        var count = _dbExecutor.Connection.ExecuteScalar<int>(Sql.CheckFormMasterExists,
             new { baseTableId, viewTableId, excludeId });
         return count > 0;
     }
@@ -2352,7 +2353,7 @@ WHERE c.FORM_FIELD_MASTER_ID = @MasterId
         ValidateTableName(tableName);
 
         var sql = Sql.TableSchemaSelect;
-        var columns = _con.Query<DbColumnInfo>(sql, new { TableName = tableName }).ToList();
+        var columns = _dbExecutor.Connection.Query<DbColumnInfo>(sql, new { TableName = tableName }).ToList();
         
         return columns;
     }
@@ -2529,7 +2530,7 @@ WHERE c.FORM_FIELD_MASTER_ID = @MasterId
     /// <returns>回傳欄位 ID 的 HashSet</returns>
     private HashSet<Guid> GetRequiredFieldIds()
     {
-        var res = _con.Query<Guid>(Sql.GetRequiredFieldIds).ToHashSet();
+        var res = _dbExecutor.Connection.Query<Guid>(Sql.GetRequiredFieldIds).ToHashSet();
         return res;
     }
 

@@ -78,3 +78,21 @@
   - 將方法改為 `BuildDropdownMetaMapAsync`。
   - 將呼叫端（Linked/Unlinked 載入流程）改為 async/await。
   - 消除「await 僅可在 async 方法內使用」的編譯錯誤。
+
+
+## 本次修正（移除 Infrastructure 直接注入 SqlConnection）
+
+以下服務已改為注入 `IDbExecutor`，不再於建構式直接注入 `SqlConnection`：
+
+- `DropdownSqlSyncService`
+- `FormDesignerService`
+- `FormMasterDetailService`
+- `FormMultipleMappingService`
+- `FormOrphanCleanupService`
+- `FormService`
+
+### 調整原則
+
+1. 優先透過 `IDbExecutor` 的 Query/Execute API 執行 Dapper 操作。
+2. 必要時由 `IDbExecutor.Connection` 提供同一個 DI scope 連線，以維持既有 SQL 行為與交易邊界。
+3. 已有交易物件（`SqlTransaction`）的路徑優先使用 `ExecuteInTx / QueryInTx / ExecuteScalarInTx` 系列 API，避免交易遺漏。

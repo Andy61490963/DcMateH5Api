@@ -1,7 +1,7 @@
-using System.Data;
 using System.Data.Common;
 using System.Text.RegularExpressions;
 using Dapper;
+using DbExtensions.DbExecutor.Interface;
 using DcMateH5.Abstractions.Form.Form;
 using DcMateH5.Abstractions.Form.Models;
 using DcMateH5.Abstractions.Form.ViewModels;
@@ -14,7 +14,7 @@ namespace DcMateH5.Infrastructure.Form.Form;
 /// </summary>
 public class DropdownSqlSyncService : IDropdownSqlSyncService
 {
-    private readonly SqlConnection _con;
+    private readonly IDbExecutor _dbExecutor;
 
     private const string ExistingOptionsSql =
         "SELECT ID, OPTION_VALUE, OPTION_TEXT, OPTION_TABLE, IS_DELETE FROM FORM_FIELD_DROPDOWN_OPTIONS WHERE FORM_FIELD_DROPDOWN_ID = @DropdownId";
@@ -47,9 +47,9 @@ WHEN NOT MATCHED THEN
 OUTPUT INSERTED.ID;                          -- 把 ID 回傳給 Dapper
 ";
     
-    public DropdownSqlSyncService(SqlConnection connection)
+    public DropdownSqlSyncService(IDbExecutor dbExecutor)
     {
-        _con = connection;
+        _dbExecutor = dbExecutor;
     }
 
     public DropdownSqlSyncResult Sync(Guid dropdownId, string sql, SqlTransaction? transaction = null)
@@ -57,97 +57,78 @@ OUTPUT INSERTED.ID;                          -- 把 ID 回傳給 Dapper
         if (string.IsNullOrWhiteSpace(sql))
             throw new DropdownSqlSyncException("SQL 不可為空白。");
 
-        var optionTable = TryExtractTableName(sql)
-                         ?? "自訂的下拉選單";
+        var optionTable = TryExtractTableName(sql) ?? "自訂的下拉選單";
 
-        var ownTransaction = transaction is null;
-        var shouldCloseConnection = false;
-        var tx = transaction;
-
-        try
+        if (transaction is not null)
         {
-            if (ownTransaction)
-            {
-                if (_con.State != ConnectionState.Open)
-                {
-                    _con.Open();
-                    shouldCloseConnection = true;
-                }
-
-                tx = _con.BeginTransaction();
-            }
-
-            var (rows, preview) = ExecuteSql(sql, tx!);
-            var normalizedTable = NormalizeOptionTable(optionTable);
-
-            var existing = _con.Query<DropdownOptionDbRow>(ExistingOptionsSql, new { DropdownId = dropdownId }, tx)
-                .Where(x => NormalizeOptionTable(x.OPTION_TABLE) == normalizedTable)
-                .ToDictionary(x => x.OPTION_VALUE, x => x);
-
-            var duplicateGuard = new HashSet<string>();
-            var result = new DropdownSqlSyncResult
-            {
-                RowCount = rows.Count,
-                PreviewRows = preview
-            };
-
-            foreach (var row in rows)
-            {
-                if (!duplicateGuard.Add(row.OptionValue))
-                    throw new DropdownSqlSyncException($"第 {row.RowNumber} 筆資料的 ID 與其他列重複。");
-
-                existing.TryGetValue(row.OptionValue, out var existingRow);
-                existing.Remove(row.OptionValue);
-
-                var upsertId = _con.ExecuteScalar<Guid>(UpsertDropdownOption, new
-                {
-                    Id = existingRow?.ID,
-                    DropdownId = dropdownId,
-                    OptionText = row.OptionText,
-                    OptionValue = row.OptionValue,
-                    OptionTable = optionTable
-                }, tx);
-
-                result.Options.Add(new FormFieldDropdownOptionsDto
-                {
-                    ID = upsertId,
-                    FORM_FIELD_DROPDOWN_ID = dropdownId,
-                    OPTION_TABLE = optionTable,
-                    OPTION_VALUE = row.OptionValue,
-                    OPTION_TEXT = row.OptionText
-                });
-            }
-
-            if (existing.Count > 0)
-            {
-                var staleIds = existing.Values.Select(x => x.ID).ToList();
-                _con.Execute(
-                    "UPDATE FORM_FIELD_DROPDOWN_OPTIONS SET IS_DELETE = 1 WHERE ID IN @Ids",
-                    new { Ids = staleIds },
-                    tx);
-            }
-
-            if (ownTransaction)
-                tx!.Commit();
-
-            return result;
+            return SyncInTransaction(dropdownId, sql, optionTable, transaction);
         }
-        catch
-        {
-            if (ownTransaction)
-                tx?.Rollback();
-            throw;
-        }
-        finally
-        {
-            if (ownTransaction && shouldCloseConnection)
-                _con.Close();
-        }
+
+        return _dbExecutor.TxAsync((conn, tx, ct) =>
+                Task.FromResult(SyncInTransaction(dropdownId, sql, optionTable, tx)))
+            .GetAwaiter()
+            .GetResult();
     }
 
-    private (List<DropdownSqlRow> Rows, List<Dictionary<string, object?>> Preview) ExecuteSql(string sql, SqlTransaction transaction)
+    private DropdownSqlSyncResult SyncInTransaction(Guid dropdownId, string sql, string optionTable, SqlTransaction tx)
     {
-        using var cmd = _con.CreateCommand();
+        var conn = tx.Connection ?? _dbExecutor.Connection;
+
+        var (rows, preview) = ExecuteSql(conn, sql, tx);
+        var normalizedTable = NormalizeOptionTable(optionTable);
+
+        var existing = _dbExecutor.QueryInTx<DropdownOptionDbRow>(conn, tx, ExistingOptionsSql, new { DropdownId = dropdownId })
+            .Where(x => NormalizeOptionTable(x.OPTION_TABLE) == normalizedTable)
+            .ToDictionary(x => x.OPTION_VALUE, x => x);
+
+        var duplicateGuard = new HashSet<string>();
+        var result = new DropdownSqlSyncResult
+        {
+            RowCount = rows.Count,
+            PreviewRows = preview
+        };
+
+        foreach (var row in rows)
+        {
+            if (!duplicateGuard.Add(row.OptionValue))
+                throw new DropdownSqlSyncException($"第 {row.RowNumber} 筆資料的 ID 與其他列重複。");
+
+            existing.TryGetValue(row.OptionValue, out var existingRow);
+            existing.Remove(row.OptionValue);
+
+            var upsertId = _dbExecutor.ExecuteScalarInTx<Guid>(conn, tx, UpsertDropdownOption, new
+            {
+                Id = existingRow?.ID,
+                DropdownId = dropdownId,
+                OptionText = row.OptionText,
+                OptionValue = row.OptionValue,
+                OptionTable = optionTable
+            });
+
+            result.Options.Add(new FormFieldDropdownOptionsDto
+            {
+                ID = upsertId,
+                FORM_FIELD_DROPDOWN_ID = dropdownId,
+                OPTION_TABLE = optionTable,
+                OPTION_VALUE = row.OptionValue,
+                OPTION_TEXT = row.OptionText
+            });
+        }
+
+        if (existing.Count > 0)
+        {
+            var staleIds = existing.Values.Select(x => x.ID).ToList();
+            _dbExecutor.ExecuteInTx(conn, tx,
+                "UPDATE FORM_FIELD_DROPDOWN_OPTIONS SET IS_DELETE = 1 WHERE ID IN @Ids",
+                new { Ids = staleIds });
+        }
+
+        return result;
+    }
+
+    private (List<DropdownSqlRow> Rows, List<Dictionary<string, object?>> Preview) ExecuteSql(SqlConnection conn, string sql, SqlTransaction transaction)
+    {
+        using var cmd = conn.CreateCommand();
         cmd.CommandText = sql;
         cmd.Transaction = transaction;
 

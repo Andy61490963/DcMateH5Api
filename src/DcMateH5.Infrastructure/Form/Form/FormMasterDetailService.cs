@@ -1,4 +1,5 @@
 using Dapper;
+using DbExtensions.DbExecutor.Interface;
 using DcMateClassLibrary.Enums.Form;
 using DcMateH5.Abstractions.Form.Form;
 using DcMateH5.Abstractions.Form.FormLogic;
@@ -15,7 +16,7 @@ namespace DcMateH5.Infrastructure.Form.Form;
 /// </summary>
 public class FormMasterDetailService : IFormMasterDetailService
 {
-    private readonly SqlConnection _con;
+    private readonly IDbExecutor _dbExecutor;
     private readonly IFormService _formService;
     private readonly IFormFieldMasterService _formFieldMasterService;
     private readonly IFormDataService _formDataService;
@@ -24,7 +25,7 @@ public class FormMasterDetailService : IFormMasterDetailService
     private readonly IReadOnlyList<string> _relationColumnSuffixes;
 
     public FormMasterDetailService(
-        SqlConnection connection,
+        IDbExecutor dbExecutor,
         IFormService formService,
         IFormFieldMasterService formFieldMasterService,
         IFormDataService formDataService,
@@ -32,7 +33,7 @@ public class FormMasterDetailService : IFormMasterDetailService
         ITransactionService txService,
         IOptions<FormSettings> formSettings)
     {
-        _con = connection;
+        _dbExecutor = dbExecutor;
         _formService = formService;
         _formFieldMasterService = formFieldMasterService;
         _formDataService = formDataService;
@@ -100,7 +101,7 @@ public class FormMasterDetailService : IFormMasterDetailService
             ?? throw new InvalidOperationException("Detail table has no primary key.");
 
         var (pkName, pkType, pkVal) = await _schemaService.ResolvePkAsync(header.BASE_TABLE_NAME, pk, ct: ct);
-        var relationObj = _con.ExecuteScalar<object?>(
+        var relationObj = _dbExecutor.ExecuteScalar<object?>(
             $"SELECT [{relationColumn}] FROM [{header.BASE_TABLE_NAME}] WHERE [{pkName}] = @id",
             new { id = pkVal });
         var relationValue = relationObj?.ToString();
@@ -149,16 +150,16 @@ public class FormMasterDetailService : IFormMasterDetailService
             var relationColumn = GetRelationColumn(header.BASE_TABLE_NAME!, header.DETAIL_TABLE_NAME!, tx);
 
             // 2) 查出「關聯欄位」在 config 中對應的 ConfigId（Master / Detail 各一）
-            var masterCfgId = _con.ExecuteScalar<Guid?>(@"/**/
+            var masterCfgId = _dbExecutor.ExecuteScalarInTx<Guid?>(tx.Connection!, tx, @"/**/
         SELECT ID FROM FORM_FIELD_CONFIG
         WHERE FORM_FIELD_MASTER_ID = @Id AND COLUMN_NAME = @Col",
-                                  new { Id = header.BASE_TABLE_ID, Col = relationColumn }, transaction: tx)
+                                  new { Id = header.BASE_TABLE_ID, Col = relationColumn })
                               ?? throw new InvalidOperationException("Master relation column not found.");
 
-            var detailCfgId = _con.ExecuteScalar<Guid?>(@"/**/
+            var detailCfgId = _dbExecutor.ExecuteScalarInTx<Guid?>(tx.Connection!, tx, @"/**/
         SELECT ID FROM FORM_FIELD_CONFIG
         WHERE FORM_FIELD_MASTER_ID = @Id AND COLUMN_NAME = @Col",
-                                  new { Id = header.DETAIL_TABLE_ID, Col = relationColumn }, transaction: tx)
+                                  new { Id = header.DETAIL_TABLE_ID, Col = relationColumn })
                               ?? throw new InvalidOperationException("Detail relation column not found.");
 
             // 3) 優先從 MasterFields 嘗試取得 relationValue（若前端已送）
@@ -172,8 +173,8 @@ public class FormMasterDetailService : IFormMasterDetailService
                 if (relationValue is null)
                 {
                     var (pkName, _, pkVal) = await _schemaService.ResolvePkAsync(header.BASE_TABLE_NAME!, input.MasterPk, tx, innerCt);
-                    relationValue = _con.ExecuteScalar<object?>($@"/**/
-SELECT [{relationColumn}] FROM [{header.BASE_TABLE_NAME}] WHERE [{pkName}] = @id", new { id = pkVal }, transaction: tx)
+                    relationValue = _dbExecutor.ExecuteScalarInTx<object?>(tx.Connection!, tx, $@"/**/
+SELECT [{relationColumn}] FROM [{header.BASE_TABLE_NAME}] WHERE [{pkName}] = @id", new { id = pkVal })
                                     ?? throw new InvalidOperationException($"Master not found by PK: {input.MasterPk}");
                 }
 

@@ -1,5 +1,6 @@
 using System.Text.RegularExpressions;
 using Dapper;
+using DbExtensions.DbExecutor.Interface;
 using DbExtensions;
 using DcMateClassLibrary.Enums.Form;
 using DcMateClassLibrary.Helper.Enums;
@@ -18,7 +19,7 @@ namespace DcMateH5.Infrastructure.Form.Form;
 /// </summary>
 public class FormMultipleMappingService : IFormMultipleMappingService
 {
-    private readonly SqlConnection _con;
+    private readonly IDbExecutor _dbExecutor;
     private readonly IFormFieldMasterService _formFieldMasterService;
     private readonly IFormFieldConfigService _formFieldConfigService;
     private readonly ISchemaService _schemaService;
@@ -27,7 +28,7 @@ public class FormMultipleMappingService : IFormMultipleMappingService
     private readonly SQLGenerateHelper _sqlHelper;
     
     public FormMultipleMappingService(
-        SqlConnection connection,
+        IDbExecutor dbExecutor,
         IFormFieldMasterService formFieldMasterService,
         IFormFieldConfigService formFieldConfigService,
         ISchemaService schemaService,
@@ -35,7 +36,7 @@ public class FormMultipleMappingService : IFormMultipleMappingService
         IFormService formService,
         SQLGenerateHelper sqlHelper)
     {
-        _con = connection;
+        _dbExecutor = dbExecutor;
         _formFieldMasterService = formFieldMasterService;
         _formFieldConfigService = formFieldConfigService;
         _schemaService = schemaService;
@@ -63,7 +64,7 @@ SELECT ID AS Id,
  WHERE FUNCTION_TYPE = @funcType
    AND IS_DELETE = 0";
 
-        return await _con.QueryAsync<MultipleMappingConfigViewModel>(new CommandDefinition(sql, new { funcType = FormFunctionType.MultipleMappingMaintenance.ToInt() }, cancellationToken: ct));
+        return await _dbExecutor.Connection.QueryAsync<MultipleMappingConfigViewModel>(new CommandDefinition(sql, new { funcType = FormFunctionType.MultipleMappingMaintenance.ToInt() }, cancellationToken: ct));
     }
 
     /// <inheritdoc />
@@ -217,7 +218,7 @@ SELECT ID AS Id,
             var seq = 0;
             if (isSeq)
             {
-                seq = _con.ExecuteScalar<int>($@"/**/
+                seq = _dbExecutor.Connection.ExecuteScalar<int>($@"/**/
     SELECT ISNULL(MAX([SEQ]), 0)
     FROM [{header.MAPPING_TABLE_NAME}]
     WHERE [{header.MAPPING_BASE_FK_COLUMN}] = @BaseId;",
@@ -281,7 +282,7 @@ SELECT ID AS Id,
             ({string.Join(", ", insertValues)});
     END";
 
-                _con.Execute(sql,
+                _dbExecutor.Connection.Execute(sql,
                     new
                     {
                         Pk = pkValue,
@@ -316,7 +317,7 @@ SELECT ID AS Id,
             foreach (var detailId in detailIds)
             {
                 EnsureRowExists(header.DETAIL_TABLE_NAME!, detailPkName, detailId!, tx);
-                _con.Execute($@"/**/
+                _dbExecutor.Connection.Execute($@"/**/
 DELETE FROM [{header.MAPPING_TABLE_NAME}]
 WHERE [{header.MAPPING_BASE_FK_COLUMN}] = @BaseId
   AND [{header.MAPPING_DETAIL_FK_COLUMN}] = @DetailId",
@@ -379,7 +380,7 @@ UPDATE m
   JOIN OrderedPk o ON m.[{pkColumn}] = o.Pk
  WHERE m.[{header.MAPPING_BASE_FK_COLUMN}] = @BaseId;";
 
-            return _con.Execute(sql, parameters, transaction: tx);
+            return _dbExecutor.Connection.Execute(sql, parameters, transaction: tx);
         });
     }
 
@@ -394,7 +395,7 @@ SELECT COUNT(1)
 FROM [{header.MAPPING_TABLE_NAME}]
 WHERE [{header.MAPPING_BASE_FK_COLUMN}] = @BaseId;";
 
-        var total = _con.ExecuteScalar<int>(
+        var total = _dbExecutor.Connection.ExecuteScalar<int>(
             totalSql,
             new { BaseId = basePkValue },
             transaction: tx);
@@ -408,7 +409,7 @@ FROM [{header.MAPPING_TABLE_NAME}]
 WHERE [{header.MAPPING_PK_COLUMN}] IN @Ids
   AND [{header.MAPPING_BASE_FK_COLUMN}] = @BaseId;";
 
-        var matched = _con.ExecuteScalar<int>(
+        var matched = _dbExecutor.Connection.ExecuteScalar<int>(
             matchedSql,
             new { Ids = pkValues, BaseId = basePkValue },
             transaction: tx);
@@ -498,7 +499,7 @@ WHERE [{header.MAPPING_PK_COLUMN}] IN @Ids
        SET {string.Join(", ", setFragments)}
      WHERE [{pkName}] = @Pk;";
 
-        return await _con.ExecuteAsync(sql, parameters);
+        return await _dbExecutor.Connection.ExecuteAsync(sql, parameters);
     }
 
     private FormFieldMasterDto GetMappingHeader(Guid formMasterId, SqlTransaction? tx = null)
@@ -580,7 +581,7 @@ SELECT b.[{baseDisplayColumn}]
 FROM [{header.BASE_TABLE_NAME}] b
 WHERE b.[{header.MAPPING_BASE_FK_COLUMN}] = @BaseId;";
 
-        return _con.QueryFirstOrDefault<string?>(sql, new { BaseId = basePkValue });
+        return _dbExecutor.Connection.QueryFirstOrDefault<string?>(sql, new { BaseId = basePkValue });
     }
     
     private Dictionary<string, string> GetDetailToRelationDefaultColumnMap(
@@ -679,7 +680,7 @@ WHERE b.[{header.MAPPING_BASE_FK_COLUMN}] = @BaseId;";
     WHERE m.[{header.MAPPING_BASE_FK_COLUMN}] = @BaseId
     {filterSql};";
 
-        var rows = _con.Query(sql, param, transaction: tx)
+        var rows = _dbExecutor.Connection.Query(sql, param, transaction: tx)
             .Cast<IDictionary<string, object?>>()
             .ToList();
 
@@ -758,7 +759,7 @@ WHERE b.[{header.MAPPING_BASE_FK_COLUMN}] = @BaseId;";
           AND m.[{header.MAPPING_DETAIL_FK_COLUMN}] = d.[{detailPkName}]
     );";
 
-        var rows = _con.Query(sql, param, transaction: tx)
+        var rows = _dbExecutor.Connection.Query(sql, param, transaction: tx)
             .Cast<IDictionary<string, object?>>()
             .ToList();
 
@@ -913,7 +914,7 @@ WHERE b.[{header.MAPPING_BASE_FK_COLUMN}] = @BaseId;";
 
     private void EnsureRowExists(string tableName, string pkName, object pkValue, SqlTransaction? tx = null)
     {
-        var count = _con.ExecuteScalar<int>(
+        var count = _dbExecutor.Connection.ExecuteScalar<int>(
             $"/**/SELECT COUNT(1) FROM [{tableName}] WHERE [{pkName}] = @Pk",
             new { Pk = pkValue }, transaction: tx);
 
@@ -964,7 +965,7 @@ WHERE b.[{header.MAPPING_BASE_FK_COLUMN}] = @BaseId;";
 
     private Dictionary<string, string> LoadColumnTypes(string tableName, SqlTransaction? tx = null)
     {
-        return _con.Query<(string COLUMN_NAME, string DATA_TYPE)>(
+        return _dbExecutor.Connection.Query<(string COLUMN_NAME, string DATA_TYPE)>(
                 "/**/SELECT COLUMN_NAME, DATA_TYPE FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_NAME = @TableName",
                 new { TableName = tableName }, transaction: tx)
             .ToDictionary(x => x.COLUMN_NAME, x => x.DATA_TYPE, StringComparer.OrdinalIgnoreCase);
@@ -1002,7 +1003,7 @@ WHERE b.[{header.MAPPING_BASE_FK_COLUMN}] = @BaseId;";
 
     private void EnsureSidsBelongToBase(FormFieldMasterDto header, object basePkValue, IReadOnlyCollection<decimal> sids, SqlTransaction tx)
     {
-        var totalForBase = _con.ExecuteScalar<int>(
+        var totalForBase = _dbExecutor.Connection.ExecuteScalar<int>(
             $"/**/SELECT COUNT(1) FROM [{header.MAPPING_TABLE_NAME}] WHERE [{header.MAPPING_BASE_FK_COLUMN}] = @BaseId",
             new { BaseId = basePkValue }, transaction: tx);
 
@@ -1011,7 +1012,7 @@ WHERE b.[{header.MAPPING_BASE_FK_COLUMN}] = @BaseId;";
             throw new InvalidOperationException("傳入的 orderedSids 與 Base 篩選的資料筆數不符，無法保證 SEQ 唯一性。");
         }
 
-        var matchedCount = _con.ExecuteScalar<int>(
+        var matchedCount = _dbExecutor.Connection.ExecuteScalar<int>(
             $"/**/SELECT COUNT(1) FROM [{header.MAPPING_TABLE_NAME}] WHERE [{header.MAPPING_PK_COLUMN}] IN @Sids AND [{header.MAPPING_BASE_FK_COLUMN}] = @BaseId",
             new { Sids = sids, BaseId = basePkValue }, transaction: tx);
 

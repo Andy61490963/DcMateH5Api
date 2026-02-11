@@ -5,6 +5,8 @@ namespace DbExtensions.DbExecutor.Interface;
 
 public interface IDbExecutor
 {
+    SqlConnection Connection { get; }
+
     List<T> Query<T>(string sql, object? param = null, int? timeoutSeconds = null,
         CommandType commandType = CommandType.Text);
 

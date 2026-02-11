@@ -23,6 +23,8 @@ public sealed class DbExecutor : IDbExecutor
     }
 
     private readonly SqlConnection _connection;              // ✅ DI Scoped connection
+
+    public SqlConnection Connection => _connection;
     private readonly DbTransactionContext _txContext;        // ✅ Scoped ambient tx holder
     private readonly ILogService _logService;
     private readonly IHttpContextAccessor _http;

@@ -1,4 +1,5 @@
 using Dapper;
+using DbExtensions.DbExecutor.Interface;
 using DcMateClassLibrary.Enums.Form;
 using DcMateClassLibrary.Helper.FormHelper;
 using DcMateH5.Abstractions.Form.Form;
@@ -13,7 +14,7 @@ namespace DcMateH5.Infrastructure.Form.Form;
 
 public class FormService : IFormService
 {
-    private readonly SqlConnection _con;
+    private readonly IDbExecutor _dbExecutor;
     private readonly ITransactionService _txService;
     private readonly IFormFieldMasterService _formFieldMasterService;
     private readonly ISchemaService _schemaService;
@@ -25,11 +26,11 @@ public class FormService : IFormService
     private readonly IConfiguration _configuration;
     private readonly List<string> _excludeColumns;
     private readonly List<string> _excludeColumnsId;
-    
-    
-    public FormService(SqlConnection connection, ITransactionService txService, IFormFieldMasterService formFieldMasterService, ISchemaService schemaService, IFormFieldConfigService formFieldConfigService, IDropdownService dropdownService, IFormDataService formDataService, IConfiguration configuration, IDropdownSqlSyncService dropdownSqlSyncService, IFormDeleteGuardService formDeleteGuardService)
+
+
+    public FormService(IDbExecutor dbExecutor, ITransactionService txService, IFormFieldMasterService formFieldMasterService, ISchemaService schemaService, IFormFieldConfigService formFieldConfigService, IDropdownService dropdownService, IFormDataService formDataService, IConfiguration configuration, IDropdownSqlSyncService dropdownSqlSyncService, IFormDeleteGuardService formDeleteGuardService)
     {
-        _con = connection;
+        _dbExecutor = dbExecutor;
         _txService = txService;
         _formFieldMasterService = formFieldMasterService;
         _schemaService = schemaService;
@@ -42,7 +43,7 @@ public class FormService : IFormService
         _excludeColumns = _configuration.GetSection("FormDesignerSettings:RequiredColumns").Get<List<string>>() ?? new();
         _excludeColumnsId = _configuration.GetSection("DropdownSqlSettings:ExcludeColumns").Get<List<string>>() ?? new();
     }
-    
+
     /// <summary>
     /// 取得表單列表頁所需的資料清單（含各欄位實際值），
     /// 並將 Dropdown 欄位的選項值（OptionId）轉換為顯示文字（OptionText）。
@@ -96,7 +97,7 @@ public class FormService : IFormService
     ///   以利設定維護與除錯。
     /// - Dropdown 轉換流程依賴 RowId，
     ///   若資料來源缺失 PK，將直接拋出例外以避免產生不一致資料。
-    /// 
+    ///
     /// </remarks>
     /// <param name="funcType">表單功能類型（影響資料來源模式與可用表單集合）</param>
     /// <param name="request">查詢條件與分頁資訊（可選）</param>
@@ -224,7 +225,7 @@ public class FormService : IFormService
 
         return BuildDefaultSpec(master);
     }
-    
+
     private sealed class FormListModeSpec
     {
         public string DataTableName { get; init; } = default!;
@@ -232,7 +233,7 @@ public class FormService : IFormService
         public TableSchemaQueryType SchemaQueryType { get; init; }
         public HashSet<string> SidColumnsToHide { get; init; } = new(StringComparer.OrdinalIgnoreCase);
     }
-    
+
     private FormListModeSpec BuildModeSpec(FormFunctionType funcType, FormFieldMasterDto master)
     {
         var isMultiple = funcType == FormFunctionType.MultipleMappingMaintenance;
@@ -286,7 +287,7 @@ public class FormService : IFormService
             SidColumnsToHide = GetCommonSidColumnsToHide(master.VIEW_TABLE_NAME, master.BASE_TABLE_NAME)
         };
     }
-    
+
     /// <summary>
     /// 根據表單設定抓取主表欄位與現有資料（編輯時用）
     /// 僅處理主表欄位，Dropdown 不再額外查 Answer 表
@@ -311,7 +312,7 @@ public class FormService : IFormService
             var (pkName, pkType, pkValue) = await _schemaService.ResolvePkAsync(targetTable, pk, ct: ct);
 
             var sql = $"SELECT * FROM [{targetTable}] WHERE [{pkName}] = @id";
-            dataRow = _con.QueryFirstOrDefault(sql, new { id = pkValue })
+            dataRow = _dbExecutor.Connection.QueryFirstOrDefault(sql, new { id = pkValue })
                 as IDictionary<string, object?>;
         }
 
@@ -357,7 +358,7 @@ public class FormService : IFormService
         var configData = await _formFieldConfigService.LoadFieldConfigDataAsync(masterId, ct);
         var primaryKeys = await _schemaService.GetPrimaryKeyColumnsAsync(tableName, ct);
 
-        
+
         // 只保留可編輯欄位，將不可編輯欄位直接過濾掉以避免出現在前端
         var editableConfigs = configData.FieldConfigs;
             // .Where(cfg => cfg.IS_EDITABLE)
@@ -400,7 +401,7 @@ public class FormService : IFormService
             FieldConfigId = field.ID,
             Column = field.COLUMN_NAME,
             DISPLAY_NAME = field.DISPLAY_NAME,
-            
+
             CONTROL_TYPE = field.CONTROL_TYPE,
             QUERY_COMPONENT = field.QUERY_COMPONENT,
             QUERY_CONDITION = field.QUERY_CONDITION,
@@ -410,7 +411,7 @@ public class FormService : IFormService
             IS_REQUIRED = field.IS_REQUIRED,
             IS_EDITABLE = field.IS_EDITABLE,
             IS_DISPLAYED = field.IS_DISPLAYED,
-            
+
             ValidationRules = rules,
             OptionList = finalOptions,
 
@@ -422,7 +423,7 @@ public class FormService : IFormService
             SOURCE_TABLE = schemaType,
             IS_PK = primaryKeys.Contains(field.COLUMN_NAME),
             IS_RELATION = false,
-            
+
         };
     }
 
@@ -506,7 +507,7 @@ public class FormService : IFormService
             .Where(o => string.IsNullOrWhiteSpace(o.OPTION_TABLE))
             .ToList();
     }
-    
+
     /// <summary>
     /// 解析使用者先前查詢的下拉值清單（由 ImportPreviousQueryDropdownValues 寫入 SQL）。
     /// </summary>
@@ -527,13 +528,13 @@ FROM (
 {sourceSql}
 ) AS src;";
 
-        var wasClosed = _con.State != System.Data.ConnectionState.Open;
+        var wasClosed = _dbExecutor.Connection.State != System.Data.ConnectionState.Open;
         if (wasClosed)
-            _con.Open();
+            _dbExecutor.Connection.Open();
 
         try
         {
-            var values = _con.Query<string>(
+            var values = _dbExecutor.Connection.Query<string>(
                     wrappedSql,
                     transaction: null,
                     commandTimeout: 10)
@@ -550,10 +551,10 @@ FROM (
         finally
         {
             if (wasClosed)
-                _con.Close();
+                _dbExecutor.Connection.Close();
         }
     }
-    
+
     /// <summary>
     /// 儲存或更新表單資料（含下拉選項答案），由呼叫端決定交易界限。
     /// </summary>
@@ -584,7 +585,7 @@ FROM (
         var (targetId, targetTable, _) = ResolveTargetTable(master);
 
         // 查欄位設定並帶出 IS_EDITABLE 欄位，後續用於權限檢查
-        var configs = _con.Query<FormFieldConfigDto>(
+        var configs = _dbExecutor.Connection.Query<FormFieldConfigDto>(
             "SELECT ID, COLUMN_NAME, CONTROL_TYPE, DATA_TYPE, IS_EDITABLE, QUERY_COMPONENT, QUERY_CONDITION FROM FORM_FIELD_CONFIG WHERE FORM_FIELD_MASTER_ID = @Id",
             new { Id = targetId },
             transaction: tx).ToDictionary(x => x.ID);
@@ -605,7 +606,7 @@ FROM (
 
         return realRowId;
     }
-    
+
     private List<(string Column, object? Value)> MapInputFields(
         IEnumerable<FormInputField> inputFields,
         IReadOnlyDictionary<Guid, FormFieldConfigDto> configs)
@@ -678,7 +679,7 @@ FROM (
                 INSERT INTO [{tableName}] DEFAULT VALUES;
                 SELECT CAST(SCOPE_IDENTITY() AS {pkType});";
 
-            resultId = _con.ExecuteScalar(sql, transaction: tx);
+            resultId = _dbExecutor.Connection.ExecuteScalar(sql, transaction: tx);
         }
         else if (isIdentity)
         {
@@ -688,7 +689,7 @@ FROM (
                 OUTPUT INSERTED.[{pkName}]
                 VALUES ({string.Join(", ", values)})";
 
-            resultId = _con.ExecuteScalar(sql, paramDict, tx); 
+            resultId = _dbExecutor.Connection.ExecuteScalar(sql, paramDict, tx);
         }
         else
         {
@@ -697,13 +698,13 @@ FROM (
                     ({string.Join(", ", columns)})
                 VALUES ({string.Join(", ", values)})";
 
-            _con.Execute(sql, paramDict, tx); 
+            _dbExecutor.Connection.Execute(sql, paramDict, tx);
             resultId = paramDict[RowIdParamName];
         }
 
         return resultId!;
     }
-    
+
     /// <summary>
     /// 動態產生並執行 UPDATE 語法，用於更新資料表中的指定主鍵資料列。
     /// </summary>
@@ -742,7 +743,7 @@ FROM (
         SET {string.Join(", ", setList)}
         WHERE [{pkName}] = @ROWID";
 
-        _con.Execute(sql, paramDict, transaction: tx);
+        _dbExecutor.Connection.Execute(sql, paramDict, transaction: tx);
     }
 
     public async Task<DeleteWithGuardResultViewModel> DeleteWithGuardAsync(
@@ -756,7 +757,7 @@ FROM (
         // 這個才應該是 BaseTableId（BASE_TABLE_ID）
         var baseTableId = request.FormFieldMasterId;
         var pk = request.pk;
-        
+
         if (baseTableId == Guid.Empty)
             throw new ArgumentException("BaseTableId 不可為空", nameof(request.FormFieldMasterId));
 
@@ -797,7 +798,7 @@ FROM (
     DELETE FROM [{tableName}]
     WHERE [{pkName}] = @RowId;";
 
-            var affected = await _con.ExecuteAsync(
+            var affected = await _dbExecutor.Connection.ExecuteAsync(
                 deleteSql,
                 new { RowId = typedPk },
                 transaction: tx);
@@ -810,7 +811,7 @@ FROM (
             };
         }, ct);
     }
-    
+
     private static void ValidateSqlIdentifier(string identifier)
     {
         if (string.IsNullOrWhiteSpace(identifier))
@@ -822,7 +823,7 @@ FROM (
                 throw new InvalidOperationException($"不合法的識別字：{identifier}");
         }
     }
-    
+
     /// <summary>
     /// 取得「View 與 Base 同名」且「欄位結尾為 _sid」的欄位集合（忽略大小寫）
     /// 用途：在 GetFormList 回傳 Fields 時隱藏這些欄位（避免前端看到重複 FK）
