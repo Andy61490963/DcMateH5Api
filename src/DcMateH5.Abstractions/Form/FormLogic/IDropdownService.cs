@@ -14,7 +14,7 @@ public interface IDropdownService
         IEnumerable<DropdownAnswerDto> answers,
         CancellationToken ct = default);
 
-    // 相容舊呼叫端（逐步淘汰）
+    // 同步方法（僅供既有模組遷移期間使用）
     Dictionary<Guid, string> GetOptionTextMap(IEnumerable<DropdownAnswerDto> answers);
 
     void ReplaceDropdownIdsWithTexts(

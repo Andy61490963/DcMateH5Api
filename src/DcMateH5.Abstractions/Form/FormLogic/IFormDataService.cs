@@ -19,7 +19,7 @@ public interface IFormDataService
 
     Task<Dictionary<string, string>> LoadColumnTypesAsync(string tableName, CancellationToken ct = default);
 
-    // 相容舊呼叫端（逐步淘汰）
+    // 同步方法（僅供既有模組遷移期間使用）
     List<IDictionary<string, object?>> GetRows(
         string tableName,
         IEnumerable<FormQueryConditionViewModel>? conditions = null,

@@ -12,7 +12,7 @@ public interface ISchemaService
     Task<bool> IsIdentityColumnAsync(string tableName, string columnName, SqlTransaction? tx = null, CancellationToken ct = default);
     Task<string> GetTableNameByTableIdAsync(Guid tableId, SqlTransaction? tx = null, CancellationToken ct = default);
 
-    // 相容舊呼叫端（逐步淘汰）
+    // 同步方法（僅供既有模組遷移期間使用）
     List<string> GetFormFieldMaster(string table, SqlTransaction? tx = null);
     string? GetPrimaryKeyColumn(string tableName);
     HashSet<string> GetPrimaryKeyColumns(string tableName);

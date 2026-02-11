@@ -31,7 +31,7 @@
 - `IDropdownService`
   - `GetOptionTextMapAsync`
 
-> 同時保留同步方法，作為 migration bridge（逐步淘汰）。
+> 同時保留同步方法，作為過渡期間的相容入口，目標為全面非同步。
 
 ### 2) 對應實作改為真正 async
 
