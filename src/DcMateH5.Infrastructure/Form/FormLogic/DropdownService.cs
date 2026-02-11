@@ -76,7 +76,7 @@ public class DropdownService : IDropdownService
             return new Dictionary<Guid, string>();
         }
 
-        var rows = _dbExecutor.Query<(Guid Id, string Text)>(
+        var rows = _dbExecutor.Connection.Query<(Guid Id, string Text)>(
             "SELECT ID, OPTION_TEXT AS Text FROM FORM_FIELD_DROPDOWN_OPTIONS WHERE ID IN @Ids",
             new { Ids = optionIds });
 

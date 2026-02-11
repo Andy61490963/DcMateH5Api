@@ -101,3 +101,9 @@
 
 - 修正 `ValidateDropdownSql` 內殘留的 `_con` 變數引用，改為 `_dbExecutor.Connection`。
 - 調整連線關閉時機到 `finally`，避免提早 `return` 時遺漏關閉連線。
+
+## 本次修正（IDbExecutor 全 Task 化）
+
+- 移除 `IDbExecutor` 中同步簽章（`Query/Execute/ExecuteScalar` 與同步 InTx 版本）。
+- `IDbExecutor` 僅保留 `Task` 型別 API，確保執行路徑一致為非同步。
+- 既有同步相容方法（FormLogic 部分）改為直接使用 Dapper + `IDbExecutor.Connection`，避免回頭依賴同步 `IDbExecutor` 介面。

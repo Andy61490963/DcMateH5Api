@@ -206,8 +206,8 @@ ORDER BY c.ORDINAL_POSITION";
     {
         const string sql = "/**/SELECT COLUMN_NAME FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_NAME = @table";
         return tx == null
-            ? _dbExecutor.Query<string>(sql, new { table })
-            : _dbExecutor.QueryInTx<string>(tx.Connection!, tx, sql, new { table });
+            ? _dbExecutor.Connection.Query<string>(sql, new { table }).AsList()
+            : tx.Connection!.Query<string>(sql, new { table }, tx).AsList();
     }
 
     public string? GetPrimaryKeyColumn(string tableName)
@@ -219,7 +219,7 @@ JOIN INFORMATION_SCHEMA.KEY_COLUMN_USAGE KU
   ON TC.CONSTRAINT_NAME = KU.CONSTRAINT_NAME
 WHERE TC.CONSTRAINT_TYPE = 'PRIMARY KEY'
   AND TC.TABLE_NAME = @tableName";
-        return _dbExecutor.QueryFirstOrDefault<string>(sql, new { tableName });
+        return _dbExecutor.Connection.QueryFirstOrDefault<string>(sql, new { tableName });
     }
 
     public HashSet<string> GetPrimaryKeyColumns(string tableName)
@@ -231,7 +231,7 @@ JOIN INFORMATION_SCHEMA.KEY_COLUMN_USAGE KU
   ON TC.CONSTRAINT_NAME = KU.CONSTRAINT_NAME
 WHERE TC.CONSTRAINT_TYPE = 'PRIMARY KEY'
   AND TC.TABLE_NAME = @tableName";
-        return _dbExecutor.Query<string>(sqlPk, new { tableName }).ToHashSet(StringComparer.OrdinalIgnoreCase);
+        return _dbExecutor.Connection.Query<string>(sqlPk, new { tableName }).ToHashSet(StringComparer.OrdinalIgnoreCase);
     }
 
     public (string PkName, string PkType, object? Value) ResolvePk(string tableName, string? rawId, SqlTransaction? tx = null)
@@ -252,8 +252,8 @@ WHERE TC.CONSTRAINT_TYPE = 'PRIMARY KEY'
 
         var schema = "dbo";
         var pkList = tx == null
-            ? _dbExecutor.Query<(string Name, string Type)>(sql, new { TableName = tableName, Schema = schema })
-            : _dbExecutor.QueryInTx<(string Name, string Type)>(tx.Connection!, tx, sql, new { TableName = tableName, Schema = schema });
+            ? _dbExecutor.Connection.Query<(string Name, string Type)>(sql, new { TableName = tableName, Schema = schema }).AsList()
+            : tx.Connection!.Query<(string Name, string Type)>(sql, new { TableName = tableName, Schema = schema }, tx).AsList();
 
         if (!pkList.Any())
             throw new InvalidOperationException($"查無主鍵欄位：{schema}.{tableName}");
@@ -276,8 +276,8 @@ WHERE TC.CONSTRAINT_TYPE = 'PRIMARY KEY'
         ) AS IsIdentity";
 
         var isIdentity = tx == null
-            ? _dbExecutor.ExecuteScalar<int>(sql, new { TableName = tableName, ColumnName = columnName })
-            : _dbExecutor.ExecuteScalarInTx<int>(tx.Connection!, tx, sql, new { TableName = tableName, ColumnName = columnName });
+            ? _dbExecutor.Connection.ExecuteScalar<int>(sql, new { TableName = tableName, ColumnName = columnName })
+            : tx.Connection!.ExecuteScalar<int>(sql, new { TableName = tableName, ColumnName = columnName }, tx);
 
         return isIdentity == 1;
     }
@@ -308,8 +308,8 @@ ORDER BY
     END;";
 
         var tableName = tx == null
-            ? _dbExecutor.QueryFirstOrDefault<string>(sql, new { Id = tableId })
-            : _dbExecutor.QueryFirstOrDefaultInTx<string>(tx.Connection!, tx, sql, new { Id = tableId });
+            ? _dbExecutor.Connection.QueryFirstOrDefault<string>(sql, new { Id = tableId })
+            : tx.Connection!.QueryFirstOrDefault<string>(sql, new { Id = tableId }, tx);
 
         tableName = tableName?.Trim();
         if (string.IsNullOrWhiteSpace(tableName))

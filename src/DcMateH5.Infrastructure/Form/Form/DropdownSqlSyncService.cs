@@ -118,7 +118,7 @@ OUTPUT INSERTED.ID;                          -- 把 ID 回傳給 Dapper
         if (existing.Count > 0)
         {
             var staleIds = existing.Values.Select(x => x.ID).ToList();
-            _dbExecutor.ExecuteInTx(conn, tx,
+            conn.Execute(
                 "UPDATE FORM_FIELD_DROPDOWN_OPTIONS SET IS_DELETE = 1 WHERE ID IN @Ids",
                 new { Ids = staleIds });
         }

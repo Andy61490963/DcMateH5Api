@@ -112,7 +112,7 @@ public class FormDataService : IFormDataService
         AppendOrderBy(sql, orderBys, page, pageSize);
         AppendPaging(sql, param, page, pageSize);
 
-        var rows = _dbExecutor.Query<dynamic>(sql.ToString(), param);
+        var rows = _dbExecutor.Connection.Query<dynamic>(sql.ToString(), param).AsList();
         return rows.Cast<IDictionary<string, object?>>().ToList();
     }
 
@@ -135,7 +135,7 @@ public class FormDataService : IFormDataService
         var param = new DynamicParameters();
         AppendWhere(sql, param, conditions);
 
-        return _dbExecutor.ExecuteScalar<int>(sql.ToString(), param);
+        return _dbExecutor.Connection.ExecuteScalar<int>(sql.ToString(), param);
     }
 
     /// <summary>
@@ -143,7 +143,7 @@ public class FormDataService : IFormDataService
     /// </summary>
     public Dictionary<string, string> LoadColumnTypes(string tableName)
     {
-        var rows = _dbExecutor.Query<(string COLUMN_NAME, string DATA_TYPE)>(
+        var rows = _dbExecutor.Connection.Query<(string COLUMN_NAME, string DATA_TYPE)>(
             @"/**/SELECT COLUMN_NAME, DATA_TYPE
                   FROM INFORMATION_SCHEMA.COLUMNS
                   WHERE TABLE_NAME = @TableName",

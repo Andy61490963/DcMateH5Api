@@ -101,7 +101,7 @@ public class FormMasterDetailService : IFormMasterDetailService
             ?? throw new InvalidOperationException("Detail table has no primary key.");
 
         var (pkName, pkType, pkVal) = await _schemaService.ResolvePkAsync(header.BASE_TABLE_NAME, pk, ct: ct);
-        var relationObj = _dbExecutor.ExecuteScalar<object?>(
+        var relationObj = _dbExecutor.Connection.ExecuteScalar<object?>(
             $"SELECT [{relationColumn}] FROM [{header.BASE_TABLE_NAME}] WHERE [{pkName}] = @id",
             new { id = pkVal });
         var relationValue = relationObj?.ToString();

@@ -66,7 +66,7 @@ public class FormFieldConfigService : IFormFieldConfigService
     /// </summary>
     public List<FormFieldConfigDto> GetFormFieldConfig(Guid? id)
     {
-        return _dbExecutor.Query<FormFieldConfigDto>(
+        return _dbExecutor.Connection.Query<FormFieldConfigDto>(
             "/**/SELECT * FROM FORM_FIELD_CONFIG WHERE FORM_FIELD_MASTER_ID = @id",
             new { id });
     }
@@ -76,23 +76,23 @@ public class FormFieldConfigService : IFormFieldConfigService
     /// </summary>
     public FieldConfigData LoadFieldConfigData(Guid? masterId)
     {
-        var configs = _dbExecutor.Query<FormFieldConfigDto>(@"SELECT FFC.*, FFM.FORM_NAME
+        var configs = _dbExecutor.Connection.Query<FormFieldConfigDto>(@"SELECT FFC.*, FFM.FORM_NAME
                     FROM FORM_FIELD_CONFIG FFC
                     JOIN FORM_FIELD_MASTER FFM ON FFM.ID = FFC.FORM_FIELD_MASTER_ID
                     WHERE FFM.ID = @ID
                     ORDER BY FIELD_ORDER;", new { ID = masterId });
 
-        var rules = _dbExecutor.Query<FormFieldValidationRuleDto>(@"SELECT R.*
+        var rules = _dbExecutor.Connection.Query<FormFieldValidationRuleDto>(@"SELECT R.*
                     FROM FORM_FIELD_VALIDATION_RULE R
                     JOIN FORM_FIELD_CONFIG C ON R.FORM_FIELD_CONFIG_ID = C.ID
                     WHERE C.FORM_FIELD_MASTER_ID = @ID;", new { ID = masterId });
 
-        var dropdowns = _dbExecutor.Query<FormFieldDropDownDto>(@"SELECT D.*
+        var dropdowns = _dbExecutor.Connection.Query<FormFieldDropDownDto>(@"SELECT D.*
                     FROM FORM_FIELD_DROPDOWN D
                     JOIN FORM_FIELD_CONFIG C ON D.FORM_FIELD_CONFIG_ID = C.ID
                     WHERE C.FORM_FIELD_MASTER_ID = @ID;", new { ID = masterId });
 
-        var options = _dbExecutor.Query<FormFieldDropdownOptionsDto>(@"SELECT O.*
+        var options = _dbExecutor.Connection.Query<FormFieldDropdownOptionsDto>(@"SELECT O.*
                     FROM FORM_FIELD_DROPDOWN_OPTIONS O
                     JOIN FORM_FIELD_DROPDOWN D ON O.FORM_FIELD_DROPDOWN_ID = D.ID
                     JOIN FORM_FIELD_CONFIG C ON D.FORM_FIELD_CONFIG_ID = C.ID
