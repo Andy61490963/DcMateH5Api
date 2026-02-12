@@ -6,7 +6,8 @@ on:
     branches: [ "main" ]
 
 env:
-  PROJECT_PATH: "DcMateH5Api.csproj"
+  PROJECT_PATH: "src\\DcMateH5Api\\DcMateH5Api.csproj"
+
   DEPLOY_ROOT: "C:\\CICDDeploy"
   PUBLISH_DIR: "C:\\CICDDeploy\\publish"
   IIS_PHYSICAL_PATH: "C:\\inetpub\\wwwroot\\測試"
@@ -22,6 +23,11 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
+      - name: Setup .NET SDK
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: "8.0.416"
+          
       - name: Ensure folders
         shell: powershell
         run: |
