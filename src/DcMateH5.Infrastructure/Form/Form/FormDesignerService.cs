@@ -84,9 +84,9 @@ public class FormDesignerService : IFormDesignerService
         return res;
     }
 
-    public Task UpdateFormName(UpdateFormNameViewModel model, CancellationToken ct)
+    public async Task UpdateFormName(UpdateFormNameViewModel model, CancellationToken ct)
     {
-        return _sqlHelper.UpdateById<FormFieldMasterDto>(model.ID)
+        await _sqlHelper.UpdateById<FormFieldMasterDto>(model.ID)
             .Set(x => x.FORM_NAME, model.FORM_NAME)
             .Set(x => x.FORM_CODE, model.FORM_CODE)
             .Set(x => x.FORM_DESCRIPTION, model.FORM_DESCRIPTION)
@@ -260,14 +260,18 @@ public class FormDesignerService : IFormDesignerService
     /// <param name="id">主表ID</param>
     /// <param name="ct">取消權杖</param>
     /// <returns></returns>
-    private Task<FormFieldMasterDto?> GetFormMasterAsync(Guid? id, CancellationToken ct)
+    private async Task<FormFieldMasterDto?> GetFormMasterAsync(
+        Guid? id,
+        CancellationToken ct)
     {
-        if (id == null) return Task.FromResult<FormFieldMasterDto?>(null);
+        if (!id.HasValue)
+            return null;
 
         var where = new WhereBuilder<FormFieldMasterDto>()
-            .AndEq(x => x.ID, id)
+            .AndEq(x => x.ID, id.Value)
             .AndNotDeleted();
-        return _sqlHelper.SelectFirstOrDefaultAsync(where, ct);
+
+        return await _sqlHelper.SelectFirstOrDefaultAsync(where, ct);
     }
 
     /// <summary>
