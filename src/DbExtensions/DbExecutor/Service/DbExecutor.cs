@@ -229,22 +229,6 @@ public sealed class DbExecutor : IDbExecutor
             ct);
     }
 
-    public Task<T?> QuerySingleOrDefaultAsync<T>(string sql, object? param = null, int? timeoutSeconds = null,
-        CommandType commandType = CommandType.Text, CancellationToken ct = default)
-    {
-        return ExecuteWithLogAsync(
-            sql,
-            param,
-            async () =>
-            {
-                await EnsureOpenAsync(ct);
-                var cmd = BuildCmd(sql, param, timeoutSeconds, commandType, _txContext.Current, ct);
-                return await _connection.QuerySingleOrDefaultAsync<T>(cmd);
-            },
-            r => r == null ? 0 : 1,
-            ct);
-    }
-
     public Task<int> ExecuteAsync(string sql, object? param = null, int? timeoutSeconds = null,
         CommandType commandType = CommandType.Text, CancellationToken ct = default)
     {
@@ -399,18 +383,4 @@ public sealed class DbExecutor : IDbExecutor
             ct);
     }
 
-    public Task<T?> QuerySingleOrDefaultInTxAsync<T>(SqlConnection conn, SqlTransaction tx, string sql, object? param = null,
-        int? timeoutSeconds = null, CommandType commandType = CommandType.Text, CancellationToken ct = default)
-    {
-        return ExecuteWithLogAsync(
-            sql,
-            param,
-            async () =>
-            {
-                var cmd = BuildCmd(sql, param, timeoutSeconds, commandType, tx, ct);
-                return await conn.QuerySingleOrDefaultAsync<T>(cmd);
-            },
-            r => r == null ? 0 : 1,
-            ct);
-    }
 }

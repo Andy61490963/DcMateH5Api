@@ -209,7 +209,7 @@ ORDER BY RULE_ORDER";
         if (string.IsNullOrWhiteSpace(rule.GUARD_SQL))
             return null;
         
-        var result = await _db.QuerySingleOrDefaultInTxAsync<GuardSqlResult>(
+        var result = await _db.QueryFirstOrDefaultInTxAsync<GuardSqlResult>(
             tx.Connection,
             tx,
             rule.GUARD_SQL!,
