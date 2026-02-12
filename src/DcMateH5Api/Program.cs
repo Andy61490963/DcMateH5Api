@@ -17,6 +17,7 @@ using DcMateH5.Abstractions.Form.FormLogic;
 using DcMateH5.Abstractions.Form.Options;
 using DcMateH5.Abstractions.Form.Transaction;
 using DcMateH5.Abstractions.Log;
+using DcMateH5.Abstractions.KaosuQc;
 using DcMateH5.Abstractions.Menu;
 using DcMateH5.Abstractions.Wip;
 using DcMateH5.Infrastructure;
@@ -24,6 +25,7 @@ using DcMateH5.Infrastructure.Form.Form;
 using DcMateH5.Infrastructure.Form.FormLogic;
 using DcMateH5.Infrastructure.Form.Transaction;
 using DcMateH5.Infrastructure.Log;
+using DcMateH5.Infrastructure.KaosuQc;
 using DcMateH5.Infrastructure.Menu;
 using DcMateH5.Infrastructure.Wip;
 using DcMateH5Api.BackgroundService;
@@ -117,6 +119,7 @@ builder.Services.AddScoped<IFormDesignerTableValueFunctionService, FormDesignerT
 builder.Services.AddScoped<IDropdownSqlSyncService, DropdownSqlSyncService>();
 builder.Services.AddScoped<IFormTableValueFunctionService, FormTableValueFunctionService>();
 builder.Services.AddScoped<ILogService, LogService>();
+builder.Services.AddScoped<IKaosuQcService, KaosuQcService>();
 
 // Menu Tree
 builder.Services.AddScoped<IMenuService, MenuService>();
