@@ -7,7 +7,7 @@ namespace DcMateH5Api.Areas.KaosuQc.Controllers;
 
 [Area(Routes.AreaName)]
 [Route(Routes.Base)]
-[ApiExplorerSettings(GroupName = SwaggerGroups.Wip)]
+[ApiExplorerSettings(GroupName = SwaggerGroups.ZZKaosuQc)]
 [ApiController]
 public class KaosuQcController : ControllerBase
 {
