@@ -10,20 +10,31 @@ Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "DcMateH5Api", "src\DcMateH5
 	EndProjectSection
 EndProject
 
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "DbExtensions", "src\DbExtensions\DbExtensions.csproj", "{0E3218F3-9588-44EF-B153-973B9059B233}"
-EndProject
 
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "DcMateClassLibrary", "src\DcMateClassLibrary\DcMateClassLibrary.csproj", "{537FAD65-DD14-4456-9B64-4F1EDB61C7BF}"
-EndProject
 
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "DcMateH5.Abstractions", "src\DcMateH5.Abstractions\DcMateH5.Abstractions.csproj", "{7E85B5E8-18A2-48CB-87CC-A704BD4A9923}"
-EndProject
 
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "DcMateH5.Infrastructure", "src\DcMateH5.Infrastructure\DcMateH5.Infrastructure.csproj", "{DA09CACE-0BE3-4967-AB22-DA4C4831549E}"
-	ProjectSection(ProjectDependencies) = postProject
-		{7E85B5E8-18A2-48CB-87CC-A704BD4A9923} = {7E85B5E8-18A2-48CB-87CC-A704BD4A9923}
-	EndProjectSection
-EndProject
+
+
+#Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "DbExtensions", "src\DbExtensions\DbExtensions.csproj", "{0E3218F3-9588-44EF-B153-973B9059B233}"
+#EndProject
+
+#Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "DcMateClassLibrary", "src\DcMateClassLibrary\DcMateClassLibrary.csproj", "{537FAD65-DD14-4456-9B64-4F1EDB61C7BF}"
+#EndProject
+
+#Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "DcMateH5.Abstractions", "src\DcMateH5.Abstractions\DcMateH5.Abstractions.csproj", "{7E85B5E8-18A2-48CB-87CC-A704BD4A9923}"
+#EndProject
+
+#Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "DcMateH5.Infrastructure", "src\DcMateH5.Infrastructure\DcMateH5.Infrastructure.csproj", "{DA09CACE-0BE3-4967-AB22-DA4C4831549E}"
+#	ProjectSection(ProjectDependencies) = postProject
+#		{7E85B5E8-18A2-48CB-87CC-A704BD4A9923} = {7E85B5E8-18A2-48CB-87CC-A704BD4A9923}
+#	EndProjectSection
+#EndProject
+
+
+
+
+
+
 
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution

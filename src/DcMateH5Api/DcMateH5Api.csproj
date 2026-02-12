@@ -29,12 +29,36 @@
   </ItemGroup>
 
 
-  <ItemGroup>
-    <ProjectReference Include="..\DcMateClassLibrary\DcMateClassLibrary.csproj" />
-    <ProjectReference Include="..\DbExtensions\DbExtensions.csproj" />
-    <ProjectReference Include="..\DcMateH5.Abstractions\DcMateH5.Abstractions.csproj" />
-    <ProjectReference Include="..\DcMateH5.Infrastructure\DcMateH5.Infrastructure.csproj" />
-  </ItemGroup>
+  <!-- 這段是開發的時候，DLL很難Debug，用ProjectReference模式 -->
+  <!-- <ItemGroup> -->
+    <!-- <ProjectReference Include="..\DcMateClassLibrary\DcMateClassLibrary.csproj" /> -->
+    <!-- <ProjectReference Include="..\DbExtensions\DbExtensions.csproj" /> -->
+    <!-- <ProjectReference Include="..\DcMateH5.Abstractions\DcMateH5.Abstractions.csproj" /> -->
+    <!-- <ProjectReference Include="..\DcMateH5.Infrastructure\DcMateH5.Infrastructure.csproj" /> -->
+  <!-- </ItemGroup> -->
+
+  <!-- 這段是因為Jack要求編譯成DLL，所以在這邊引用 -->
+	<ItemGroup>
+	  <Reference Include="DcMateH5.Infrastructure">
+		<HintPath>Reference\DcMateH5.Infrastructure.dll</HintPath>
+		<Private>true</Private>
+	  </Reference>
+
+	  <Reference Include="DcMateH5.Abstractions">
+		<HintPath>Reference\DcMateH5.Abstractions.dll</HintPath>
+		<Private>true</Private>
+	  </Reference>
+
+	  <Reference Include="DcMateClassLibrary">
+		<HintPath>Reference\DcMateClassLibrary.dll</HintPath>
+		<Private>true</Private>
+	  </Reference>
+
+	  <Reference Include="DbExtensions">
+		<HintPath>Reference\DbExtensions.dll</HintPath>
+		<Private>true</Private>
+	  </Reference>
+	</ItemGroup>
 
   <!-- 這段可留可不留；有些 IDE/CI 喜歡明確宣告 launchSettings -->
   <ItemGroup>
