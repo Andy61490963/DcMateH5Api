@@ -209,7 +209,7 @@ var swaggerGroups = new[]
     SwaggerGroups.ApiStatus, SwaggerGroups.Enum, SwaggerGroups.Log,
     SwaggerGroups.Security, SwaggerGroups.Menu,
     SwaggerGroups.Form, SwaggerGroups.FormWithMasterDetail, SwaggerGroups.FormWithMultipleMapping,
-    SwaggerGroups.FormTableValueFunction, SwaggerGroups.Wip
+    SwaggerGroups.FormTableValueFunction, SwaggerGroups.Wip, SwaggerGroups.ZZKaosuQc
 };
 
 builder.Services.AddEndpointsApiExplorer();

@@ -21,6 +21,8 @@ public static class SwaggerGroups
     public const string Wip = nameof(Wip);
 
     public const string Test = nameof(Test);
+    
+    public const string ZZKaosuQc = nameof(ZZKaosuQc);
 
     public static readonly Dictionary<string, string> DisplayNames = new()
     {
@@ -38,6 +40,8 @@ public static class SwaggerGroups
         { Menu, "群組、功能、權限設定" },
 
         { Wip, "報工" },
-        { Test, "測試" }
+        { Test, "測試" },
+        
+        { ZZKaosuQc, "高速Qc" }
     };
 }
