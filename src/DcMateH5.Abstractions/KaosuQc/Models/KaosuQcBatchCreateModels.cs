@@ -29,7 +29,7 @@ public class KaosuQcHeaderCreateRequest
     public string? WorkOrder { get; set; }
 
     /// <summary>治具代碼。</summary>
-    public string? ToolCode { get; set; }
+    public string? ItemNo { get; set; }
 
     /// <summary>檢驗時間。</summary>
     public DateTime? InspectionTime { get; set; }
@@ -59,7 +59,7 @@ public class KaosuQcDetailCreateRequest
     public string? InspectionNo { get; set; }
 
     /// <summary>料號。</summary>
-    public string? MaterialNo { get; set; }
+    public string? ItemNo { get; set; }
 
     /// <summary>檢驗項目。</summary>
     public string? InspectionItem { get; set; }
@@ -67,8 +67,8 @@ public class KaosuQcDetailCreateRequest
     /// <summary>檢驗值。</summary>
     public string? InspectionValue { get; set; }
 
-    /// <summary>檢驗時間。</summary>
-    public DateTime? InspectionTime { get; set; }
+    /// <summary>檢驗時間(分鐘)。</summary>
+    public int? InspectionTimeMinutes { get; set; }
 
     /// <summary>建立者（可不帶；將由單頭/CurrentUserAccessor 補值）。</summary>
     public string? CreatedUser { get; set; }

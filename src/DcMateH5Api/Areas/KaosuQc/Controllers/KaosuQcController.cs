@@ -23,13 +23,6 @@ public class KaosuQcController : ControllerBase
     /// <summary>
     /// 批次新增 Kaosu 品檢資料（單頭 + 多筆單身）。
     /// </summary>
-    /// <remarks>
-    /// 業務規則：
-    /// 1. 一個 request 可一次送入多個單頭，每個單頭可包含多筆單身。
-    /// 2. 全部資料在同一交易中寫入，任一單頭/單身失敗即 rollback。
-    /// 3. 若 INSPECTION_NO 已存在，視為失敗並 rollback。
-    /// 4. 單身 INSPECTION_NO 一律以單頭 INSPECTION_NO 覆蓋。
-    /// </remarks>
     [HttpPost(Routes.CreateBatch)]
     [ProducesResponseType(typeof(KaosuQcBatchCreateResponse), StatusCodes.Status200OK)]
     [ProducesResponseType(typeof(KaosuQcErrorResponse), StatusCodes.Status500InternalServerError)]
@@ -45,7 +38,7 @@ public class KaosuQcController : ControllerBase
             _logger.LogError(ex, "KaosuQc 批次新增失敗");
             return StatusCode(StatusCodes.Status500InternalServerError, new KaosuQcErrorResponse
             {
-                Message = "新增失敗，請稍後再試或聯繫系統管理員。"
+                Message = ex.Message
             });
         }
     }
