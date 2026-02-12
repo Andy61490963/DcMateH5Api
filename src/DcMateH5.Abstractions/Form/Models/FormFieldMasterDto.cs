@@ -1,0 +1,119 @@
+using System.ComponentModel.DataAnnotations;
+using System.ComponentModel.DataAnnotations.Schema;
+using DcMateClassLibrary.Enums.Form;
+
+namespace DcMateH5.Abstractions.Form.Models;
+
+
+[Table("FORM_FIELD_MASTER")]
+public class FormFieldMasterDto
+{
+    [Key]
+    [Column("ID")]
+    public Guid ID { get; set; } = Guid.NewGuid();
+    
+    
+    
+    [Column("FORM_NAME")]
+    public string FORM_NAME { get; set; }  
+    
+    [Column("FORM_CODE")]
+    public string FORM_CODE { get; set; }  
+    
+    [Column("FORM_DESCRIPTION")]
+    public string FORM_DESCRIPTION { get; set; }  
+    
+    
+    
+    [Column("BASE_TABLE_NAME")]
+    public string? BASE_TABLE_NAME { get; set; }  
+    
+    [Column("DETAIL_TABLE_NAME")]
+    public string? DETAIL_TABLE_NAME { get; set; }
+    
+    [Column("VIEW_TABLE_NAME")]
+    public string? VIEW_TABLE_NAME { get; set; }
+    
+    [Column("MAPPING_TABLE_NAME")]
+    public string? MAPPING_TABLE_NAME { get; set; }
+    
+    [Column("TVF_TABLE_NAME")]
+    public string? TVF_TABLE_NAME { get; set; }
+    
+    
+    
+    [Column("BASE_TABLE_ID")]
+    public Guid? BASE_TABLE_ID { get; set; }
+    
+    [Column("DETAIL_TABLE_ID")]
+    public Guid? DETAIL_TABLE_ID { get; set; }
+    
+    [Column("VIEW_TABLE_ID")]
+    public Guid? VIEW_TABLE_ID { get; set; }
+
+    [Column("MAPPING_TABLE_ID")]
+    public Guid? MAPPING_TABLE_ID { get; set; }
+    
+    [Column("TVF_TABLE_ID")]
+    public Guid? TVF_TABLE_ID { get; set; }
+
+    [Column("FORM_FIELD_MASTER_BUTTON_LINK_ID")]
+    public Guid? FORM_FIELD_MASTER_BUTTON_LINK_ID { get; set; }
+    
+    [Column("FORM_FIELD_MASTER1_BUTTON_LINK_ID")]
+    public Guid? FORM_FIELD_MASTER1_BUTTON_LINK_ID { get; set; }
+    
+    [Column("MAPPING_PK_COLUMN")]
+    public string? MAPPING_PK_COLUMN { get; set; }
+    
+    
+    
+    [Column("MAPPING_BASE_FK_COLUMN")]
+    public string? MAPPING_BASE_FK_COLUMN { get; set; }
+
+    [Column("MAPPING_DETAIL_FK_COLUMN")]
+    public string? MAPPING_DETAIL_FK_COLUMN { get; set; }
+
+    [Column("MAPPING_BASE_COLUMN_NAME")]
+    public string? MAPPING_BASE_COLUMN_NAME { get; set; }
+
+    /// <summary>
+    /// 注意，他有共用兩種功能
+    /// </summary>
+    [Column("MAPPING_DETAIL_COLUMN_NAME")]
+    public string? MAPPING_DETAIL_COLUMN_NAME { get; set; }
+    
+    
+    
+    [Column("TARGET_MAPPING_COLUMN_NAME")]
+    public string? TARGET_MAPPING_COLUMN_NAME { get; set; }
+    
+    
+    
+    [Column("SOURCE_DETAIL_COLUMN_CODE")]
+    public string? SOURCE_DETAIL_COLUMN_CODE { get; set; }
+    
+    [Column("TARGET_MAPPING_COLUMN_CODE")]
+    public string? TARGET_MAPPING_COLUMN_CODE { get; set; }
+    
+    
+    
+    [Column("FUNCTION_TYPE")]
+    public FormFunctionType? FUNCTION_TYPE { get; set; }
+    
+    [Column("STATUS")]
+    public int STATUS { get; set; }  
+    
+    [Column("SCHEMA_TYPE")]
+    public TableSchemaQueryType SCHEMA_TYPE { get; set; }
+    
+    // [Timestamp]
+    // [Column("ROW_VERSION")]
+    // public byte[] ROW_VERSION { get; set; } = default!;
+    
+    [Column("CREATE_TIME")]
+    public DateTime CREATE_TIME { get; set; }
+    
+    [Column("EDIT_TIME")]
+    public DateTime EDIT_TIME { get; set; }
+}
