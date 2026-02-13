@@ -49,21 +49,23 @@ public class AuthenticationService : Interfaces.IAuthenticationService
         // Concurrent Login Check
         // ---------------------------------------------------------
         int expireMinutes = _config.GetValue<int>("AuthSettings:ExpireTimeSpanMinutes");
-        int maxConcurrentLogins = _config.GetValue<int>("AuthSettings:MaxConcurrentLogins", 3); // Default 3 if not set
         
-        var cutoffTime = DateTime.Now.AddMinutes(-expireMinutes);
-        
-        // Count active sessions (GLOBAL)
-        var countWhere = new WhereBuilder<UserLoginLogDto>()
-            .AndEq(x => x.LOGOUT_TIME, null)
-            .AndGt(x => x.LAST_ACTIVE_TIME, cutoffTime);
-
-        var activeCount = await _sqlHelper.SelectCountAsync(countWhere, ct);
-
-        if (activeCount >= maxConcurrentLogins)
-        {
-             return Result<LoginResponseViewModel>.Fail(AuthenticationErrorCode.Unauthorized, $"已達最大同時登入限制 ({maxConcurrentLogins})，請稍後再試或登出其他裝置。");
-        }
+        // 先暫時不卡使用者登入數量
+        // int maxConcurrentLogins = _config.GetValue<int>("AuthSettings:MaxConcurrentLogins", 3); // Default 3 if not set
+        //
+        // var cutoffTime = DateTime.Now.AddMinutes(-expireMinutes);
+        //
+        // // Count active sessions (GLOBAL)
+        // var countWhere = new WhereBuilder<UserLoginLogDto>()
+        //     .AndEq(x => x.LOGOUT_TIME, null)
+        //     .AndGt(x => x.LAST_ACTIVE_TIME, cutoffTime);
+        //
+        // var activeCount = await _sqlHelper.SelectCountAsync(countWhere, ct);
+        //
+        // if (activeCount >= maxConcurrentLogins)
+        // {
+        //      return Result<LoginResponseViewModel>.Fail(AuthenticationErrorCode.Unauthorized, $"已達最大同時登入限制 ({maxConcurrentLogins})，請稍後再試或登出其他裝置。");
+        // }
 
         // Create Login Log
         var loginLogSid = Guid.NewGuid();
