@@ -24,6 +24,8 @@ public class KaosuQcHeaderCreateRequest
 
     public string? MaterialCheck { get; set; }
     
+    public string? CheckResult { get; set; }
+    
     /// <summary>來源單號。</summary>
     public string? SourceNo { get; set; }
 
