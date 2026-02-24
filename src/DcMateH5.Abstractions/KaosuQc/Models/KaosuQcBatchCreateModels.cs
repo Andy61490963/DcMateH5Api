@@ -22,6 +22,8 @@ public class KaosuQcHeaderCreateRequest
     /// <summary>檢驗型別。</summary>
     public string? InspectionType { get; set; }
 
+    public string? MaterialCheck { get; set; }
+    
     /// <summary>來源單號。</summary>
     public string? SourceNo { get; set; }
 
