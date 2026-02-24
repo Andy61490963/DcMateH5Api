@@ -69,7 +69,16 @@ public class KaosuQcDetailCreateRequest
 
     /// <summary>檢驗時間(分鐘)。</summary>
     public int? InspectionTimeMinutes { get; set; }
-
+    
+    // 2026/02/24 新增 7 欄位
+    public string? Usl { get; set; }
+    public string? Ucl { get; set; }
+    public int? SampleSize { get; set; }
+    public string? Target { get; set; }
+    public string? Lcl { get; set; }
+    public string? Lsl { get; set; }
+    public DateTime? BaseWorkTime { get; set; }
+    
     /// <summary>建立者（可不帶；將由單頭/CurrentUserAccessor 補值）。</summary>
     public string? CreatedUser { get; set; }
 
