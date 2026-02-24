@@ -77,7 +77,7 @@ public class KaosuQcDetailCreateRequest
     public string? Target { get; set; }
     public string? Lcl { get; set; }
     public string? Lsl { get; set; }
-    public DateTime? BaseWorkTime { get; set; }
+    public int? BaseWorkTime { get; set; }
     
     /// <summary>建立者（可不帶；將由單頭/CurrentUserAccessor 補值）。</summary>
     public string? CreatedUser { get; set; }
