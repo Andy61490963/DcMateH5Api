@@ -22,9 +22,21 @@ public class KaosuQcHeaderCreateRequest
     /// <summary>檢驗型別。</summary>
     public string? InspectionType { get; set; }
 
+    // 2026/02/24 新增 2 欄位
     public string? MaterialCheck { get; set; }
     
     public string? CheckResult { get; set; }
+    
+    // 2026/02/25 新增 4 欄位
+    public decimal? StandardWeight { get; set; }
+    
+    public int? Cavity { get; set; }
+    
+    public string? MoldNo { get; set; }
+    
+    public string? EqpNo { get; set; }
+    
+    
     
     /// <summary>來源單號。</summary>
     public string? SourceNo { get; set; }
@@ -82,6 +94,9 @@ public class KaosuQcDetailCreateRequest
     public string? Lcl { get; set; }
     public string? Lsl { get; set; }
     public int? BaseWorkTime { get; set; }
+    
+    // 2026/02/24 新增 7 欄位
+    public int? RowCount { get; set; }
     
     /// <summary>建立者（可不帶；將由單頭/CurrentUserAccessor 補值）。</summary>
     public string? CreatedUser { get; set; }
