@@ -26,13 +26,13 @@ public class FormFieldDeleteGuardSqlDto
     public int? RULE_ORDER { get; set; }
 
     [Column("CREATE_USER")]
-    public Guid? CREATE_USER { get; set; }
+    public string? CREATE_USER { get; set; }
 
     [Column("CREATE_TIME")]
     public DateTime? CREATE_TIME { get; set; }
 
     [Column("EDIT_USER")]
-    public Guid? EDIT_USER { get; set; }
+    public string? EDIT_USER { get; set; }
 
     [Column("EDIT_TIME")]
     public DateTime? EDIT_TIME { get; set; }

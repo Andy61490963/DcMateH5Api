@@ -608,8 +608,8 @@ public class FormDesignerController : BaseController
     {
         try
         {
-            var userId = CurrentUser.IsAuthenticated ? CurrentUser.Id : (Guid?)null;
-            var rule = await _formDesignerService.CreateDeleteGuardSql(model, userId, ct);
+            var account = CurrentUser.IsAuthenticated ? CurrentUser.Account : null;
+            var rule = await _formDesignerService.CreateDeleteGuardSql(model, account, ct);
             return Ok(rule);
         }
         catch (HttpStatusCodeException ex)
@@ -625,8 +625,8 @@ public class FormDesignerController : BaseController
     {
         try
         {
-            var userId = CurrentUser.IsAuthenticated ? CurrentUser.Id : (Guid?)null;
-            var rule = await _formDesignerService.UpdateDeleteGuardSql(id, model, userId, ct);
+            var account = CurrentUser.IsAuthenticated ? CurrentUser.Account : null;
+            var rule = await _formDesignerService.UpdateDeleteGuardSql(id, model, account, ct);
             if (rule == null)
             {
                 return NotFound();
@@ -647,8 +647,8 @@ public class FormDesignerController : BaseController
     {
         try
         {
-            var userId = CurrentUser.IsAuthenticated ? CurrentUser.Id : (Guid?)null;
-            var deleted = await _formDesignerService.DeleteDeleteGuardSql(id, userId, ct);
+            var account = CurrentUser.IsAuthenticated ? CurrentUser.Account : null;
+            var deleted = await _formDesignerService.DeleteDeleteGuardSql(id, account, ct);
             if (!deleted)
             {
                 return NotFound();

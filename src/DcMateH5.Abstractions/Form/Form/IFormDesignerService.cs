@@ -138,12 +138,12 @@ public interface IFormDesignerService
     /// 新增刪除防呆 SQL 規則。
     /// </summary>
     /// <param name="model">新增內容</param>
-    /// <param name="currentUserId">目前登入使用者 ID</param>
+    /// <param name="account">目前登入使用者 account</param>
     /// <param name="ct">取消權杖</param>
     /// <returns>新增後的規則資料</returns>
     Task<FormFieldDeleteGuardSqlDto> CreateDeleteGuardSql(
         FormFieldDeleteGuardSqlCreateViewModel model,
-        Guid? currentUserId,
+        string? account,
         CancellationToken ct = default);
 
     /// <summary>
@@ -157,17 +157,17 @@ public interface IFormDesignerService
     Task<FormFieldDeleteGuardSqlDto?> UpdateDeleteGuardSql(
         Guid id,
         FormFieldDeleteGuardSqlUpdateViewModel model,
-        Guid? currentUserId,
+        string? account,
         CancellationToken ct = default);
 
     /// <summary>
     /// 刪除刪除防呆 SQL 規則（軟刪除）。
     /// </summary>
     /// <param name="id">規則 ID</param>
-    /// <param name="currentUserId">目前登入使用者 ID</param>
+    /// <param name="account">目前登入使用者 account</param>
     /// <param name="ct">取消權杖</param>
     /// <returns>是否刪除成功</returns>
-    Task<bool> DeleteDeleteGuardSql(Guid id, Guid? currentUserId, CancellationToken ct = default);
+    Task<bool> DeleteDeleteGuardSql(Guid id, string? account, CancellationToken ct = default);
 
     Task UpsertMissingConfigsInTxAsync(
         SqlConnection conn,

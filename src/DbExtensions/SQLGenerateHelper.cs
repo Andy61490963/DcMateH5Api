@@ -66,10 +66,10 @@ namespace DbExtensions
         private const string P_IS_DELETE   = "IsDelete";
 
         // 目前登入者（JWT sub），抓不到回 Guid.Empty
-        private Guid GetCurrentUserId()
+        private string GetCurrentUserId()
         {
             var user = _currentUser.Get();
-            return user.Id;
+            return user.Account;
         }
 
         private Task<DateTime> GetDbNowAsync(CancellationToken ct)
@@ -82,19 +82,19 @@ namespace DbExtensions
             List<string> cols,
             List<string> vals,
             DynamicParameters dp,
-            Guid uid,
+            string account,
             DateTime now)
         {
-            AddColIfNotExists(cols, vals, dp, COL_CREATE_USER, P_CREATE_USER, uid);
+            AddColIfNotExists(cols, vals, dp, COL_CREATE_USER, P_CREATE_USER, account);
             AddColIfNotExists(cols, vals, dp, COL_CREATE_TIME, P_CREATE_TIME, now);
-            AddColIfNotExists(cols, vals, dp, COL_EDIT_USER,   P_EDIT_USER,   uid);
+            AddColIfNotExists(cols, vals, dp, COL_EDIT_USER,   P_EDIT_USER,   account);
             AddColIfNotExists(cols, vals, dp, COL_EDIT_TIME,   P_EDIT_TIME,   now);
             AddColIfNotExists(cols, vals, dp, COL_IS_DELETE,   P_IS_DELETE,   false);
         }
 
-        private static void AddAuditForUpdate(List<string> sets, DynamicParameters dp, Guid uid, DateTime now)
+        private static void AddAuditForUpdate(List<string> sets, DynamicParameters dp, string account, DateTime now)
         {
-            sets.Add($"[{COL_EDIT_USER}] = @{P_EDIT_USER}"); dp.Add(P_EDIT_USER, uid);
+            sets.Add($"[{COL_EDIT_USER}] = @{P_EDIT_USER}"); dp.Add(P_EDIT_USER, account);
             sets.Add($"[{COL_EDIT_TIME}] = @{P_EDIT_TIME}"); dp.Add(P_EDIT_TIME, now);
         }
         
@@ -149,9 +149,9 @@ namespace DbExtensions
 
             if (EnableAuditColumns)
             {
-                var id = GetCurrentUserId();
+                var account = GetCurrentUserId();
                 var now = await GetDbNowAsync(ct);
-                AddAuditForInsert(cols, vals, dp, id, now);
+                AddAuditForInsert(cols, vals, dp, account, now);
             }
 
             var sql = $"INSERT INTO {table} ({string.Join(", ", cols)}) VALUES ({string.Join(", ", vals)});";
@@ -268,9 +268,9 @@ namespace DbExtensions
 
             if (enableAuditColumns)
             {
-                var uid = GetCurrentUserId();
+                var account = GetCurrentUserId();
                 var now = await GetDbNowAsync(ct);
-                AddAuditForUpdate(sets, dp, uid, now);
+                AddAuditForUpdate(sets, dp, account, now);
             }
 
             var where = $"[{colByProp[key.Name]}] = @{key.Name}";

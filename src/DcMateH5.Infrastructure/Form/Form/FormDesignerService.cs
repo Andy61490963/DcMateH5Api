@@ -148,12 +148,12 @@ public class FormDesignerService : IFormDesignerService
     /// 新增刪除防呆 SQL 規則。
     /// </summary>
     /// <param name="model">新增內容</param>
-    /// <param name="currentUserId">目前登入使用者 ID</param>
+    /// <param name="account">目前登入使用者 account</param>
     /// <param name="ct">取消權杖</param>
     /// <returns>新增後的規則資料</returns>
     public async Task<FormFieldDeleteGuardSqlDto> CreateDeleteGuardSql(
         FormFieldDeleteGuardSqlCreateViewModel model,
-        Guid? currentUserId,
+        string? account,
         CancellationToken ct = default)
     {
         var entity = new FormFieldDeleteGuardSqlDto
@@ -164,9 +164,9 @@ public class FormDesignerService : IFormDesignerService
             GUARD_SQL = model.GUARD_SQL,
             IS_ENABLED = model.IS_ENABLED,
             RULE_ORDER = model.RULE_ORDER,
-            CREATE_USER = currentUserId,
+            CREATE_USER = account,
             CREATE_TIME = DateTime.Now,
-            EDIT_USER = currentUserId,
+            EDIT_USER = account,
             EDIT_TIME = DateTime.Now,
             IS_DELETE = false
         };
@@ -190,13 +190,13 @@ public class FormDesignerService : IFormDesignerService
     /// </summary>
     /// <param name="id">規則 ID</param>
     /// <param name="model">更新內容</param>
-    /// <param name="currentUserId">目前登入使用者 ID</param>
+    /// <param name="account">目前登入使用者 ID</param>
     /// <param name="ct">取消權杖</param>
     /// <returns>更新後的規則資料（找不到則回傳 null）</returns>
     public async Task<FormFieldDeleteGuardSqlDto?> UpdateDeleteGuardSql(
         Guid id,
         FormFieldDeleteGuardSqlUpdateViewModel model,
-        Guid? currentUserId,
+        string? account,
         CancellationToken ct = default)
     {
         var existing = await GetDeleteGuardSql(id, ct);
@@ -207,7 +207,7 @@ public class FormDesignerService : IFormDesignerService
         existing.GUARD_SQL = model.GUARD_SQL;
         existing.IS_ENABLED = model.IS_ENABLED;
         existing.RULE_ORDER = model.RULE_ORDER;
-        existing.EDIT_USER = currentUserId;
+        existing.EDIT_USER = account;
         existing.EDIT_TIME = DateTime.Now;
 
         var originalAudit = _sqlHelper.EnableAuditColumns;
@@ -228,15 +228,15 @@ public class FormDesignerService : IFormDesignerService
     /// 刪除刪除防呆 SQL 規則（軟刪除）。
     /// </summary>
     /// <param name="id">規則 ID</param>
-    /// <param name="currentUserId">目前登入使用者 ID</param>
+    /// <param name="account">目前登入使用者 account</param>
     /// <param name="ct">取消權杖</param>
     /// <returns>是否刪除成功</returns>
-    public async Task<bool> DeleteDeleteGuardSql(Guid id, Guid? currentUserId, CancellationToken ct = default)
+    public async Task<bool> DeleteDeleteGuardSql(Guid id, string? account, CancellationToken ct = default)
     {
         var existing = await GetDeleteGuardSql(id, ct);
         if (existing == null) return false;
 
-        existing.EDIT_USER = currentUserId;
+        existing.EDIT_USER = account;
         existing.EDIT_TIME = DateTime.Now;
         existing.IS_DELETE = true;
 
