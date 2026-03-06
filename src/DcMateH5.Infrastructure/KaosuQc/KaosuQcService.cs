@@ -80,7 +80,7 @@ INSERT INTO ZZ_KAOSU_INSPECTION_HEADER
     INSPECTION_TIME,
     INSPECTION_RESULT,
     INSPECTOR,
-    CREATED_USER,
+    CREATE_USER,
     EDIT_TIME,
     EDIT_USER
 )
@@ -101,7 +101,7 @@ VALUES
     @INSPECTION_TIME,
     @INSPECTION_RESULT,
     @INSPECTOR,
-    @CREATED_USER,
+    @CREATE_USER,
     SYSDATETIME(),
     @EDIT_USER
 );",
@@ -122,7 +122,7 @@ VALUES
                         INSPECTION_TIME = header.InspectionTime,
                         INSPECTION_RESULT = header.InspectionResult,
                         INSPECTOR = header.Inspector,
-                        CREATED_USER = headerCreatedUser,
+                        CREATE_USER = headerCreatedUser,
                         EDIT_USER = headerEditUser
                     },
                     transaction: tx,
@@ -154,7 +154,7 @@ INSERT INTO ZZ_KAOSU_INSPECTION_DETAIL
     LSL,
     BASE_WORK_TIME,
     ROW_COUNT,
-    CREATED_USER,
+    CREATE_USER,
     EDIT_TIME,
     EDIT_USER
 )
@@ -175,7 +175,7 @@ VALUES
     @LSL,
     @BASE_WORK_TIME,
     @ROW_COUNT,
-    @CREATED_USER,
+    @CREATE_USER,
     SYSDATETIME(),
     @EDIT_USER
 );",
@@ -196,7 +196,7 @@ VALUES
                             LSL = detail.Lsl,
                             BASE_WORK_TIME = detail.BaseWorkTime,
                             ROW_COUNT = detail.RowCount,
-                            CREATED_USER = detailCreatedUser,
+                            CREATE_USER = detailCreatedUser,
                             EDIT_USER = detailEditUser
                         },
                         transaction: tx,
