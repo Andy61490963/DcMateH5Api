@@ -154,7 +154,7 @@ public class FormService : IFormService
 
             foreach (var row in rows)
             {
-                if (row.PkId == null)
+                if (row.PkId == null && funcType == FormFunctionType.MasterMaintenance)
                 {
                     throw new InvalidOperationException($"缺失 PK 欄位，請檢查資料來源表 -> [{spec.DataTableName}]");
                 }

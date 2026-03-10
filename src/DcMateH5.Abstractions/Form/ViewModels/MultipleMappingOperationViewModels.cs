@@ -155,12 +155,14 @@ public class MultipleMappingListViewModel
     /// <summary>
     /// 已建立對應關係的明細資料清單（左側）。
     /// </summary>
-    public List<MultipleMappingItemViewModel> Linked { get; set; } = new();
+    public Dictionary<string, MultipleMappingItemViewModel> Linked { get; set; }
+        = new(StringComparer.OrdinalIgnoreCase);
 
     /// <summary>
     /// 尚未建立對應關係的明細資料清單（右側）。
     /// </summary>
-    public List<MultipleMappingItemViewModel> Unlinked { get; set; } = new();
+    public Dictionary<string, MultipleMappingItemViewModel> Unlinked { get; set; }
+        = new(StringComparer.OrdinalIgnoreCase);
 }
 
 /// <summary>

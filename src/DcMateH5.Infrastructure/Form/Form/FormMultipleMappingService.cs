@@ -121,8 +121,8 @@ SELECT ID AS Id,
             TargetMappingColumnName = header.TARGET_MAPPING_COLUMN_NAME,
             SourceDetailColumnCode = header.SOURCE_DETAIL_COLUMN_CODE,
             TargetMappingColumnCode = header.TARGET_MAPPING_COLUMN_CODE,
-            Linked = linkedItems,
-            Unlinked = unlinkedItems
+            Linked = ToDictionaryByDetailPk(linkedItems),
+            Unlinked = ToDictionaryByDetailPk(unlinkedItems)
         };
     }
 
@@ -1064,4 +1064,26 @@ WHERE b.[{header.MAPPING_BASE_FK_COLUMN}] = @BaseId;";
         return result;
     }
 
+    private static Dictionary<string, MultipleMappingItemViewModel> ToDictionaryByDetailPk(
+        IEnumerable<MultipleMappingItemViewModel> items)
+    {
+        var result = new Dictionary<string, MultipleMappingItemViewModel>(StringComparer.OrdinalIgnoreCase);
+
+        foreach (var item in items)
+        {
+            if (string.IsNullOrWhiteSpace(item.DetailPk))
+            {
+                throw new InvalidOperationException("DetailPk 不可為空");
+            }
+
+            if (result.ContainsKey(item.DetailPk))
+            {
+                throw new InvalidOperationException($"DetailPk 重複：{item.DetailPk}");
+            }
+
+            result[item.DetailPk] = item;
+        }
+
+        return result;
+    }
 }

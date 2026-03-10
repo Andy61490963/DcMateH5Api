@@ -22,6 +22,6 @@ public sealed class FormListResponseViewModel
 /// </summary>
 public sealed class FormListRowViewModel
 {
-    public string Pk { get; set; } = string.Empty;
+    public string? Pk { get; set; } = string.Empty;
     public List<FormFieldInputViewModel> Fields { get; set; } = new();
 }
