@@ -190,7 +190,7 @@ public class FormService : IFormService
 
                 items.Add(new FormListRowViewModel
                 {
-                    Pk = row.PkId.ToString()!,
+                    Pk = row.PkId?.ToString(),
                     Fields = rowFields
                 });
             }
