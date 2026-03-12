@@ -70,7 +70,7 @@ namespace DCMATEH5API.Areas.Menu.Models
         public string ImgIcon { get; set; } = string.Empty; // 新增 ImgIcon 接收 SQL 欄位
         [JsonIgnore]
         [Column("PARENT_ID")]
-        public string ParentId { get; set; } = "00000000-0000-0000-0000-000000000000";
+        public string? ParentId { get; set; }
         [JsonIgnore]
         [Column("SEQ")]
         public int SortOrder { get; set; }
@@ -95,7 +95,7 @@ namespace DCMATEH5API.Areas.Menu.Models
         public List<MenuNavigationViewModel> Children { get; set; } = new();
 
         [JsonIgnore]
-        public string ParentId { get; set; } = "0"; // 預設為 "0"
+        public string? ParentId { get; set; } 
         
         [JsonIgnore]
         public int SortOrder { get; set; }

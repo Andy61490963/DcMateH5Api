@@ -17,90 +17,30 @@ namespace DCMATEH5API.Areas.Menu.Controllers
         [HttpGet("GetMenuTree")]
         public async Task<IActionResult> GetNavigation()
         {
-            // --- 修正：動態讀取登入者資訊 ---
-            // 讀取登入時存入 ClaimTypes.Name 的帳號
+            // 1. 動態讀取登入者資訊
             var currentUser = User.Identity?.Name ?? "Guest";
 
-            // 讀取登入時自定義存入的 "UserLV"
-            var currentLv = User.FindFirst("UserLV")?.Value ?? "0";
+            // 2. 讀取登入時自定義存入的 "UserLV" (假設權限控制需要)
+            var currentLvStr = User.FindFirst("UserLV")?.Value ?? "0";
+            int.TryParse(currentLvStr, out int currentLv);
 
-            // 使用動態帳號去撈取該人的選單樹
-            var tree = await _menuService.GetMenuTreeAsync(currentUser);
+            // 3. ⭐ 關鍵修改：直接向 Service 要「已經處理好」的 MenuResponse
+            // Service 內部現在會處理：
+            // - 從資料庫 NULL 啟動樹狀結構
+            // - 過濾 Root 節點以免首頁出現重複入口
+            // - 遞迴填充 MenuList 並計算正確的 BackUrl
+            var finalResult = await _menuService.GetFullMenuByLvAsync(currentLv);
 
-            var finalResult = new MenuResponse();
-
-            // 預設首頁入口
-            finalResult.MenuList["index.html"] = new PageFolderViewModel
-            {
-                Title = "首頁",
-                Url = "index.html",
-                ImgIcon = "",
-                Tiles = tree.Select((node, index) => new TileViewModel
-                {
-                    Sid = node.Id,
-                    Title = node.Title,
-                    Url = node.Url,
-                    Property = node.SourceType == "PAGE" ? "Page" : "MENU",
-                    Lv = node.Lv,
-                    Seq = node.SortOrder,
-                    Pos = index + 1,
-                    ImgIcon = node.ImgIcon,
-                    Parameter = node.Parameter,
-                }).ToList()
-            };
-
-            // 遞迴將樹狀平鋪到 Dictionary 中
-            FillPagesDictionary(tree, finalResult.MenuList);
-
-            // --- 修正：回傳真實的 user 與 LV ---
+            // 4. 回傳統一格式
             return Ok(new MenuResult
             {
                 Success = true,
                 Data = finalResult,
                 Message = "查詢成功",
-                User = currentUser, // 回傳登入帳號
-                LV = currentLv      // 回傳資料庫撈出的 LV
+                User = currentUser,
+                LV = currentLvStr
             });
         }
-
-        private void FillPagesDictionary(List<MenuNavigationViewModel> nodes, Dictionary<string, PageFolderViewModel> pages, string backUrl = "index.html")
-        {
-            foreach (var node in nodes)
-            {
-                var key = node.Url?.Trim();
-                if (string.IsNullOrEmpty(key) || node.Children.Count == 0) continue;
-
-                if (!pages.ContainsKey(key))
-                {
-                    pages[key] = new PageFolderViewModel
-                    {
-                        Sid = node.Id,
-                        Title = node.Title,
-                        Url = node.Url,
-                        Lv = node.Lv,
-                        BackUrl = backUrl,
-                        ModuleName = node.Title,
-                        TypeGroup = node.Title,
-                        ImgIcon = node.ImgIcon,
-                        Desc = node.Desc,
-                        Parameter = node.Parameter,
-                        Tiles = node.Children.Select((child, index) => new TileViewModel
-                        {
-                            Sid = child.Id,
-                            Title = child.Title,
-                            Url = child.Url,
-                            Property = child.SourceType == "PAGE" ? "Page" : "MENU",
-                            Lv = child.Lv,
-                            Seq = child.SortOrder,
-                            Pos = index + 1,
-                            ImgIcon = child.ImgIcon,
-                            Desc = child.Desc,
-                            Parameter = child.Parameter
-                        }).ToList()
-                    };
-                }
-                FillPagesDictionary(node.Children, pages, key);
-            }
-        }
+       
     }
 }

@@ -51,31 +51,50 @@ public class MenuService : IMenuService
         var rawData = await _db.QueryAsync<MenuNavigationViewModel>(sql, new { UserId = userId });
 
         // 根節點 GUID 預設值
-        string rootGuid = "00000000-0000-0000-0000-000000000000";
+        //string rootGuid = "00000000-0000-0000-0000-000000000000";
 
-        return BuildTree(rawData.ToList(), rootGuid);
+        // ⭐ 關鍵：傳入 null，因為 Root 節點在資料庫裡 PARENT_ID 是 NULL
+        return BuildTree(rawData, null);
     }
 
     /// <summary>
     /// 遞迴組裝樹狀結構
     /// </summary>
-    private List<MenuNavigationViewModel> BuildTree(List<MenuNavigationViewModel> source, string parentId)
+    private List<MenuNavigationViewModel> BuildTree(List<MenuNavigationViewModel> source, string? parentId)
     {
+        // 標準化搜尋 ID
+        string? normalizedSearchId = string.IsNullOrWhiteSpace(parentId) ? null : parentId.Trim().ToLower();
+
         return source
-            .Where(x => x.ParentId.Equals(parentId, StringComparison.OrdinalIgnoreCase))
+            .Where(x => {
+                // 標準化當前節點的 ParentId
+                string? nodeParentId = string.IsNullOrWhiteSpace(x.ParentId) ? null : x.ParentId.Trim().ToLower();
+
+                // 如果是在找最頂層 (parentId 為 null)
+                if (normalizedSearchId == null)
+                {
+                    // 這裡要抓 ParentId 是真正的 null (或是因為 Model 預設值沒被蓋掉而顯示為 null 字串的情況)
+                    return nodeParentId == null || nodeParentId == "null";
+                }
+
+                // 如果是在找子層 (例如找 ParentId 為 0000... 的節點)
+                return nodeParentId == normalizedSearchId;
+            })
             .OrderBy(x => x.SortOrder)
             .Select(x => {
+                // ⭐ 預防死循環：如果 ID 跟 ParentId 一樣，就不往下找了
+                if (x.Id.Trim().ToLower() == x.ParentId?.Trim().ToLower()) return x;
+
                 x.Children = BuildTree(source, x.Id);
                 return x;
             }).ToList();
     }
-
     /// <summary>
     /// 取得前端專用格式的 MenuList 與 PageList
     /// </summary>
     public async Task<MenuResponse> GetFullMenuByLvAsync(int lv)
     {
-        var tree = await GetMenuTreeAsync("");
+        var allNodes = await GetMenuTreeAsync("");
         var response = new MenuResponse();
 
         var rootPage = new PageFolderViewModel
@@ -85,11 +104,20 @@ public class MenuService : IMenuService
             Tiles = new List<TileViewModel>()
         };
 
-        // 呼叫遞迴填充
-        FillPagesRecursive(tree, response, rootPage.Tiles);
+        // 1. 先找出 Root 那一筆 (0000...)
+        var rootNode = allNodes.FirstOrDefault(x => x.Id.Trim().Contains("00000000"));
 
-        // 將 index.html 入口加入
-        response.MenuList.Add("index.html", rootPage);
+        // 2. 決定哪些人要出現在首頁磁磚
+        // 如果有 Root 就拿它的小孩；如果沒 Root (對不到) 就拿 ParentId 為空的那些人
+        var startNodes = (rootNode != null && rootNode.Children.Any())
+                         ? rootNode.Children
+                         : allNodes.Where(x => string.IsNullOrWhiteSpace(x.ParentId) || x.ParentId == "null").ToList();
+
+        // 3. 執行填充 (這會同步填充 PageList)
+        FillPagesRecursive(startNodes, response, rootPage.Tiles, "index.html");
+
+        if (!response.MenuList.ContainsKey("index.html"))
+            response.MenuList.Add("index.html", rootPage);
 
         return response;
     }
@@ -97,22 +125,19 @@ public class MenuService : IMenuService
     /// <summary>
     /// 遞迴平鋪所有選單與頁面至 Response
     /// </summary>
-    private void FillPagesRecursive(List<MenuNavigationViewModel> nodes, MenuResponse response, List<TileViewModel> parentTiles, string currentBackUrl = "")
+    private void FillPagesRecursive(List<MenuNavigationViewModel> nodes, MenuResponse response, List<TileViewModel> parentTiles, string currentBackUrl)
     {
         foreach (var node in nodes)
         {
-            // 如果傳入的是空字串，代表是第一層，將返回路徑設為首頁
-            string backUrlToUse = string.IsNullOrEmpty(currentBackUrl) ? "index.html" : currentBackUrl;
-
             var targetUrl = string.IsNullOrEmpty(node.Url) ? $"{node.Title}/index.html" : node.Url;
 
-            // 加入目前層級的磁磚清單
+            // 產生磁磚
             parentTiles.Add(new TileViewModel
             {
                 Sid = node.Id,
                 Title = node.Title,
                 Url = targetUrl,
-                BackUrl = backUrlToUse, // ⭐ 設定返回的路徑
+                BackUrl = currentBackUrl, // ⭐ 設定正確的回上頁路徑
                 Parameter = node.Parameter,
                 Property = node.SourceType,
                 ImgIcon = node.ImgIcon,
@@ -120,15 +145,14 @@ public class MenuService : IMenuService
                 Lv = node.Lv
             });
 
-            // 如果是 MENU (目錄)，則需要在 MenuList 中獨立長出對應的 Dictionary 內容
             if (node.SourceType == "MENU")
             {
                 var folder = new PageFolderViewModel
                 {
                     Sid = node.Id,
                     Title = node.Title,
-                    Url = node.Url,
-                    BackUrl = backUrlToUse, // ⭐ 目錄物件也記錄返回路徑
+                    Url = targetUrl,
+                    BackUrl = currentBackUrl,
                     Parameter = node.Parameter,
                     Property = node.SourceType,
                     ImgIcon = node.ImgIcon,
@@ -136,27 +160,23 @@ public class MenuService : IMenuService
                     Tiles = new List<TileViewModel>()
                 };
 
-                // 往下遞迴處理子項
                 if (node.Children != null && node.Children.Any())
                 {
-                    //FillPagesRecursive(node.Children, response, folder.Tiles);
-                    // ⭐ 關鍵：將「目前的 targetUrl」傳入下一層，當作子項的「返回路徑」
+                    // 往下遞迴：目前的 targetUrl 變成下一層的 BackUrl
                     FillPagesRecursive(node.Children, response, folder.Tiles, targetUrl);
                 }
 
-                // 加入字典
                 if (!response.MenuList.ContainsKey(targetUrl))
                     response.MenuList.Add(targetUrl, folder);
             }
             else if (node.SourceType == "PAGE")
             {
-                // 如果是 PAGE，加入全域扁平化清單 (方便前端搜尋)
                 response.PageList.Add(new TileViewModel
                 {
                     Sid = node.Id,
                     Title = node.Title,
-                    Url = node.Url,
-                    BackUrl = backUrlToUse, // 頁面同樣記錄返回路徑
+                    Url = targetUrl,
+                    BackUrl = currentBackUrl,
                     Parameter = node.Parameter,
                     Property = node.SourceType,
                     ImgIcon = node.ImgIcon
