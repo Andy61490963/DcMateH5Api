@@ -62,50 +62,35 @@ public class MenuService : IMenuService
     {
         const string sql = @"
 SELECT
-    D.ADM_MENU_MODULE_SID AS ParentSid,
-    D.URL AS ParentUrl,
-    C.MENU_SID AS MenuSid,
-    C.MENU_NAME AS MenuName,
-    C.URL AS MenuUrl,
-    C.PARAMETER AS MenuParameter,
-    C.SEQ AS MenuSeq,
-    C.[DESC] AS MenuDesc,
-    C.IMGICON AS MenuImgIcon,
-    C.[SUB_MENU_SID] AS SubMenuSid,
-    C.[SUB_MENU_NAME] AS SubMenuName,
-    C.[SUB_URL] AS SubMenuUrl,
-    C.[SUB_PARAMETER] AS SubMenuParameter,
-    C.[SUB_SEQ] AS SubMenuSeq,
-    C.[SUB_DESC] AS SubMenuDesc,
-    C.[SUB_IMGICON] AS SubMenuImgIcon
-FROM
-(
-    SELECT
-        A.PARENT_ID AS ParentId,
-        A.ADM_MENU_MODULE_SID AS MENU_SID,
-        A.ADM_MENU_MODULE_NAME AS MENU_NAME,
-        A.URL,
-        A.PARAMETER,
-        A.SEQ,
-        A.[DESC],
-        A.IMGICON,
-        B.ADM_MENU_MODULE_SID AS SUB_MENU_SID,
-        B.ADM_MENU_MODULE_NAME AS SUB_MENU_NAME,
-        B.URL AS SUB_URL,
-        B.PARAMETER AS SUB_PARAMETER,
-        B.SEQ AS SUB_SEQ,
-        B.[DESC] AS SUB_DESC,
-        B.IMGICON AS SUB_IMGICON
-    FROM ADM_MENU_MODULE A
-    LEFT JOIN ADM_MENU_MODULE B
-        ON B.PARENT_ID = A.ADM_MENU_MODULE_SID
-) C
-LEFT JOIN ADM_MENU_MODULE D
-    ON C.ParentId = D.ADM_MENU_MODULE_SID
+    P.ADM_MENU_MODULE_SID AS ParentSid,
+    P.URL AS ParentUrl,
+
+    M.ADM_MENU_MODULE_SID AS MenuSid,
+    M.ADM_MENU_MODULE_NAME AS MenuName,
+    M.URL AS MenuUrl,
+    M.PARAMETER AS MenuParameter,
+    M.SEQ AS MenuSeq,
+    M.[DESC] AS MenuDesc,
+    M.IMGICON AS MenuImgIcon,
+
+    S.ADM_MENU_MODULE_SID AS SubMenuSid,
+    S.ADM_MENU_MODULE_NAME AS SubMenuName,
+    S.URL AS SubMenuUrl,
+    S.PARAMETER AS SubMenuParameter,
+    S.SEQ AS SubMenuSeq,
+    S.[DESC] AS SubMenuDesc,
+    S.IMGICON AS SubMenuImgIcon
+
+FROM ADM_MENU_MODULE M
+LEFT JOIN ADM_MENU_MODULE S
+    ON S.PARENT_ID = M.ADM_MENU_MODULE_SID
+LEFT JOIN ADM_MENU_MODULE P
+    ON M.PARENT_ID = P.ADM_MENU_MODULE_SID
+
 ORDER BY
-    C.ParentId,
-    C.SEQ,
-    C.SUB_SEQ;";
+    M.PARENT_ID,
+    M.SEQ,
+    S.SEQ;";
 
         IEnumerable<MenuRowModel> result = await _db
             .QueryAsync<MenuRowModel>(sql, new { })
