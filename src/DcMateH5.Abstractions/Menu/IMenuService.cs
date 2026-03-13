@@ -1,11 +1,14 @@
-﻿using DCMATEH5API.Areas.Menu.Models;
+﻿using DcMateH5.Abstractions.Menu.Models;
 
 namespace DcMateH5.Abstractions.Menu;
 
 public interface IMenuService
 {
-    // 取得原始樹狀資料的方法
-    Task<List<MenuNavigationViewModel>> GetMenuTreeAsync(string userId);
-
-    Task<MenuResponse> GetFullMenuByLvAsync(int lv);
+    /// <summary>
+    /// 取得 legacy AuthInfo 格式的選單與頁面資料
+    /// </summary>
+    /// <param name="lv">頁面層級</param>
+    /// <param name="userId">使用者識別</param>
+    /// <returns>Legacy AuthInfo</returns>
+    Task<AuthInfo> GetFullMenuByLvAsync(int lv, Guid userId);
 }

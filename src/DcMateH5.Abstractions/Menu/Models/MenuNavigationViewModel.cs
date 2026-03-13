@@ -1,104 +1,222 @@
-using System.Collections.Generic;
-using System.ComponentModel.DataAnnotations.Schema;
 using System.Text.Json.Serialization;
 
-namespace DCMATEH5API.Areas.Menu.Models
+namespace DcMateH5.Abstractions.Menu.Models;
+
+/// <summary>
+/// Legacy AuthInfo 回傳模型
+/// </summary>
+public class AuthInfo
 {
-    // 1. 最外層容器：對應 JSON 的 "pages"
-    public class MenuResponse
-    {
-        // 將原本的 public Dictionary<string, PageFolderViewModel> Pages 修改如下
-        public Dictionary<string, PageFolderViewModel> MenuList { get; set; } = new Dictionary<string, PageFolderViewModel>();
+    [JsonPropertyName("MmenuList")]
+    public MenuList MmenuList { get; set; } = new MenuList();
 
-        // PageList 通常存放扁平化的頁面清單，用於快速搜尋
-        public List<TileViewModel> PageList { get; set; } = new List<TileViewModel>();
-    }
+    [JsonPropertyName("PageList")]
+    public PageList PageList { get; set; } = new PageList();
+}
 
-    // 2. 舊版單頁結構：對應 "index.html": { ... }
-    public class PageFolderViewModel
-    {
-        public string? Parameter { get; set; } 
+/// <summary>
+/// Legacy 主選單清單
+/// </summary>
+public class MenuList
+{
+    [JsonPropertyName("menuls")]
+    public Menu[] Menuls { get; set; } = Array.Empty<Menu>();
+}
 
-        public string PageKind { get; set; } = "MENU";
-        public string? BackUrl { get; set; }
-        public string Sid { get; set; } = string.Empty;
-        public string Property { get; set; } = "MENU";
-        public string TypeGroup { get; set; } = string.Empty;
-        public string ModuleName { get; set; } = string.Empty;
-        public string Title { get; set; } = string.Empty;
-        public string Url { get; set; } = string.Empty;
-        public int Lv { get; set; } // 帶出 LV
+/// <summary>
+/// Legacy 頁面清單
+/// </summary>
+public class PageList
+{
+    [JsonPropertyName("pages")]
+    public Page[] Pages { get; set; } = Array.Empty<Page>();
+}
 
-        public string ImgIcon { get; set; } = string.Empty; // 新增 ImgIcon
-        public string? Desc { get; set; } //  DESC
-        [JsonPropertyName("tiles")]
-        public List<TileViewModel> Tiles { get; set; } = new();
-    }
+/// <summary>
+/// Legacy 主選單模型
+/// </summary>
+public class Menu
+{
+    [JsonPropertyName("Sid")]
+    public Guid Sid { get; set; }
 
-    // 3. 磁磚結構：對應 tiles 陣列內容
-    public class TileViewModel
-    {
-        public string? Parameter { get; set; }
+    [JsonPropertyName("Title")]
+    public string Title { get; set; } = string.Empty;
 
-        public string Sid { get; set; } = string.Empty;
-        public string Property { get; set; } = "MENU";
-        public string TypeGroup { get; set; } = string.Empty;
-        public string ModuleName { get; set; } = string.Empty;
-        public string Title { get; set; } = string.Empty;
-        public string Url { get; set; } = string.Empty;
-        public int Seq { get; set; }
-        public int Pos { get; set; }
-        public int Lv { get; set; } // 帶出 LV
+    [JsonPropertyName("TypeGroup")]
+    public string TypeGroup { get; set; } = string.Empty;
 
-        public string ImgIcon { get; set; } = string.Empty; // 新增 ImgIcon
-        public string? Desc { get; set; }
+    [JsonPropertyName("Url")]
+    public string Url { get; set; } = string.Empty;
 
-        public string BackUrl { get; set; } // ⭐ 新增這行
-    }
+    [JsonPropertyName("BackSid")]
+    public Guid? BackSid { get; set; }
 
-    // 4. 原始資料零件 (接 SQL 用)
-    public class MenuNavigationViewModel
-    {
-        [Column("ADM_MENU_MODULE_SID")] // 標記資料庫欄位名
-        public string Id { get; set; } = string.Empty;
-        public string Title { get; set; } = string.Empty;
-        public string Url { get; set; } = string.Empty;
-        public string? Parameter { get; set; } // 新增 Parameter 欄位
-        public int Lv { get; set; } // 新增 LV 欄位
-        public List<MenuNavigationViewModel> Children { get; set; } = new();
-        public string? Desc { get; set; }
-        public string ImgIcon { get; set; } = string.Empty; // 新增 ImgIcon 接收 SQL 欄位
-        [JsonIgnore]
-        [Column("PARENT_ID")]
-        public string? ParentId { get; set; }
-        [JsonIgnore]
-        [Column("SEQ")]
-        public int SortOrder { get; set; }
-        [JsonIgnore]
-        public string SourceType { get; set; } = string.Empty; // 用來區分 MENU 或 PAGE
-    }
+    [JsonPropertyName("BackUrl")]
+    public string BackUrl { get; set; } = string.Empty;
 
-    // API 回傳標準包裝
-    public class MenuResult
-    {
-        public bool Success { get; set; }
-        public string Message { get; set; } = string.Empty;
-        public string User { get; set; } = "leo";  // Hard Code
-        public string LV { get; set; } = "2";     // Hard Code
-        public MenuResponse? Data { get; set; }
-        public string Translate { get; set; } = string.Empty;
-        public string Type { get; set; } = string.Empty;
-        public string Icon { get; set; } = string.Empty;
-        public string Url { get; set; } = string.Empty;
-        public bool ExactMatch { get; set; } = true;
-        
-        public List<MenuNavigationViewModel> Children { get; set; } = new();
+    [JsonPropertyName("Desc")]
+    public string Desc { get; set; } = string.Empty;
 
-        [JsonIgnore]
-        public string? ParentId { get; set; } 
-        
-        [JsonIgnore]
-        public int SortOrder { get; set; }
-    }
+    [JsonPropertyName("ImgIcon")]
+    public string ImgIcon { get; set; } = string.Empty;
 
+    [JsonPropertyName("Lv")]
+    public int Lv { get; set; }
+
+    [JsonPropertyName("ModuleName")]
+    public string ModuleName { get; set; } = string.Empty;
+
+    [JsonPropertyName("PageKind")]
+    public string PageKind { get; set; } = string.Empty;
+
+    [JsonPropertyName("Parameter")]
+    public string Parameter { get; set; } = string.Empty;
+
+    [JsonPropertyName("Property")]
+    public string Property { get; set; } = string.Empty;
+
+    [JsonPropertyName("tiles")]
+    public SubMenu[] Tiles { get; set; } = Array.Empty<SubMenu>();
+}
+
+/// <summary>
+/// Legacy 子選單模型
+/// </summary>
+public class SubMenu
+{
+    [JsonPropertyName("SubSid")]
+    public Guid? SubSid { get; set; }
+
+    [JsonPropertyName("SubTitle")]
+    public string? SubTitle { get; set; } = string.Empty;
+
+    [JsonPropertyName("SubName")]
+    public string? SubName { get; set; } = string.Empty;
+
+    [JsonPropertyName("TypeGroup")]
+    public string TypeGroup { get; set; } = string.Empty;
+
+    [JsonPropertyName("SubUrl")]
+    public string? SubUrl { get; set; } = string.Empty;
+
+    [JsonPropertyName("SubDesc")]
+    public string? SubDesc { get; set; } = string.Empty;
+
+    [JsonPropertyName("SubImgIcon")]
+    public string? SubImgIcon { get; set; } = string.Empty;
+
+    [JsonPropertyName("SubLv")]
+    public int SubLv { get; set; }
+
+    [JsonPropertyName("SubParameter")]
+    public string? SubParameter { get; set; } = string.Empty;
+
+    [JsonPropertyName("SubProperty")]
+    public string SubProperty { get; set; } = string.Empty;
+}
+
+/// <summary>
+/// Legacy 頁面模型
+/// </summary>
+public class Page
+{
+    [JsonPropertyName("Sid")]
+    public Guid Sid { get; set; }
+
+    [JsonPropertyName("Title")]
+    public string Title { get; set; } = string.Empty;
+
+    [JsonPropertyName("Url")]
+    public string Url { get; set; } = string.Empty;
+
+    [JsonPropertyName("Parameter")]
+    public string? Parameter { get; set; } = string.Empty;
+
+    [JsonPropertyName("Desc")]
+    public string? Desc { get; set; } = string.Empty;
+
+    [JsonPropertyName("Property")]
+    public string? Property { get; set; } = string.Empty;
+
+    [JsonPropertyName("Seq")]
+    public int? Seq { get; set; }
+
+    [JsonPropertyName("ImgIcon")]
+    public string? ImgIcon { get; set; } = string.Empty;
+
+    [JsonPropertyName("MENU_SID")]
+    public Guid? MenuSid { get; set; }
+
+    [JsonPropertyName("MENU_NAME")]
+    public string MenuName { get; set; } = string.Empty;
+
+    [JsonPropertyName("MENU_URL")]
+    public string MenuUrl { get; set; } = string.Empty;
+}
+
+/// <summary>
+/// 主選單 / 子選單查詢結果模型
+/// </summary>
+public class MenuRowModel
+{
+    public Guid? ParentSid { get; set; }
+
+    public string? ParentUrl { get; set; }
+
+    public Guid MenuSid { get; set; }
+
+    public string MenuName { get; set; } = string.Empty;
+
+    public string MenuUrl { get; set; } = string.Empty;
+
+    public string? MenuParameter { get; set; }
+
+    public int? MenuSeq { get; set; }
+
+    public string? MenuDesc { get; set; }
+
+    public string? MenuImgIcon { get; set; }
+
+    public Guid? SubMenuSid { get; set; }
+
+    public string? SubMenuName { get; set; }
+
+    public string? SubMenuUrl { get; set; }
+
+    public string? SubMenuParameter { get; set; }
+
+    public int? SubMenuSeq { get; set; }
+
+    public string? SubMenuDesc { get; set; }
+
+    public string? SubMenuImgIcon { get; set; }
+}
+
+/// <summary>
+/// 頁面查詢結果模型
+/// </summary>
+public class PageRowModel
+{
+    public Guid PageSid { get; set; }
+
+    public string Title { get; set; } = string.Empty;
+
+    public string Url { get; set; } = string.Empty;
+
+    public string? Parameter { get; set; }
+
+    public string? Desc { get; set; }
+
+    public int? Lv { get; set; }
+
+    public int? Seq { get; set; }
+
+    public string? ImgIcon { get; set; }
+
+    public Guid MenuSid { get; set; }
+
+    public string MenuName { get; set; } = string.Empty;
+
+    public string MenuUrl { get; set; } = string.Empty;
 }

@@ -1,187 +1,238 @@
 ﻿using DbExtensions.DbExecutor.Interface;
 using DcMateH5.Abstractions.Menu;
-using DCMATEH5API.Areas.Menu.Models;
+using DcMateH5.Abstractions.Menu.Models;
 
 namespace DcMateH5.Infrastructure.Menu;
 
+/// <summary>
+/// 選單服務
+/// </summary>
 public class MenuService : IMenuService
 {
+    private static class MenuConstants
+    {
+        public const string MenuType = "MENU";
+        public const string PageType = "PAGE";
+    }
+
     private readonly IDbExecutor _db;
-    public MenuService(IDbExecutor db) { _db = db; }
 
-    /// <summary>
-    /// 取得原始樹狀結構 (用於內部邏輯)
-    /// </summary>
-    public async Task<List<MenuNavigationViewModel>> GetMenuTreeAsync(string userId)
+    public MenuService(IDbExecutor db)
     {
-        // 這裡已將 H5_ 移除，並對齊最新的欄位名稱
-        string sql = @"
-            -- 1. 來自選單節點 (目錄架構)
-            SELECT 
-                CAST(ADM_MENU_MODULE_SID AS VARCHAR(36)) AS Id, 
-                CAST(PARENT_ID AS VARCHAR(36)) AS ParentId, 
-                ADM_MENU_MODULE_NAME AS Title, 
-                URL AS Url, 
-                PARAMETER AS Parameter, 
-                [DESC] AS [Desc], 
-                0 AS Lv, 
-                SEQ AS SortOrder,
-                'MENU' AS SourceType,
-                IMGICON AS ImgIcon
-            FROM ADM_MENU_MODULE
-
-            UNION ALL
-
-            -- 2. 來自頁面模組 (實際磁磚內容)
-            SELECT 
-                CAST(P.ADM_PAGE_MODULE_SID AS VARCHAR(36)) AS Id, 
-                CAST(L.ADM_MENU_MODULE_SID AS VARCHAR(36)) AS ParentId, 
-                P.TITLE AS Title, 
-                P.URL AS Url, 
-                P.PARAMETER AS Parameter, 
-                P.[DESC] AS [Desc], 
-                P.LV AS Lv, 
-                P.SEQ AS SortOrder,
-                'PAGE' AS SourceType,
-                P.IMGICON AS ImgIcon
-            FROM ADM_PAGE_MODULE P
-            JOIN ADM_MENU_PAGE_LINK L ON P.ADM_PAGE_MODULE_SID = L.ADM_PAGE_MODULE_SID";
-
-        // 執行查詢
-        var rawData = await _db.QueryAsync<MenuNavigationViewModel>(sql, new { UserId = userId });
-
-        // 根節點 GUID 預設值
-        //string rootGuid = "00000000-0000-0000-0000-000000000000";
-
-        // ⭐ 關鍵：傳入 null，因為 Root 節點在資料庫裡 PARENT_ID 是 NULL
-        return BuildTree(rawData, null);
+        _db = db;
     }
 
     /// <summary>
-    /// 遞迴組裝樹狀結構
+    /// 取得 legacy AuthInfo 格式的選單與頁面資料 ( 2026/03/13 Jack要求改為他制定的Json格式 )
     /// </summary>
-    private List<MenuNavigationViewModel> BuildTree(List<MenuNavigationViewModel> source, string? parentId)
+    /// <param name="lv">頁面層級</param>
+    /// <param name="userId">使用者識別</param>
+    /// <returns>Legacy AuthInfo</returns>
+    public async Task<AuthInfo> GetFullMenuByLvAsync(int lv, Guid userId)
     {
-        // 標準化搜尋 ID
-        string? normalizedSearchId = string.IsNullOrWhiteSpace(parentId) ? null : parentId.Trim().ToLower();
+        _ = lv;
+        _ = userId;
 
-        return source
-            .Where(x => {
-                // 標準化當前節點的 ParentId
-                string? nodeParentId = string.IsNullOrWhiteSpace(x.ParentId) ? null : x.ParentId.Trim().ToLower();
+        List<MenuRowModel> menuRows = await GetMenuRowsAsync().ConfigureAwait(false);
+        List<PageRowModel> pageRows = await GetPageRowsAsync().ConfigureAwait(false);
 
-                // 如果是在找最頂層 (parentId 為 null)
-                if (normalizedSearchId == null)
-                {
-                    // 這裡要抓 ParentId 是真正的 null (或是因為 Model 預設值沒被蓋掉而顯示為 null 字串的情況)
-                    return nodeParentId == null || nodeParentId == "null";
-                }
+        Abstractions.Menu.Models.Menu[] menus = MapMenus(menuRows);
+        Page[] pages = MapPages(pageRows);
 
-                // 如果是在找子層 (例如找 ParentId 為 0000... 的節點)
-                return nodeParentId == normalizedSearchId;
-            })
-            .OrderBy(x => x.SortOrder)
-            .Select(x => {
-                // ⭐ 預防死循環：如果 ID 跟 ParentId 一樣，就不往下找了
-                if (x.Id.Trim().ToLower() == x.ParentId?.Trim().ToLower()) return x;
-
-                x.Children = BuildTree(source, x.Id);
-                return x;
-            }).ToList();
-    }
-    /// <summary>
-    /// 取得前端專用格式的 MenuList 與 PageList
-    /// </summary>
-    public async Task<MenuResponse> GetFullMenuByLvAsync(int lv)
-    {
-        var allNodes = await GetMenuTreeAsync("");
-        var response = new MenuResponse();
-
-        var rootPage = new PageFolderViewModel
+        AuthInfo authInfo = new AuthInfo
         {
-            Title = "首頁",
-            Url = "index.html",
-            Tiles = new List<TileViewModel>()
+            MmenuList = new MenuList
+            {
+                Menuls = menus
+            },
+            PageList = new PageList
+            {
+                Pages = pages
+            }
         };
 
-        // 1. 先找出 Root 那一筆 (0000...)
-        var rootNode = allNodes.FirstOrDefault(x => x.Id.Trim().Contains("00000000"));
-
-        // 2. 決定哪些人要出現在首頁磁磚
-        // 如果有 Root 就拿它的小孩；如果沒 Root (對不到) 就拿 ParentId 為空的那些人
-        var startNodes = (rootNode != null && rootNode.Children.Any())
-                         ? rootNode.Children
-                         : allNodes.Where(x => string.IsNullOrWhiteSpace(x.ParentId) || x.ParentId == "null").ToList();
-
-        // 3. 執行填充 (這會同步填充 PageList)
-        FillPagesRecursive(startNodes, response, rootPage.Tiles, "index.html");
-
-        if (!response.MenuList.ContainsKey("index.html"))
-            response.MenuList.Add("index.html", rootPage);
-
-        return response;
+        return authInfo;
     }
 
     /// <summary>
-    /// 遞迴平鋪所有選單與頁面至 Response
+    /// 取得主選單與子選單資料
     /// </summary>
-    private void FillPagesRecursive(List<MenuNavigationViewModel> nodes, MenuResponse response, List<TileViewModel> parentTiles, string currentBackUrl)
+    /// <returns>選單資料列</returns>
+    private async Task<List<MenuRowModel>> GetMenuRowsAsync()
     {
-        foreach (var node in nodes)
-        {
-            var targetUrl = string.IsNullOrEmpty(node.Url) ? $"{node.Title}/index.html" : node.Url;
+        const string sql = @"
+SELECT
+    D.ADM_MENU_MODULE_SID AS ParentSid,
+    D.URL AS ParentUrl,
+    C.MENU_SID AS MenuSid,
+    C.MENU_NAME AS MenuName,
+    C.URL AS MenuUrl,
+    C.PARAMETER AS MenuParameter,
+    C.SEQ AS MenuSeq,
+    C.[DESC] AS MenuDesc,
+    C.IMGICON AS MenuImgIcon,
+    C.[SUB_MENU_SID] AS SubMenuSid,
+    C.[SUB_MENU_NAME] AS SubMenuName,
+    C.[SUB_URL] AS SubMenuUrl,
+    C.[SUB_PARAMETER] AS SubMenuParameter,
+    C.[SUB_SEQ] AS SubMenuSeq,
+    C.[SUB_DESC] AS SubMenuDesc,
+    C.[SUB_IMGICON] AS SubMenuImgIcon
+FROM
+(
+    SELECT
+        A.PARENT_ID AS ParentId,
+        A.ADM_MENU_MODULE_SID AS MENU_SID,
+        A.ADM_MENU_MODULE_NAME AS MENU_NAME,
+        A.URL,
+        A.PARAMETER,
+        A.SEQ,
+        A.[DESC],
+        A.IMGICON,
+        B.ADM_MENU_MODULE_SID AS SUB_MENU_SID,
+        B.ADM_MENU_MODULE_NAME AS SUB_MENU_NAME,
+        B.URL AS SUB_URL,
+        B.PARAMETER AS SUB_PARAMETER,
+        B.SEQ AS SUB_SEQ,
+        B.[DESC] AS SUB_DESC,
+        B.IMGICON AS SUB_IMGICON
+    FROM ADM_MENU_MODULE A
+    LEFT JOIN ADM_MENU_MODULE B
+        ON B.PARENT_ID = A.ADM_MENU_MODULE_SID
+) C
+LEFT JOIN ADM_MENU_MODULE D
+    ON C.ParentId = D.ADM_MENU_MODULE_SID
+ORDER BY
+    C.ParentId,
+    C.SEQ,
+    C.SUB_SEQ;";
 
-            // 產生磁磚
-            parentTiles.Add(new TileViewModel
-            {
-                Sid = node.Id,
-                Title = node.Title,
-                Url = targetUrl,
-                BackUrl = currentBackUrl, // ⭐ 設定正確的回上頁路徑
-                Parameter = node.Parameter,
-                Property = node.SourceType,
-                ImgIcon = node.ImgIcon,
-                Seq = node.SortOrder,
-                Lv = node.Lv
-            });
+        IEnumerable<MenuRowModel> result = await _db
+            .QueryAsync<MenuRowModel>(sql, new { })
+            .ConfigureAwait(false);
 
-            if (node.SourceType == "MENU")
+        return result.ToList();
+    }
+
+    /// <summary>
+    /// 取得頁面資料
+    /// </summary>
+    /// <returns>頁面資料列</returns>
+    private async Task<List<PageRowModel>> GetPageRowsAsync()
+    {
+        const string sql = @"
+SELECT
+    A.ADM_PAGE_MODULE_SID AS PageSid,
+    A.TITLE AS Title,
+    A.URL AS Url,
+    A.PARAMETER AS Parameter,
+    A.[DESC] AS [Desc],
+    A.LV AS Lv,
+    A.SEQ AS Seq,
+    A.IMGICON AS ImgIcon,
+    B.ADM_MENU_MODULE_SID AS MenuSid,
+    C.ADM_MENU_MODULE_NAME AS MenuName,
+    C.URL AS MenuUrl
+FROM ADM_PAGE_MODULE A
+INNER JOIN ADM_MENU_PAGE_LINK B
+    ON A.ADM_PAGE_MODULE_SID = B.ADM_PAGE_MODULE_SID
+INNER JOIN ADM_MENU_MODULE C
+    ON B.ADM_MENU_MODULE_SID = C.ADM_MENU_MODULE_SID
+ORDER BY
+    B.ADM_MENU_MODULE_SID,
+    A.SEQ;";
+
+        IEnumerable<PageRowModel> result = await _db
+            .QueryAsync<PageRowModel>(sql, new { })
+            .ConfigureAwait(false);
+
+        return result.ToList();
+    }
+
+    /// <summary>
+    /// 將查詢資料映射為 legacy Menu[]
+    /// </summary>
+    /// <param name="rows">選單資料列</param>
+    /// <returns>legacy Menu 陣列</returns>
+    private static Abstractions.Menu.Models.Menu[] MapMenus(List<MenuRowModel> rows)
+    {
+        List<Abstractions.Menu.Models.Menu> menus = rows
+            .GroupBy(x => x.MenuSid)
+            .Select(group =>
             {
-                var folder = new PageFolderViewModel
+                MenuRowModel first = group.First();
+
+                SubMenu[] subMenus = group
+                    .Where(x => x.SubMenuSid.HasValue)
+                    .OrderBy(x => x.SubMenuSeq ?? int.MaxValue)
+                    .Select(x => new SubMenu
+                    {
+                        SubSid = x.SubMenuSid,
+                        SubTitle = x.SubMenuName,
+                        SubName = x.SubMenuName,
+                        TypeGroup = MenuConstants.MenuType,
+                        SubUrl = x.SubMenuUrl,
+                        SubDesc = x.SubMenuDesc,
+                        SubImgIcon = x.SubMenuImgIcon,
+                        SubLv = 0,
+                        SubParameter = x.SubMenuParameter,
+                        SubProperty = MenuConstants.MenuType
+                    })
+                    .ToArray();
+
+                Abstractions.Menu.Models.Menu menu = new Abstractions.Menu.Models.Menu
                 {
-                    Sid = node.Id,
-                    Title = node.Title,
-                    Url = targetUrl,
-                    BackUrl = currentBackUrl,
-                    Parameter = node.Parameter,
-                    Property = node.SourceType,
-                    ImgIcon = node.ImgIcon,
-                    Lv = node.Lv,
-                    Tiles = new List<TileViewModel>()
+                    Sid = first.MenuSid,
+                    Title = first.MenuName,
+                    TypeGroup = MenuConstants.MenuType,
+                    Url = first.MenuUrl,
+                    BackSid = first.ParentSid,
+                    BackUrl = first.ParentUrl,
+                    Desc = first.MenuDesc,
+                    ImgIcon = first.MenuImgIcon,
+                    Lv = 0,
+                    ModuleName = string.Empty,
+                    PageKind = string.Empty,
+                    Parameter = first.MenuParameter,
+                    Property = MenuConstants.MenuType,
+                    Tiles = subMenus
                 };
 
-                if (node.Children != null && node.Children.Any())
-                {
-                    // 往下遞迴：目前的 targetUrl 變成下一層的 BackUrl
-                    FillPagesRecursive(node.Children, response, folder.Tiles, targetUrl);
-                }
+                return menu;
+            })
+            .OrderBy(x => x.BackSid)
+            .ThenBy(x => x.Title)
+            .ToList();
 
-                if (!response.MenuList.ContainsKey(targetUrl))
-                    response.MenuList.Add(targetUrl, folder);
-            }
-            else if (node.SourceType == "PAGE")
+        return menus.ToArray();
+    }
+
+    /// <summary>
+    /// 將查詢資料映射為 legacy Page[]
+    /// </summary>
+    /// <param name="rows">頁面資料列</param>
+    /// <returns>legacy Page 陣列</returns>
+    private static Page[] MapPages(List<PageRowModel> rows)
+    {
+        List<Page> pages = rows
+            .OrderBy(x => x.MenuSid)
+            .ThenBy(x => x.Seq)
+            .Select(x => new Page
             {
-                response.PageList.Add(new TileViewModel
-                {
-                    Sid = node.Id,
-                    Title = node.Title,
-                    Url = targetUrl,
-                    BackUrl = currentBackUrl,
-                    Parameter = node.Parameter,
-                    Property = node.SourceType,
-                    ImgIcon = node.ImgIcon
-                });
-            }
-        }
+                Sid = x.PageSid,
+                Title = x.Title,
+                Url = x.Url,
+                Parameter = x.Parameter,
+                Desc = x.Desc,
+                Property = x.Desc,
+                Seq = x.Seq,
+                ImgIcon = x.ImgIcon,
+                MenuSid = x.MenuSid,
+                MenuName = x.MenuName,
+                MenuUrl = x.MenuUrl 
+            })
+            .ToList();
+
+        return pages.ToArray();
     }
 }

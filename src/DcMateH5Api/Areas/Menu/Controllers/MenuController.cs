@@ -1,7 +1,7 @@
-using DCMATEH5API.Areas.Menu.Models;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Authorization;
 using DcMateH5.Abstractions.Menu;
+using DcMateH5Api.Controllers;
 
 namespace DCMATEH5API.Areas.Menu.Controllers
 {
@@ -9,7 +9,7 @@ namespace DCMATEH5API.Areas.Menu.Controllers
     [Route("api/[area]/[controller]")]
     [ApiController]
     [Authorize] // 加上授權，確保只有登入者能撈選單
-    public class MenuController : ControllerBase
+    public class MenuController : BaseController
     {
         private readonly IMenuService _menuService;
         public MenuController(IMenuService menuService) { _menuService = menuService; }
@@ -29,17 +29,10 @@ namespace DCMATEH5API.Areas.Menu.Controllers
             // - 從資料庫 NULL 啟動樹狀結構
             // - 過濾 Root 節點以免首頁出現重複入口
             // - 遞迴填充 MenuList 並計算正確的 BackUrl
-            var finalResult = await _menuService.GetFullMenuByLvAsync(currentLv);
+            var finalResult = await _menuService.GetFullMenuByLvAsync(currentLv, CurrentUser.Id);
 
             // 4. 回傳統一格式
-            return Ok(new MenuResult
-            {
-                Success = true,
-                Data = finalResult,
-                Message = "查詢成功",
-                User = currentUser,
-                LV = currentLvStr
-            });
+            return Ok(finalResult);
         }
        
     }

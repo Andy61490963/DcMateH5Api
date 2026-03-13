@@ -1,9 +1,7 @@
 using DcMateH5Api.Areas.Security.Models;
-using DcMateH5Api.Models;
-using System.Collections.Generic; // 務必引用，才能使用 List
+using DcMateH5.Abstractions.Menu.Models;
 
 namespace DcMateH5Api.Areas.Security.ViewModels;
-using DCMATEH5API.Areas.Menu.Models;
 
 public class LoginResponseViewModel
 {
@@ -19,7 +17,7 @@ public class LoginResponseViewModel
 
     // --- 新增：存放選單樹狀結構的欄位 ---
     // 這裡的 MenuNode 是您在 Menu 模組定義的類別
-    public MenuResponse Menus { get; set; } = new();
+    public AuthInfo Menus { get; set; } = new();
 
     public LoginResponseViewModel() { }
 
