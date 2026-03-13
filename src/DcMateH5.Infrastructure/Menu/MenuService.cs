@@ -176,6 +176,7 @@ ORDER BY
                         SubImgIcon = x.SubMenuImgIcon,
                         SubLv = 0,
                         SubParameter = x.SubMenuParameter,
+                        SubSeq = x.SubMenuSeq,
                         SubProperty = MenuConstants.MenuType
                     })
                     .ToArray();

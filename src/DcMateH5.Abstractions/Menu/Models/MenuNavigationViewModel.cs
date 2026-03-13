@@ -111,6 +111,9 @@ public class SubMenu
 
     [JsonPropertyName("SubParameter")]
     public string? SubParameter { get; set; } = string.Empty;
+    
+    [JsonPropertyName("SubSeq")]
+    public int? SubSeq { get; set; }
 
     [JsonPropertyName("SubProperty")]
     public string SubProperty { get; set; } = string.Empty;
