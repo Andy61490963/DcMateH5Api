@@ -87,6 +87,11 @@ public class WipBaseSettingService : IWipBaseSettingService
             ct: ct);
     }
 
+    /// <summary>
+    /// 一次做完 Check in、 Add WIP_OPI_WDOEACICO_HIST_DETAIL、Check out
+    /// </summary>
+    /// <param name="input"></param>
+    /// <param name="ct"></param>
     public async Task CheckInAddDetailsCheckOutAsync(WipCheckInAddDetailsCheckOutInputDto input, CancellationToken ct = default)
     {
         await _sqlHelper.TxAsync(
@@ -118,6 +123,14 @@ public class WipBaseSettingService : IWipBaseSettingService
         };
     }
 
+    /// <summary>
+    /// 進站
+    /// </summary>
+    /// <param name="conn"></param>
+    /// <param name="tx"></param>
+    /// <param name="input"></param>
+    /// <param name="ct"></param>
+    /// <returns></returns>
     private async Task<decimal> CreateCheckInInTxAsync(SqlConnection conn, SqlTransaction tx, WipCheckInInputDto input, CancellationToken ct)
     {
         ct.ThrowIfCancellationRequested();
@@ -156,6 +169,14 @@ public class WipBaseSettingService : IWipBaseSettingService
         return histSid;
     }
 
+    /// <summary>
+    /// 機台歷史紀錄
+    /// </summary>
+    /// <param name="conn"></param>
+    /// <param name="tx"></param>
+    /// <param name="histSid"></param>
+    /// <param name="equipments"></param>
+    /// <param name="ct"></param>
     private async Task InsertEquipmentsIfNeededInTxAsync(
         SqlConnection conn,
         SqlTransaction tx,
@@ -182,6 +203,15 @@ public class WipBaseSettingService : IWipBaseSettingService
         }
     }
 
+    /// <summary>
+    /// 人員歷史紀錄
+    /// </summary>
+    /// <param name="conn"></param>
+    /// <param name="tx"></param>
+    /// <param name="histSid"></param>
+    /// <param name="accounts"></param>
+    /// <param name="userSids"></param>
+    /// <param name="ct"></param>
     private async Task InsertUsersIfNeededInTxAsync(
         SqlConnection conn,
         SqlTransaction tx,
@@ -209,6 +239,29 @@ public class WipBaseSettingService : IWipBaseSettingService
         }
     }
 
+    /// <summary>
+    /// 新增進站明細資料，並同步維護不良原因明細與主表累計數量
+    /// </summary>
+    /// <param name="conn">目前交易使用的資料庫連線</param>
+    /// <param name="tx">目前交易物件</param>
+    /// <param name="histSid">進站主檔 SID（WIP_OPI_WDOEACICO_HIST_SID）</param>
+    /// <param name="input">明細輸入資料，包含良品數、不良品數、備註與不良原因清單</param>
+    /// <param name="ct">取消權杖</param>
+    /// <returns></returns>
+    /// <remarks>
+    /// ### 處理流程
+    ///
+    /// 1. 建立一筆新的 `WIP_OPI_WDOEACICO_HIST_DETAIL` 明細資料
+    /// 2. 將 `NgDetails` 中的不良原因明細寫入 `WIP_OPI_WDOEACICO_HIST_NG_REASON_DETAIL`
+    /// 3. 重新計算指定 `histSid` 底下所有明細的 `OK_QTY` 與 `NG_QTY` 總和
+    /// 4. 將累計結果回寫至主表 `WIP_OPI_WDOEACICO_HIST` 的 `TOTAL_OK_QTY` 與 `TOTAL_NG_QTY`
+    ///
+    /// ### 注意事項
+    ///
+    /// - 此方法僅負責新增明細，不會檢查主檔是否已 checkout 或 completed，呼叫端需先保證業務狀態合法
+    /// - `NG_REASON_QTY` 會依 `NgDetails` 的 `NG_QTY` 加總後自動計算
+    /// - 當 `NgDetails` 為 `null` 或空集合時，不會新增不良原因明細
+    /// </remarks>
     private async Task AddDetailsInTxAsync(
         SqlConnection conn,
         SqlTransaction tx,
@@ -327,6 +380,14 @@ public class WipBaseSettingService : IWipBaseSettingService
         await _sqlHelper.DeleteWhereInTxAsync(conn, tx, where, ct: ct);
     }
 
+    /// <summary>
+    /// 防止相同工單、機台、進站時間 重複進站
+    /// </summary>
+    /// <param name="conn"></param>
+    /// <param name="tx"></param>
+    /// <param name="input"></param>
+    /// <param name="ct"></param>
+    /// <exception cref="HttpStatusCodeException"></exception>
     private async Task EnsureNoDuplicateCheckInInTxAsync(SqlConnection conn, SqlTransaction tx, WipCheckInInputDto input, CancellationToken ct)
     {
         if (input.Equipment != null && input.Equipment.Any())
@@ -363,6 +424,13 @@ public class WipBaseSettingService : IWipBaseSettingService
         }
     }
 
+    /// <summary>
+    /// 檢查使用者帳號是否存在
+    /// </summary>
+    /// <param name="input"></param>
+    /// <param name="ct"></param>
+    /// <returns></returns>
+    /// <exception cref="HttpStatusCodeException"></exception>
     private async Task<List<decimal>> ValidateAndGetUserSidsAsync(WipCheckInInputDto input, CancellationToken ct)
     {
         var userSids = new List<decimal>();
@@ -386,6 +454,12 @@ public class WipBaseSettingService : IWipBaseSettingService
         return userSids;
     }
 
+    /// <summary>
+    /// 檢查機台是否存在
+    /// </summary>
+    /// <param name="input"></param>
+    /// <param name="ct"></param>
+    /// <exception cref="HttpStatusCodeException"></exception>
     private async Task ValidateEquipmentAsync(WipCheckInInputDto input, CancellationToken ct)
     {
         if (input.Equipment == null || input.Equipment.Count == 0)
@@ -403,6 +477,12 @@ public class WipBaseSettingService : IWipBaseSettingService
         }
     }
 
+    /// <summary>
+    /// 檢查工單否存在
+    /// </summary>
+    /// <param name="input"></param>
+    /// <param name="ct"></param>
+    /// <exception cref="HttpStatusCodeException"></exception>
     private async Task ValidateWorkOrderAsync(WipCheckInInputDto input, CancellationToken ct)
     {
         var wo = await _baseInfoCheckExistService.CheckWorkOrderExistAsync(input.WorkOrder, ct);
@@ -412,6 +492,12 @@ public class WipBaseSettingService : IWipBaseSettingService
         }
     }
 
+    /// <summary>
+    /// 檢查工作站是否存在
+    /// </summary>
+    /// <param name="input"></param>
+    /// <param name="ct"></param>
+    /// <exception cref="HttpStatusCodeException"></exception>
     private async Task ValidateOperationAsync(WipCheckInInputDto input, CancellationToken ct)
     {
         var operation = await _baseInfoCheckExistService.CheckOperationExistAsync(input.Operation, ct);
@@ -421,6 +507,12 @@ public class WipBaseSettingService : IWipBaseSettingService
         }
     }
 
+    /// <summary>
+    /// 檢查部門是否存在
+    /// </summary>
+    /// <param name="input"></param>
+    /// <param name="ct"></param>
+    /// <exception cref="HttpStatusCodeException"></exception>
     private async Task ValidateDepartmentAsync(WipCheckInInputDto input, CancellationToken ct)
     {
         var dept = await _baseInfoCheckExistService.CheckDepartmentExistAsync(input.Department, ct);
