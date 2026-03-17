@@ -27,6 +27,7 @@ public class FormFieldConfigService : IFormFieldConfigService
                     FROM FORM_FIELD_CONFIG FFC
                     JOIN FORM_FIELD_MASTER FFM ON FFM.ID = FFC.FORM_FIELD_MASTER_ID
                     WHERE FFM.ID = @ID
+                    AND FFC.IS_DELETE = 0
                     ORDER BY FIELD_ORDER;
 
                     SELECT R.*
