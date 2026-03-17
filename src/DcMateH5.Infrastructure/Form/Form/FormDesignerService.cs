@@ -681,40 +681,46 @@ ORDER BY s.name, o.name;
     /// <param name="formMasterId"></param>
     /// <param name="schemaType"></param>
     /// <returns></returns>
-    public async Task<FormFieldListViewModel> GetFieldsByTableName( string tableName, Guid? formMasterId, TableSchemaQueryType schemaType )
+    public async Task<FormFieldListViewModel> GetFieldsByTableName(
+        string tableName,
+        Guid? formMasterId,
+        TableSchemaQueryType schemaType)
     {
         ValidateTableName(tableName);
 
         var columns = GetTableSchema(tableName);
         if (columns.Count == 0) return new();
 
+        var columnMap = columns.ToDictionary(c => c.COLUMN_NAME, StringComparer.OrdinalIgnoreCase);
+
         var configs = await GetFieldConfigs(tableName, formMasterId);
+        if (configs.Count == 0) return new();
+
         var requiredFieldIds = GetRequiredFieldIds();
 
-        // 先決定 masterId（提供 dropdown 查詢用）
         var masterId = formMasterId ?? configs.Values.First().FORM_FIELD_MASTER_ID;
 
-        // 一次查 dropdown 對照表（masterId 可能是 Guid.Empty 就不用查，避免浪費）
-        var dropdownMap = await GetDropdownIdMapByMasterIdAsync(masterId);
-        
-        // 查 PK
+        var dropdownMap = masterId == Guid.Empty
+            ? new Dictionary<Guid, Guid>()
+            : await GetDropdownIdMapByMasterIdAsync(masterId);
+
         var pk = _schemaService.GetPrimaryKeyColumns(tableName);
-        
-        // 4) 逐欄位組裝 ViewModel
-        var fields = new List<FormFieldViewModel>(columns.Count);
-        foreach (var col in columns)
+
+        var fields = new List<FormFieldViewModel>(configs.Count);
+
+        foreach (var (columnName, cfg) in configs)
         {
-            var columnName = col.COLUMN_NAME;
-            var dataType   = col.DATA_TYPE;
-            var isNullable   = col.SourceIsNullable;
+            // 只處理 config 有的欄位
+            if (!columnMap.TryGetValue(columnName, out var col))
+            {
+                // schema 沒有這欄 → skip（或 log）
+                continue;
+            }
 
-            // 4-1) 取對應設定（有就用設定 ID，沒有就產新的暫時 ID）
-            var hasCfg  = configs.TryGetValue(columnName, out var cfg);
-            var fieldId = hasCfg ? cfg!.ID : Guid.NewGuid();
+            var fieldId = cfg.ID;
 
-            // dropdownId：只有「有 cfg 且 dropdown 存在」才會有值
             dropdownMap.TryGetValue(fieldId, out var dropdownId);
-            
+
             var vm = new FormFieldViewModel
             {
                 ID = fieldId,
@@ -722,46 +728,41 @@ ORDER BY s.name, o.name;
                 FORM_FIELD_DROPDOWN_ID = dropdownId == Guid.Empty ? null : dropdownId,
 
                 TableName = tableName,
-                IsNullable = isNullable,
+                IsNullable = col.SourceIsNullable,
                 COLUMN_NAME = columnName,
-                DISPLAY_NAME = cfg?.DISPLAY_NAME ?? columnName,
-                DATA_TYPE = dataType,
+                DISPLAY_NAME = cfg.DISPLAY_NAME ?? columnName,
+                DATA_TYPE = col.DATA_TYPE,
 
-                CONTROL_TYPE = cfg?.CONTROL_TYPE,
-                CONTROL_TYPE_WHITELIST = FormFieldHelper.GetControlTypeWhitelist(dataType),
-                QUERY_COMPONENT_TYPE_WHITELIST = FormFieldHelper.GetQueryConditionTypeWhitelist(dataType),
+                CONTROL_TYPE = cfg.CONTROL_TYPE,
+                CONTROL_TYPE_WHITELIST = FormFieldHelper.GetControlTypeWhitelist(col.DATA_TYPE),
+                QUERY_COMPONENT_TYPE_WHITELIST = FormFieldHelper.GetQueryConditionTypeWhitelist(col.DATA_TYPE),
 
-                IS_REQUIRED = cfg?.IS_REQUIRED ?? false,
-                IS_EDITABLE = cfg?.IS_EDITABLE ?? true,
-                IS_DISPLAYED = cfg?.IS_DISPLAYED ?? true,
+                IS_REQUIRED = cfg.IS_REQUIRED,
+                IS_EDITABLE = cfg.IS_EDITABLE,
+                IS_DISPLAYED = cfg.IS_DISPLAYED,
                 IS_VALIDATION_RULE = requiredFieldIds.Contains(fieldId),
                 IS_PK = pk.Contains(columnName),
 
-                QUERY_DEFAULT_VALUE = cfg?.QUERY_DEFAULT_VALUE,
+                QUERY_DEFAULT_VALUE = cfg.QUERY_DEFAULT_VALUE,
                 SchemaType = schemaType,
-                QUERY_COMPONENT = cfg?.QUERY_COMPONENT ?? QueryComponentType.None,
-                QUERY_CONDITION = cfg?.QUERY_CONDITION,
-                CAN_QUERY = cfg?.CAN_QUERY ?? false,
-                FIELD_ORDER = cfg?.FIELD_ORDER,
-                DETAIL_TO_RELATION_DEFAULT_COLUMN = cfg?.DETAIL_TO_RELATION_DEFAULT_COLUMN
+                QUERY_COMPONENT = cfg.QUERY_COMPONENT,
+                QUERY_CONDITION = cfg.QUERY_CONDITION,
+                CAN_QUERY = cfg.CAN_QUERY,
+                FIELD_ORDER = cfg.FIELD_ORDER,
+                DETAIL_TO_RELATION_DEFAULT_COLUMN = cfg.DETAIL_TO_RELATION_DEFAULT_COLUMN
             };
 
-            // 4-2) 依 schemaType 做欄位「置空/預設化」策略
             ApplySchemaPolicy(vm, schemaType);
 
             fields.Add(vm);
         }
-        // 用設定檔過濾
-        // .Where(f => !_excludeColumns.Any(ex => 
-        //     f.COLUMN_NAME.Contains(ex, StringComparison.OrdinalIgnoreCase)))
-        // .ToList();
 
-        var result = new FormFieldListViewModel
+        return new FormFieldListViewModel
         {
-            Fields = fields.OrderBy(f => f.FIELD_ORDER).ToList(),
+            Fields = fields
+                .OrderBy(f => f.FIELD_ORDER ?? int.MaxValue)
+                .ToList()
         };
-
-        return result;
     }
 
     /// <summary>
