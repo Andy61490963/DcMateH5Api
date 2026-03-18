@@ -73,9 +73,16 @@ SELECT ID AS Id,
         ct.ThrowIfCancellationRequested();
         return _formService.GetFormList(FormFunctionType.MultipleMappingMaintenance, request);
     }
-
+    
     /// <inheritdoc />
-    public MultipleMappingListViewModel GetMappingList(Guid formMasterId, string baseId, Dictionary<string, string>? filters, MappingListType? type, CancellationToken ct = default)
+    public MultipleMappingListViewModel GetMappingList(
+        Guid formMasterId,
+        string baseId,
+        Dictionary<string, string>? filters,
+        MappingListType? type,
+        int page,
+        int pageSize,
+        CancellationToken ct = default)
     {
         ct.ThrowIfCancellationRequested();
 
@@ -88,24 +95,46 @@ SELECT ID AS Id,
 
         var baseDisplayText = GetBaseDisplayText(header, basePkValue!);
 
-        // 先宣告在外層，return 才用得到
-        List<MultipleMappingItemViewModel> linkedItems = new();
-        List<MultipleMappingItemViewModel> unlinkedItems = new();
+        var linked = new Dictionary<string, MultipleMappingItemViewModel>(StringComparer.OrdinalIgnoreCase);
+        var unlinked = new Dictionary<string, MultipleMappingItemViewModel>(StringComparer.OrdinalIgnoreCase);
 
-        if (type == MappingListType.All)
+        var linkedTotalCount = 0;
+        var unlinkedTotalCount = 0;
+
+        if (type == MappingListType.LinkedOnly)
         {
-            linkedItems = LoadLinkedDetailRows(header, detailPkName, basePkValue!, null);
-            unlinkedItems = LoadUnlinkedRows(header, detailPkName, basePkValue!, baseDisplayText, null);
+            var result = LoadLinkedDetailRowsPaged(
+                header,
+                detailPkName,
+                basePkValue!,
+                filters,
+                page,
+                pageSize);
+
+            linked = ToDictionaryByDetailPk(result.Items);
+            linkedTotalCount = result.TotalCount;
         }
-        else if (type == MappingListType.LinkedOnly)
+        else if (type == MappingListType.UnlinkedOnly)
         {
-            // linked 套 mapping filters
-            linkedItems = LoadLinkedDetailRows(header, detailPkName, basePkValue!, filters);
+            var result = LoadUnlinkedRowsPaged(
+                header,
+                detailPkName,
+                basePkValue!,
+                baseDisplayText,
+                filters,
+                page,
+                pageSize);
+
+            unlinked = ToDictionaryByDetailPk(result.Items);
+            unlinkedTotalCount = result.TotalCount;
         }
-        else // MappingListType.UnlinkedOnly
+        else if (type == MappingListType.All)
         {
-            // unlinked 套 detail filters
-            unlinkedItems = LoadUnlinkedRows(header, detailPkName, basePkValue!, baseDisplayText, filters);
+            throw new InvalidOperationException("使用分頁查詢時，Type 不可為 All，請改用 LinkedOnly 或 UnlinkedOnly。");
+        }
+        else
+        {
+            throw new InvalidOperationException("Type 不可為空，使用分頁查詢時請指定 LinkedOnly 或 UnlinkedOnly。");
         }
 
         return new MultipleMappingListViewModel
@@ -121,8 +150,10 @@ SELECT ID AS Id,
             TargetMappingColumnName = header.TARGET_MAPPING_COLUMN_NAME,
             SourceDetailColumnCode = header.SOURCE_DETAIL_COLUMN_CODE,
             TargetMappingColumnCode = header.TARGET_MAPPING_COLUMN_CODE,
-            Linked = ToDictionaryByDetailPk(linkedItems),
-            Unlinked = ToDictionaryByDetailPk(unlinkedItems)
+            LinkedTotalCount = linkedTotalCount,
+            UnlinkedTotalCount = unlinkedTotalCount,
+            Linked = linked,
+            Unlinked = unlinked
         };
     }
 
@@ -630,43 +661,59 @@ WHERE b.[{header.MAPPING_BASE_FK_COLUMN}] = @BaseId;";
     /// <param name="tx"></param>
     /// <returns></returns>
     /// <exception cref="InvalidOperationException"></exception>
-    private List<MultipleMappingItemViewModel> LoadLinkedDetailRows(
+    private PageQueryResult<MultipleMappingItemViewModel> LoadLinkedDetailRowsPaged(
         FormFieldMasterDto header,
         string detailPkName,
         object basePkValue,
         Dictionary<string, string>? filters,
+        int page,
+        int pageSize,
         SqlTransaction? tx = null)
     {
         if (string.IsNullOrWhiteSpace(header.MAPPING_BASE_COLUMN_NAME))
+        {
             throw new InvalidOperationException("缺少 Base 顯示欄位設定");
+        }
 
         var mappingColumns = _schemaService.GetFormFieldMaster(header.MAPPING_TABLE_NAME!, tx).ToList();
-        var detailColumns  = _schemaService.GetFormFieldMaster(header.DETAIL_TABLE_NAME!, tx).ToList();
+        var detailColumns = _schemaService.GetFormFieldMaster(header.DETAIL_TABLE_NAME!, tx).ToList();
 
         if (!detailColumns.Contains(detailPkName, StringComparer.OrdinalIgnoreCase))
+        {
             throw new InvalidOperationException("Detail PK 不存在");
+        }
 
         var defaultMap = GetDetailToRelationDefaultColumnMap(
             header.DETAIL_TABLE_ID,
             header.MAPPING_TABLE_NAME!,
             mappingColumns);
 
-        // mapping 的 dropdown meta（你現在最需要的是這個）
         var mappingDropdownMeta = BuildDropdownMetaMap(
             header.MAPPING_TABLE_ID,
             TableSchemaQueryType.OnlyMapping,
             header.MAPPING_TABLE_NAME!);
 
-        // （可選）如果 detail 欄位也需要 dropdown
-        // var detailDropdownMeta = BuildDropdownMetaMap(header.DETAIL_TABLE_ID, TableSchemaQueryType.OnlyDetail, header.DETAIL_TABLE_NAME!);
-
         var mappingSelect = string.Join(", ", mappingColumns.Select(c => $"m.[{c}] AS [m__{c}]"));
-        var detailSelect  = string.Join(", ", detailColumns.Select(c => $"d.[{c}] AS [d__{c}]"));
+        var detailSelect = string.Join(", ", detailColumns.Select(c => $"d.[{c}] AS [d__{c}]"));
 
         var (filterSql, param) = BuildLikeWhere(filters, mappingColumns, "m", "mLike");
         param.Add("BaseId", basePkValue);
+        param.Add("Offset", (page - 1) * pageSize);
+        param.Add("PageSize", pageSize);
 
-        var sql = $@"/**/
+        var countSql = $@"/**/
+    SELECT COUNT(1)
+    FROM [{header.MAPPING_TABLE_NAME}] m
+    JOIN [{header.DETAIL_TABLE_NAME}] d
+      ON m.[{header.MAPPING_DETAIL_FK_COLUMN}] = d.[{detailPkName}]
+    JOIN [{header.BASE_TABLE_NAME}] b
+      ON m.[{header.MAPPING_BASE_FK_COLUMN}] = b.[{header.MAPPING_BASE_FK_COLUMN}]
+    WHERE m.[{header.MAPPING_BASE_FK_COLUMN}] = @BaseId
+    {filterSql};";
+
+        var totalCount = _con.ExecuteScalar<int>(countSql, param, transaction: tx);
+
+        var dataSql = $@"/**/
     SELECT
         {mappingSelect},
         {detailSelect},
@@ -677,52 +724,66 @@ WHERE b.[{header.MAPPING_BASE_FK_COLUMN}] = @BaseId;";
     JOIN [{header.BASE_TABLE_NAME}] b
       ON m.[{header.MAPPING_BASE_FK_COLUMN}] = b.[{header.MAPPING_BASE_FK_COLUMN}]
     WHERE m.[{header.MAPPING_BASE_FK_COLUMN}] = @BaseId
-    {filterSql};";
+    {filterSql}
+    ORDER BY m.[SEQ], m.[{header.MAPPING_DETAIL_FK_COLUMN}]
+    OFFSET @Offset ROWS FETCH NEXT @PageSize ROWS ONLY;";
 
-        var rows = _con.Query(sql, param, transaction: tx)
+        var rows = _con.Query(dataSql, param, transaction: tx)
             .Cast<IDictionary<string, object?>>()
             .ToList();
 
-        var result = new List<MultipleMappingItemViewModel>(rows.Count);
+        var items = new List<MultipleMappingItemViewModel>(rows.Count);
 
         foreach (var row in rows)
         {
             var mappingRaw = new Dictionary<string, object?>(StringComparer.OrdinalIgnoreCase);
-            var detailRaw  = new Dictionary<string, object?>(StringComparer.OrdinalIgnoreCase);
+            var detailRaw = new Dictionary<string, object?>(StringComparer.OrdinalIgnoreCase);
 
-            foreach (var (k, v) in row)
+            foreach (var (key, value) in row)
             {
-                if (k.StartsWith("m__", StringComparison.OrdinalIgnoreCase)) mappingRaw[k[3..]] = v;
-                else if (k.StartsWith("d__", StringComparison.OrdinalIgnoreCase)) detailRaw[k[3..]] = v;
+                if (key.StartsWith("m__", StringComparison.OrdinalIgnoreCase))
+                {
+                    mappingRaw[key[3..]] = value;
+                }
+                else if (key.StartsWith("d__", StringComparison.OrdinalIgnoreCase))
+                {
+                    detailRaw[key[3..]] = value;
+                }
             }
 
-            var pkText = detailRaw.TryGetValue(detailPkName, out var pkVal) ? pkVal?.ToString() ?? "" : "";
+            var pkText = detailRaw.TryGetValue(detailPkName, out var pkVal)
+                ? pkVal?.ToString() ?? string.Empty
+                : string.Empty;
 
-            result.Add(new MultipleMappingItemViewModel
+            items.Add(new MultipleMappingItemViewModel
             {
                 DetailPk = pkText,
                 BaseDisplayText = row["BaseText"]?.ToString(),
                 DetailDisplayText = pkText,
                 DetailToRelationDefaultColumn = defaultMap,
-
-                // 不再覆蓋資料，而是同時回 Value/Options
                 MappingFields = BuildFieldValueDict(mappingRaw, mappingDropdownMeta),
-                DetailFields  = BuildFieldValueDict(detailRaw, null) // 你要 detail dropdown 再補 meta
+                DetailFields = BuildFieldValueDict(detailRaw, null)
             });
         }
 
-        return result;
+        return new PageQueryResult<MultipleMappingItemViewModel>
+        {
+            TotalCount = totalCount,
+            Items = items
+        };
     }
     
-        private List<MultipleMappingItemViewModel> LoadUnlinkedRows(
+     private PageQueryResult<MultipleMappingItemViewModel> LoadUnlinkedRowsPaged(
         FormFieldMasterDto header,
         string detailPkName,
         object basePkValue,
         string? baseDisplayText,
         Dictionary<string, string>? filters,
+        int page,
+        int pageSize,
         SqlTransaction? tx = null)
     {
-        var detailColumns  = _schemaService.GetFormFieldMaster(header.DETAIL_TABLE_NAME!, tx).ToList();
+        var detailColumns = _schemaService.GetFormFieldMaster(header.DETAIL_TABLE_NAME!, tx).ToList();
         var mappingColumns = _schemaService.GetFormFieldMaster(header.MAPPING_TABLE_NAME!, tx).ToList();
 
         var defaultMap = GetDetailToRelationDefaultColumnMap(
@@ -730,20 +791,15 @@ WHERE b.[{header.MAPPING_BASE_FK_COLUMN}] = @BaseId;";
             header.MAPPING_TABLE_NAME!,
             mappingColumns);
 
-        // 這個就算 unlinked 也能讓前端知道 mapping 欄位有哪些 dropdown options
-        var mappingDropdownMeta = BuildDropdownMetaMap(
-            header.MAPPING_TABLE_ID,
-            TableSchemaQueryType.OnlyMapping,
-            header.MAPPING_TABLE_NAME!);
-
         var detailSelect = string.Join(", ", detailColumns.Select(c => $"d.[{c}] AS [d__{c}]"));
 
         var (filterSql, param) = BuildLikeWhere(filters, detailColumns, "d", "dLike");
         param.Add("BaseId", basePkValue);
+        param.Add("Offset", (page - 1) * pageSize);
+        param.Add("PageSize", pageSize);
 
-        var sql = $@"/**/
-    SELECT
-        {detailSelect}
+        var countSql = $@"/**/
+    SELECT COUNT(1)
     FROM [{header.DETAIL_TABLE_NAME}] d
     WHERE 1 = 1
     {filterSql}
@@ -754,38 +810,61 @@ WHERE b.[{header.MAPPING_BASE_FK_COLUMN}] = @BaseId;";
           AND m.[{header.MAPPING_DETAIL_FK_COLUMN}] = d.[{detailPkName}]
     );";
 
-        var rows = _con.Query(sql, param, transaction: tx)
+        var totalCount = _con.ExecuteScalar<int>(countSql, param, transaction: tx);
+
+        var dataSql = $@"/**/
+    SELECT
+        {detailSelect}
+    FROM [{header.DETAIL_TABLE_NAME}] d
+    WHERE 1 = 1
+    {filterSql}
+    AND NOT EXISTS (
+        SELECT 1
+        FROM [{header.MAPPING_TABLE_NAME}] m
+        WHERE m.[{header.MAPPING_BASE_FK_COLUMN}] = @BaseId
+          AND m.[{header.MAPPING_DETAIL_FK_COLUMN}] = d.[{detailPkName}]
+    )
+    ORDER BY d.[{detailPkName}]
+    OFFSET @Offset ROWS FETCH NEXT @PageSize ROWS ONLY;";
+
+        var rows = _con.Query(dataSql, param, transaction: tx)
             .Cast<IDictionary<string, object?>>()
             .ToList();
 
-        var result = new List<MultipleMappingItemViewModel>(rows.Count);
+        var items = new List<MultipleMappingItemViewModel>(rows.Count);
 
         foreach (var row in rows)
         {
             var detailRaw = new Dictionary<string, object?>(StringComparer.OrdinalIgnoreCase);
 
-            foreach (var (k, v) in row)
+            foreach (var (key, value) in row)
             {
-                if (k.StartsWith("d__", StringComparison.OrdinalIgnoreCase))
-                    detailRaw[k[3..]] = v;
+                if (key.StartsWith("d__", StringComparison.OrdinalIgnoreCase))
+                {
+                    detailRaw[key[3..]] = value;
+                }
             }
 
-            var pkText = detailRaw.TryGetValue(detailPkName, out var pkVal) ? pkVal?.ToString() ?? "" : "";
+            var pkText = detailRaw.TryGetValue(detailPkName, out var pkVal)
+                ? pkVal?.ToString() ?? string.Empty
+                : string.Empty;
 
-            result.Add(new MultipleMappingItemViewModel
+            items.Add(new MultipleMappingItemViewModel
             {
                 DetailPk = pkText,
                 BaseDisplayText = baseDisplayText,
                 DetailDisplayText = pkText,
                 DetailToRelationDefaultColumn = defaultMap,
-
-                // unlinked 沒有 mapping row，所以 fields 先空
                 MappingFields = new Dictionary<string, FieldValueViewModel>(StringComparer.OrdinalIgnoreCase),
-                DetailFields  = BuildFieldValueDict(detailRaw, null)
+                DetailFields = BuildFieldValueDict(detailRaw, null)
             });
         }
 
-        return result;
+        return new PageQueryResult<MultipleMappingItemViewModel>
+        {
+            TotalCount = totalCount,
+            Items = items
+        };
     }
     
     private static Dictionary<string, FieldValueViewModel> BuildFieldValueDict(
@@ -1085,5 +1164,12 @@ WHERE b.[{header.MAPPING_BASE_FK_COLUMN}] = @BaseId;";
         }
 
         return result;
+    }
+    
+    private sealed class PageQueryResult<T>
+    {
+        public int TotalCount { get; init; }
+
+        public List<T> Items { get; init; } = new();
     }
 }
