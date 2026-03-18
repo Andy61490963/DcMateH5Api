@@ -32,91 +32,97 @@ public class AuthenticationService : Interfaces.IAuthenticationService
     
     public async Task<Result<LoginResponseViewModel>> H5LoginAsync(string account, string password, CancellationToken ct = default)
     {
+        var httpContext = _httpContextAccessor.HttpContext;
+        var now = DateTime.Now;
+
         var where = new WhereBuilder<UserAccount>()
             .AndEq(x => x.Account, account);
 
         var user = await _sqlHelper.SelectFirstOrDefaultAsync(where, ct);
 
         if (user == null)
-            return Result<LoginResponseViewModel>.Fail(AuthenticationErrorCode.UserNotFound, "bαKX~");
-        
-        bool isValid = PasswordHasher.VerifyPassword(password, user.PasswordHash, user.PasswordSalt);
+        {
+            return Result<LoginResponseViewModel>.Fail(AuthenticationErrorCode.UserNotFound, "帳號或密碼錯誤");
+        }
+
+        bool isValid = !string.IsNullOrWhiteSpace(user.PasswordHash)
+            && !string.IsNullOrWhiteSpace(user.PasswordSalt)
+            && PasswordHasher.VerifyPassword(password, user.PasswordHash, user.PasswordSalt);
 
         if (!isValid)
+        {
+            var failedLoginLogSid = RandomHelper.GenerateRandomDecimal();
+            var failedLoginLog = new UserLoginLogDto
+            {
+                ADM_USER_HIST_SID = failedLoginLogSid,
+                ADM_USER_SID = user.Id,
+                ACCOUNT_NO = user.Account,
+                REPORT_TIME = now,
+                LAST_ACTIVE_TIME = now,
+                IP_ADDRESS = httpContext?.Connection?.RemoteIpAddress?.ToString(),
+                ACTION_CODE = "User login",
+                ACTION_RESULT = false,
+                ACTION_COMMENT = "User login failed: invalid password."
+            };
+
+            await _sqlHelper.InsertAsync(failedLoginLog, false, ct);
+
             return Result<LoginResponseViewModel>.Fail(AuthenticationErrorCode.UserNotFound, "帳號或密碼錯誤");
+        }
 
-        // ---------------------------------------------------------
-        // Concurrent Login Check
-        // ---------------------------------------------------------
         int expireMinutes = _config.GetValue<int>("AuthSettings:ExpireTimeSpanMinutes");
-        
-        // 先暫時不卡使用者登入數量
-        // int maxConcurrentLogins = _config.GetValue<int>("AuthSettings:MaxConcurrentLogins", 3); // Default 3 if not set
-        //
-        // var cutoffTime = DateTime.Now.AddMinutes(-expireMinutes);
-        //
-        // // Count active sessions (GLOBAL)
-        // var countWhere = new WhereBuilder<UserLoginLogDto>()
-        //     .AndEq(x => x.LOGOUT_TIME, null)
-        //     .AndGt(x => x.LAST_ACTIVE_TIME, cutoffTime);
-        //
-        // var activeCount = await _sqlHelper.SelectCountAsync(countWhere, ct);
-        //
-        // if (activeCount >= maxConcurrentLogins)
-        // {
-        //      return Result<LoginResponseViewModel>.Fail(AuthenticationErrorCode.Unauthorized, $"已達最大同時登入限制 ({maxConcurrentLogins})，請稍後再試或登出其他裝置。");
-        // }
 
-        // Create Login Log
-        var loginLogSid = Guid.NewGuid();
+        var loginLogSid = RandomHelper.GenerateRandomDecimal();
         var loginLog = new UserLoginLogDto
         {
-            ADM_USER_LOGIN_LOG_SID = loginLogSid,
+            ADM_USER_HIST_SID = loginLogSid,
             ADM_USER_SID = user.Id,
             ACCOUNT_NO = user.Account,
-            LOGIN_TIME = DateTime.Now,
-            LAST_ACTIVE_TIME = DateTime.Now,
-            IP_ADDRESS = _httpContextAccessor.HttpContext.Connection.RemoteIpAddress?.ToString()
+            REPORT_TIME = now,
+            LAST_ACTIVE_TIME = now,
+            IP_ADDRESS = httpContext?.Connection?.RemoteIpAddress?.ToString(),
+            OPI_TYPE = "PC",
+            ACTION_CODE = "User login",
+            ACTION_RESULT = true,
+            ACTION_COMMENT = "User login successfully."
         };
 
-        await _sqlHelper.InsertAsync(loginLog, ct);
-
-        // ---------------------------------------------------------
+        await _sqlHelper.InsertAsync(loginLog, false, ct);
 
         string userLv = user.LV?.ToString() ?? "0";
 
         var claims = new List<Claim>
         {
-            new Claim(AppClaimTypes.Account, user.Account),
-            new Claim(AppClaimTypes.UserId, user.Id.ToString()),
-            new Claim(AppClaimTypes.UserLv, userLv),
-            new Claim("LoginLogSid", loginLogSid.ToString()) // Add Login Log SID claim
+            new (AppClaimTypes.Account, user.Account ?? string.Empty),
+            new (AppClaimTypes.UserId, user.Id.ToString()),
+            new (AppClaimTypes.UserLv, userLv),
+            new ("LoginLogSid", loginLogSid.ToString())
         };
 
         var claimsIdentity = new ClaimsIdentity(claims, CookieAuthenticationDefaults.AuthenticationScheme);
-       
+
         var authProperties = new AuthenticationProperties
         {
-            IsPersistent = true, 
+            IsPersistent = true,
             ExpiresUtc = DateTimeOffset.UtcNow.AddMinutes(expireMinutes),
         };
 
-        await _httpContextAccessor.HttpContext.SignInAsync(
+        await httpContext.SignInAsync(
             CookieAuthenticationDefaults.AuthenticationScheme,
             new ClaimsPrincipal(claimsIdentity),
             authProperties);
-        
-        var setCookieHeader = _httpContextAccessor.HttpContext.Response.Headers["Set-Cookie"].ToString();
+
+        var setCookieHeader = httpContext.Response.Headers["Set-Cookie"].ToString();
         string encryptedTicket = string.Empty;
+
         if (!string.IsNullOrEmpty(setCookieHeader))
         {
-            var ticketPart = setCookieHeader.Split(';')[0]; 
             encryptedTicket = ExtractTokenFromResponse();
         }
-        
-        string expiresFrom = DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss"); 
-        string expiresTo = authProperties.ExpiresUtc?.ToLocalTime().ToString("yyyy-MM-dd HH:mm:ss") ?? "";
-        
+
+        string expiresFrom = now.ToString("yyyy-MM-dd HH:mm:ss");
+        string expiresTo = authProperties.ExpiresUtc?.ToLocalTime().ToString("yyyy-MM-dd HH:mm:ss") ?? string.Empty;
+
         var menuData = await _menuService.GetFullMenuByLvAsync(user.LV ?? 0, user.Id);
 
         return Result<LoginResponseViewModel>.Ok(new LoginResponseViewModel
@@ -130,22 +136,88 @@ public class AuthenticationService : Interfaces.IAuthenticationService
             Menus = menuData
         });
     }
-
+    
+    /// <summary>
+    /// 登出
+    /// </summary>
     public async Task LogoutAsync()
     {
-        var user = _httpContextAccessor.HttpContext.User;
-        if (user.Identity.IsAuthenticated)
-        {
-            var loginLogSidStr = user.FindFirst("LoginLogSid")?.Value;
-            if (Guid.TryParse(loginLogSidStr, out var loginLogSid))
-            {
-                await _sqlHelper.UpdateById<UserLoginLogDto>(loginLogSid)
-                    .Set(x => x.LOGOUT_TIME, DateTime.Now)
-                    .ExecuteAsync();
-            }
-        }
+        var httpContext = _httpContextAccessor.HttpContext;
+        var user = httpContext?.User;
+        var now = DateTime.Now;
 
-        await _httpContextAccessor.HttpContext.SignOutAsync(CookieAuthenticationDefaults.AuthenticationScheme);
+        try
+        {
+            if (user?.Identity?.IsAuthenticated == true)
+            {
+                var userIdStr = user.FindFirst(AppClaimTypes.UserId)?.Value;
+                var account = user.FindFirst(AppClaimTypes.Account)?.Value ?? string.Empty;
+
+                if (Guid.TryParse(userIdStr, out var userId))
+                {
+                    var logoutLogSid = RandomHelper.GenerateRandomDecimal();
+
+                    var logoutLog = new UserLoginLogDto
+                    {
+                        ADM_USER_HIST_SID = logoutLogSid,
+                        ADM_USER_SID = userId,
+                        ACCOUNT_NO = account,
+                        REPORT_TIME = now,
+                        LAST_ACTIVE_TIME = now,
+                        IP_ADDRESS = httpContext?.Connection?.RemoteIpAddress?.ToString(),
+                        OPI_TYPE = "PC",
+                        ACTION_CODE = "User logout",
+                        ACTION_RESULT = true,
+                        ACTION_COMMENT = "User logout successfully."
+                    };
+
+                    await _sqlHelper.InsertAsync(logoutLog, false);
+                }
+            }
+
+            await httpContext.SignOutAsync(CookieAuthenticationDefaults.AuthenticationScheme);
+        }
+        catch (Exception ex)
+        {
+            try
+            {
+                if (user?.Identity?.IsAuthenticated == true)
+                {
+                    var userIdStr = user.FindFirst(AppClaimTypes.UserId)?.Value;
+                    var account = user.FindFirst(AppClaimTypes.Account)?.Value ?? string.Empty;
+
+                    if (Guid.TryParse(userIdStr, out var userId))
+                    {
+                        var failedLogoutLogSid = RandomHelper.GenerateRandomDecimal();
+                        var errorMessage = ex.Message.Length > 200
+                            ? ex.Message[..200]
+                            : ex.Message;
+
+                        var failedLogoutLog = new UserLoginLogDto
+                        {
+                            ADM_USER_HIST_SID = failedLogoutLogSid,
+                            ADM_USER_SID = userId,
+                            ACCOUNT_NO = account,
+                            REPORT_TIME = now,
+                            LAST_ACTIVE_TIME = now,
+                            IP_ADDRESS = httpContext?.Connection?.RemoteIpAddress?.ToString(),
+                            OPI_TYPE = "PC",
+                            ACTION_CODE = "User logout",
+                            ACTION_RESULT = false,
+                            ACTION_COMMENT = $"User logout failed: {errorMessage}"
+                        };
+
+                        await _sqlHelper.InsertAsync(failedLogoutLog);
+                    }
+                }
+            }
+            catch
+            {
+                // 避免 logging failure 影響主流程
+            }
+
+            throw;
+        }
     }
 
     public async Task<Result<LoginResponseViewModel>> AuthenticateAsync(string account, string password, CancellationToken ct = default)

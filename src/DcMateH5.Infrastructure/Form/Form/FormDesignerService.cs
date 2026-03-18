@@ -175,7 +175,7 @@ public class FormDesignerService : IFormDesignerService
         _sqlHelper.EnableAuditColumns = false;
         try
         {
-            await _sqlHelper.InsertAsync(entity, ct);
+            await _sqlHelper.InsertAsync(entity, true, ct);
         }
         finally
         {
@@ -1638,7 +1638,7 @@ WHERE c.FORM_FIELD_MASTER_ID = @MasterId
     /// <returns></returns>
     public async Task<bool> InsertValidationRule( FormFieldValidationRuleDto model, CancellationToken ct = default )
     {
-        var count = await _sqlHelper.InsertAsync( model, ct );
+        var count = await _sqlHelper.InsertAsync( model, true, ct );
         return count > 0;
     }
 

@@ -190,7 +190,7 @@ builder.Services.AddAuthorization();
 
 builder.Services.AddControllers(options =>
     {
-        options.Filters.Add<DcMateH5Api.Areas.Security.Filters.ConcurrentLoginCheckFilter>(); 
+        // options.Filters.Add<DcMateH5Api.Areas.Security.Filters.ConcurrentLoginCheckFilter>(); 
     })
     .AddJsonOptions(options =>
     {

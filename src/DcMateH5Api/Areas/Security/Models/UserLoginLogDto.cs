@@ -7,15 +7,15 @@ namespace DcMateH5Api.Areas.Security.Models
     /// <summary>
     /// 使用者登入紀錄
     /// </summary>
-    [Table("ADM_USER_LOGIN_LOG")]
+    [Table("ADM_USER_HIST")]
     public class UserLoginLogDto
     {
         /// <summary>
         /// 此次登入的唯一識別碼
         /// </summary>
         [Key]
-        [Column("ADM_USER_LOGIN_LOG_SID")]
-        public Guid ADM_USER_LOGIN_LOG_SID { get; set; }
+        [Column("ADM_USER_HIST_SID")]
+        public decimal ADM_USER_HIST_SID { get; set; }
 
         /// <summary>
         /// 使用者 ID
@@ -32,8 +32,8 @@ namespace DcMateH5Api.Areas.Security.Models
         /// <summary>
         /// 登入時間
         /// </summary>
-        [Column("LOGIN_TIME")]
-        public DateTime LOGIN_TIME { get; set; }
+        [Column("REPORT_TIME")]
+        public DateTime REPORT_TIME { get; set; }
 
         /// <summary>
         /// 最後活動時間
@@ -42,15 +42,33 @@ namespace DcMateH5Api.Areas.Security.Models
         public DateTime LAST_ACTIVE_TIME { get; set; }
 
         /// <summary>
-        /// 登出時間
-        /// </summary>
-        [Column("LOGOUT_TIME")]
-        public DateTime? LOGOUT_TIME { get; set; }
-
-        /// <summary>
         /// 來源 IP 位址
         /// </summary>
         [Column("IP_ADDRESS")]
         public string? IP_ADDRESS { get; set; }
+        
+        /// <summary>
+        /// 
+        /// </summary>
+        [Column("OPI_TYPE")]
+        public string OPI_TYPE { get; set; }
+        
+        /// <summary>
+        /// 
+        /// </summary>
+        [Column("ACTION_CODE")]
+        public string ACTION_CODE { get; set; }
+        
+        /// <summary>
+        /// 
+        /// </summary>
+        [Column("ACTION_RESULT")]
+        public bool ACTION_RESULT { get; set; }
+        
+        /// <summary>
+        /// 
+        /// </summary>
+        [Column("ACTION_COMMENT")]
+        public string ACTION_COMMENT { get; set; }
     }
 }

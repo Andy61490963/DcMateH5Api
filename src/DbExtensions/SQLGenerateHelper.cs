@@ -138,7 +138,7 @@ namespace DbExtensions
         /// - 會排除 [Timestamp] 欄位（rowversion 由 SQL Server 生成）
         /// - 若 EnableAuditColumns=true，會額外寫入審計欄位（需資料表具備對應欄位）
         /// </summary>
-        public async Task<int> InsertAsync<T>(T entity, CancellationToken ct = default)
+        public async Task<int> InsertAsync<T>(T entity, bool enableAuditColumns = true, CancellationToken ct = default)
         {
             var (table, props, rowVersion, _, colByProp) = Reflect<T>();
 
@@ -147,7 +147,7 @@ namespace DbExtensions
             var vals = new List<string>(toInsert.Select(p => "@" + p.Name));
             var dp = new DynamicParameters(entity);
 
-            if (EnableAuditColumns)
+            if (enableAuditColumns)
             {
                 var account = GetCurrentUserId();
                 var now = await GetDbNowAsync(ct);
