@@ -35,17 +35,6 @@ public class AuthenticationService : Interfaces.IAuthenticationService
         var httpContext = _httpContextAccessor.HttpContext;
         var now = DateTime.Now;
 
-        // 檢查註冊碼
-        var where = new WhereBuilder<UserAccount>()
-            .AndEq(x => x.Account, account);
-
-        var user = await _sqlHelper.SelectFirstOrDefaultAsync(where, ct);
-
-        if (user == null)
-        {
-            return Result<LoginResponseViewModel>.Fail(AuthenticationErrorCode.UserNotFound, "帳號或密碼錯誤");
-        }
-        
         // 檢查使用者存在
         var where = new WhereBuilder<UserAccount>()
             .AndEq(x => x.Account, account);
