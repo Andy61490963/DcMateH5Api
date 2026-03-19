@@ -27,7 +27,7 @@ namespace DcMateH5Api.Areas.Security.Controllers
         }
         
         /// <summary>
-        /// 取得受保護的資料。
+        /// 測試隨機亂數。
         /// </summary>
         /// <returns>簡單的訊息。</returns>
         [HttpGet("GenerateRandomDecimal")]
