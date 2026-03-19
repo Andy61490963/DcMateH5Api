@@ -294,3 +294,4 @@ app.MapControllers();
 app.MapHealthChecks("/healthz");
 
 app.Run();
+// 新泰國QC分支
