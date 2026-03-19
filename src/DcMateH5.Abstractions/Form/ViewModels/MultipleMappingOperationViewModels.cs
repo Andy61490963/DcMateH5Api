@@ -151,6 +151,15 @@ public class MultipleMappingListViewModel
 
     public string? TargetMappingColumnCode { get; set; }
     
+    /// <summary>
+    /// 已關聯資料總數
+    /// </summary>
+    public int LinkedTotalCount { get; set; }
+
+    /// <summary>
+    /// 未關聯資料總數
+    /// </summary>
+    public int UnlinkedTotalCount { get; set; }
     
     /// <summary>
     /// 已建立對應關係的明細資料清單（左側）。

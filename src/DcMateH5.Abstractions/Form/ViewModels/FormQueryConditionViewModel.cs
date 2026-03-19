@@ -49,6 +49,10 @@ public class MappingListQuery
     
     public Dictionary<string, string> Filters { get; set; }
         = new(StringComparer.OrdinalIgnoreCase);
+    
+    public int Page { get; set; } = 1;
+
+    public int PageSize { get; set; } = 20;
 }
 
 public sealed record FormOrderBy(
