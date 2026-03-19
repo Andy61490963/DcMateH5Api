@@ -9,6 +9,7 @@ public class TokenRenewMiddleware
     {
         public const string Authorization = "Authorization";
         public const string BearerPrefix = "Bearer ";
+        public const string TokenExpire = "X-Token-Expire";
     }
 
     private readonly RequestDelegate _next;
@@ -82,6 +83,11 @@ public class TokenRenewMiddleware
         // ★ MODIFY: 不另外用 X-Renew-Token，直接沿用舊的 X-Auth-Token
         context.Response.Headers[HeaderNames.Authorization] =
             $"{HeaderNames.BearerPrefix}{newToken.TokenKey}";
+        
+        DateTime expireTime = new DateTime(validationResult.ExpireTicks, DateTimeKind.Local);
+
+        context.Response.Headers[HeaderNames.TokenExpire] =
+            expireTime.ToString("o"); // ISO 8601
     }
 
     private static bool ShouldRenew(TokenValidationResult validationResult)
