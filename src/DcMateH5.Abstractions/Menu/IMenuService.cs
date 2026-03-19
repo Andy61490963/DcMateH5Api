@@ -10,5 +10,5 @@ public interface IMenuService
     /// <param name="lv">頁面層級</param>
     /// <param name="userId">使用者識別</param>
     /// <returns>Legacy AuthInfo</returns>
-    Task<AuthInfo> GetFullMenuByLvAsync(int lv, Guid userId);
+    Task<AuthInfo> GetFullMenuByLvAsync(string lv, Guid userId);
 }

@@ -1,7 +1,4 @@
-using DcMateH5Api.Areas.Security.Interfaces;
-using DcMateH5Api.Areas.Security.Services;
 using DcMateH5Api.Services.Cache;
-using Microsoft.AspNetCore.Authentication.Cookies;
 using Microsoft.AspNetCore.DataProtection;
 using Microsoft.AspNetCore.HttpOverrides;
 using Microsoft.Extensions.Diagnostics.HealthChecks;
@@ -18,6 +15,9 @@ using DcMateH5.Abstractions.Form.Options;
 using DcMateH5.Abstractions.Form.Transaction;
 using DcMateH5.Abstractions.Log;
 using DcMateH5.Abstractions.Menu;
+using DcMateH5.Abstractions.RegistrationLicense;
+using DcMateH5.Abstractions.Token;
+using DcMateH5.Abstractions.Token.Model;
 using DcMateH5.Abstractions.Wip;
 using DcMateH5.Infrastructure;
 using DcMateH5.Infrastructure.Form.Form;
@@ -25,12 +25,18 @@ using DcMateH5.Infrastructure.Form.FormLogic;
 using DcMateH5.Infrastructure.Form.Transaction;
 using DcMateH5.Infrastructure.Log;
 using DcMateH5.Infrastructure.Menu;
+using DcMateH5.Infrastructure.RegistrationLicense;
+using DcMateH5.Infrastructure.Token;
 using DcMateH5.Infrastructure.Wip;
 using DcMateH5Api.BackgroundService;
 using DcMateH5Api.MiddlewareExtension;
+using DcMateH5Api.MiddlewareExtension.Token;
 using DcMateH5Api.Services.Cache.Redis.Interfaces;
 using DcMateH5Api.Services.Cache.Redis.Services;
 using DcMateH5Api.Services.CurrentUser;
+using Microsoft.AspNetCore.Authentication;
+using AuthenticationService = DcMateH5Api.Areas.Security.Services.AuthenticationService;
+using IAuthenticationService = DcMateH5Api.Areas.Security.Interfaces.IAuthenticationService;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -53,12 +59,13 @@ builder.Services.AddDataProtection()
 // 註冊 CORS 服務
 builder.Services.AddCors(options =>
 {
-    options.AddPolicy("CorsPolicy", p =>
+    options.AddPolicy("AllowAll", policy =>
     {
-        p.SetIsOriginAllowed(origin => true) // 動態允許所有來源
-         .AllowAnyMethod()
-         .AllowAnyHeader()
-         .AllowCredentials(); // 允許跨 IP 存取 Cookie
+        policy
+            .AllowAnyOrigin()
+            .AllowAnyHeader()
+            .AllowAnyMethod()
+            .WithExposedHeaders("Authorization"); 
     });
 });
 
@@ -72,6 +79,7 @@ var redisConn = config.GetValue<string>("Redis:Connection");
 builder.Services.Configure<CacheOptions>(config.GetSection("Cache"));
 builder.Services.Configure<DbOptions>(config.GetSection("ConnectionStrings"));
 builder.Services.Configure<FormSettings>(config.GetSection("FormSettings"));
+builder.Services.Configure<TokenOptions>(config.GetSection("TokenOptions"));
 
 // -------------------- 分散式快取（Redis） --------------------
 builder.Services.AddStackExchangeRedisCache(opt =>
@@ -104,6 +112,8 @@ builder.Services.AddHostedService<FormOrphanCleanupHostedService>();
 builder.Services.AddScoped<IFormOrphanCleanupService, FormOrphanCleanupService>();
 builder.Services.AddScoped<IFormDesignerService, FormDesignerService>();
 builder.Services.AddScoped<IAuthenticationService, AuthenticationService>();
+builder.Services.AddScoped<IRegistrationLicenseService, RegistrationLicenseService>();
+builder.Services.AddScoped<ITokenService, TokenService>();
 builder.Services.AddScoped<IFormFieldMasterService, FormFieldMasterService>();
 builder.Services.AddScoped<ISchemaService, SchemaService>();
 builder.Services.AddScoped<IFormFieldConfigService, FormFieldConfigService>();
@@ -130,56 +140,18 @@ builder.Services.AddScoped<IWipBaseSettingService, WipBaseSettingService>();
 builder.Services.AddScoped<ITransactionService, TransactionService>();
 builder.Services.AddScoped<ICacheService, RedisCacheService>();
 
-// 授權 Policy
 
-// -------------------- CORS --------------------
-//const string CorsPolicy = "AllowAll";
-//builder.Services.AddCors(options =>
-//{
-//    options.AddPolicy(CorsPolicy, p =>
-//        p.AllowAnyOrigin()
-//         .AllowAnyMethod()
-//         .AllowAnyHeader());
-//});
-
-// -------------------- 重要：混合驗證模式 (JWT + Cookie) --------------------
-// 修改點：將 Cookie 設為預設 Scheme
-var authSettings = builder.Configuration.GetSection("AuthSettings");
-var expireMinutes = authSettings.GetValue<int>("ExpireTimeSpanMinutes");
+// 註冊 Authentication Scheme
 builder.Services
     .AddAuthentication(options =>
     {
-        options.DefaultScheme = CookieAuthenticationDefaults.AuthenticationScheme;
-        options.DefaultChallengeScheme = CookieAuthenticationDefaults.AuthenticationScheme;
+        options.DefaultAuthenticateScheme = CustomTokenAuthenticationHandler.CustomTokenAuthenticationDefaults.AuthenticationScheme;
+        options.DefaultChallengeScheme = CustomTokenAuthenticationHandler.CustomTokenAuthenticationDefaults.AuthenticationScheme;
+        options.DefaultForbidScheme = CustomTokenAuthenticationHandler.CustomTokenAuthenticationDefaults.AuthenticationScheme;
     })
-    .AddCookie(options =>
-    {
-        options.Cookie.Name = "DcMateAuthTicket";
-        options.Cookie.Path = "/";
-        options.Cookie.HttpOnly = true;
-
-        // 最開放核心
-        options.Cookie.SameSite = SameSiteMode.None;
-        options.Cookie.SecurePolicy = CookieSecurePolicy.Always;
-
-        options.ExpireTimeSpan = TimeSpan.FromMinutes(expireMinutes); // 拉長避免頻繁失效
-        options.SlidingExpiration = true;
-
-        options.Events = new CookieAuthenticationEvents
-        {
-            // API 不 redirect，直接 401
-            OnRedirectToLogin = context =>
-            {
-                context.Response.StatusCode = StatusCodes.Status401Unauthorized;
-                return Task.CompletedTask;
-            },
-            OnRedirectToAccessDenied = context =>
-            {
-                context.Response.StatusCode = StatusCodes.Status403Forbidden;
-                return Task.CompletedTask;
-            }
-        };
-    });
+    .AddScheme<AuthenticationSchemeOptions, CustomTokenAuthenticationHandler>(
+        CustomTokenAuthenticationHandler.CustomTokenAuthenticationDefaults.AuthenticationScheme,
+        options => { });
 
 builder.Services.AddAuthorization();
 
@@ -217,24 +189,33 @@ builder.Services.AddSwaggerGen(options =>
     var xmlPath = Path.Combine(AppContext.BaseDirectory, xml);
     if (File.Exists(xmlPath)) options.IncludeXmlComments(xmlPath);
     
-    // 1. 加入您的 ManualToken 定義
-    options.AddSecurityDefinition("ManualToken", new OpenApiSecurityScheme
+    // 改成標準 Bearer Token 設定
+    options.AddSecurityDefinition("Bearer", new OpenApiSecurityScheme
     {
-        Name = "X-Auth-Token",
+        Description = "請輸入 Token。格式：Bearer {token}",
+        Name = "Authorization",
         In = ParameterLocation.Header,
-        Type = SecuritySchemeType.ApiKey,
-        Description = "請輸入登入回傳的加密金鑰 (Token)"
+        Type = SecuritySchemeType.Http,
+        Scheme = "bearer",
+        BearerFormat = "Bearer"
     });
 
-    // 2. 關鍵修正：將原本的 AddSecurityRequirement 替換為包含兩者的組合
-    options.AddSecurityRequirement(new OpenApiSecurityRequirement {
+    // 套用 Bearer Security Requirement
+    options.AddSecurityRequirement(new OpenApiSecurityRequirement
+    {
         {
-            new OpenApiSecurityScheme {
-                Reference = new OpenApiReference { Type = ReferenceType.SecurityScheme, Id = "ManualToken" }
+            new OpenApiSecurityScheme
+            {
+                Reference = new OpenApiReference
+                {
+                    Type = ReferenceType.SecurityScheme,
+                    Id = "Bearer"
+                }
             },
             Array.Empty<string>()
         }
     });
+    
     options.DocInclusionPredicate((doc, api) => doc == "v1" || string.Equals(api.GroupName, doc, StringComparison.OrdinalIgnoreCase));
 });
 
@@ -247,7 +228,7 @@ app.UseDefaultFiles(); // 讓系統自動找 index.html
 app.UseStaticFiles();  // 啟用 wwwroot 靜態檔案支援
 
 // 關鍵順序：必須在 Authentication 之前啟用
-app.UseCors("CorsPolicy");
+app.UseCors("AllowAll");
 app.UseForwardedHeaders(new ForwardedHeadersOptions
 {
     ForwardedHeaders = ForwardedHeaders.XForwardedProto | ForwardedHeaders.XForwardedHost
@@ -255,22 +236,14 @@ app.UseForwardedHeaders(new ForwardedHeadersOptions
 
 app.UseRouting();
 //app.UseCors(CorsPolicy);
+
 app.UseMiddleware<GlobalExceptionMiddleware>();
 
-// --- 核心改動：將 Header Token 轉入 Cookie 字串中 ---
-app.Use(async (context, next) =>
-{
-    // 1. 檢查 Header 是否有傳入 Token
-    if (context.Request.Headers.TryGetValue("X-Auth-Token", out var token) && !string.IsNullOrEmpty(token))
-    {
-        // 2. 終極方案：直接在 Request Header 的 "Cookie" 欄位中注入金鑰字串
-        // 這就像是在信封袋外面貼上標籤，後續的驗證機制一定能張開眼睛讀取到它
-        context.Request.Headers.Append("Cookie", $"DcMateAuthTicket={token}");
-    }
-    await next();
-});
-
 app.UseAuthentication();
+
+// 認證完後，授權前插入續期 middleware
+app.UseTokenRenew();
+
 app.UseAuthorization();
 
 app.UseSwagger();

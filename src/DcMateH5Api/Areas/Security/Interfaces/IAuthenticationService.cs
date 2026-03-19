@@ -1,4 +1,4 @@
-using DcMateH5Api.Areas.Security.ViewModels;
+using DcMateH5Api.Areas.Security.ViewModels.Login;
 using DcMateH5Api.Models;
 
 namespace DcMateH5Api.Areas.Security.Interfaces
@@ -15,8 +15,6 @@ namespace DcMateH5Api.Areas.Security.Interfaces
         /// <param name="password">使用者密碼。</param>
         /// <returns>登入結果，失敗則回傳 null。</returns>
         Task<Result<LoginResponseViewModel>> AuthenticateAsync(string account, string password, CancellationToken ct = default);
-
-        Task<Result<LoginResponseViewModel>> ExtendSessionAsync();
 
         /// <summary>
         /// 登出。

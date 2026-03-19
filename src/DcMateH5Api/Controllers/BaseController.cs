@@ -6,7 +6,6 @@ namespace DcMateH5Api.Controllers
 {
     /// <summary>
     /// 提供：CurrentUser、授權便捷方法（by Policy / by Requirement / by Service）、Route 解析等。
-    /// 與分散式架構、JWT 完全相容（無共享狀態；每請求讀 HttpContext.User）。
     /// </summary>
     [ApiController]
     public abstract class BaseController : ControllerBase
@@ -46,7 +45,11 @@ namespace DcMateH5Api.Controllers
         /// 是否為已通過驗證的使用者
         /// </summary>
         public bool IsAuthenticated { get; private init; }
-
+        
+        public Guid SessionId { get; private init; }
+        
+        public string TokenSeq { get; private init; } = string.Empty;
+        
         /// <summary>
         /// 從 ClaimsPrincipal 建立目前使用者的快照
         /// </summary>
@@ -62,13 +65,19 @@ namespace DcMateH5Api.Controllers
             var account = user.FindFirst(AppClaimTypes.Account)?.Value;
             var id = user.FindFirst(AppClaimTypes.UserId)?.Value;
             var lv = user.FindFirst(AppClaimTypes.UserLv)?.Value;
+            var session = user.FindFirst(TokenClaimTypes.SessionId)?.Value;
+            var tokenSeq = user.FindFirst(TokenClaimTypes.TokenSeq)?.Value;
+            
             Guid.TryParse(id, out var userId);
+            Guid.TryParse(session, out var sessionId);
 
             return new CurrentUserSnapshot
             {
                 Account = account,
                 Id = userId,
                 Lv = lv,
+                SessionId = sessionId,
+                TokenSeq = tokenSeq,
                 IsAuthenticated = userId != Guid.Empty
             };
         }

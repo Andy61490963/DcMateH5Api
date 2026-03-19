@@ -1,164 +1,179 @@
 using ClassLibrary;
-using DcMateH5Api.Areas.Security.Models;
-using DcMateH5Api.Areas.Security.ViewModels;
-using DcMateH5Api.Models;
-using Microsoft.AspNetCore.Authentication;
-using Microsoft.AspNetCore.Authentication.Cookies;
-using System.Security.Claims;
 using DbExtensions;
 using DcMateClassLibrary.Helper;
 using DcMateH5.Abstractions.Menu;
+using DcMateH5.Abstractions.Menu.Models;
+using DcMateH5.Abstractions.RegistrationLicense;
+using DcMateH5.Abstractions.RegistrationLicense.Model;
+using DcMateH5Api.Areas.Security.Models;
+using DcMateH5Api.Areas.Security.ViewModels.Login;
+using DcMateH5Api.Models;
+using System.Security.Claims;
+using DcMateH5.Abstractions.Token;
+using DcMateH5.Abstractions.Token.Model;
 
 namespace DcMateH5Api.Areas.Security.Services;
 
-
 public class AuthenticationService : Interfaces.IAuthenticationService
 {
+    private static class AuthConstants
+    {
+        public const string OpiTypePc = "PC";
+        public const string LoginActionCode = "User login";
+        public const string LogoutActionCode = "User logout";
+        public const string LoginSuccessComment = "User login successfully.";
+        public const string LoginFailedComment = "User login failed: invalid password.";
+        public const string TokenStatusSuccess = "true";
+        public const string TokenStatusFail = "false";
+        public const int DefaultTokenSeq = 22;
+    }
+
     private readonly SQLGenerateHelper _sqlHelper;
     private readonly IHttpContextAccessor _httpContextAccessor;
     private readonly IConfiguration _config;
     private readonly IMenuService _menuService;
+    private readonly IRegistrationLicenseService _registrationLicenseService;
+    private readonly ITokenService _tokenService;
+
     public AuthenticationService(
         SQLGenerateHelper sqlHelper,
         IHttpContextAccessor httpContextAccessor,
         IConfiguration config,
-        IMenuService menuService)
+        IMenuService menuService,
+        IRegistrationLicenseService registrationLicenseService,
+        ITokenService tokenService)
     {
         _sqlHelper = sqlHelper;
         _httpContextAccessor = httpContextAccessor;
-        _config = config; 
+        _config = config;
         _menuService = menuService;
+        _registrationLicenseService = registrationLicenseService;
+        _tokenService = tokenService;
     }
-    
+
     public async Task<Result<LoginResponseViewModel>> H5LoginAsync(string account, string password, CancellationToken ct = default)
     {
-        var httpContext = _httpContextAccessor.HttpContext;
-        var now = DateTime.Now;
+        HttpContext? httpContext = _httpContextAccessor.HttpContext;
+        DateTime now = DateTime.Now;
 
-        // 檢查使用者存在
-        var where = new WhereBuilder<UserAccount>()
-            .AndEq(x => x.Account, account);
+        if (httpContext == null)
+        {
+            return Result<LoginResponseViewModel>.Fail(
+                AuthenticationErrorCode.Unauthorized,
+                "登入環境不存在");
+        }
 
-        var user = await _sqlHelper.SelectFirstOrDefaultAsync(where, ct);
+        CfgRegisterDto? cfgRegister = await GetCfgRegisterAsync(ct);
+        if (cfgRegister == null)
+        {
+            return Result<LoginResponseViewModel>.Fail(
+                AuthenticationErrorCode.CfgRegisterNotFound,
+                "註冊碼認證失敗");
+        }
 
+        LicenseParseResponse licenseResult = ParseLicense(cfgRegister);
+        if (!licenseResult.VerifyResult)
+        {
+            LoginResponseViewModel failedLicenseResponse = BuildFailedResponse(
+                account,
+                licenseResult,
+                "註冊碼認證失敗");
+
+            return Result<LoginResponseViewModel>.Fail(
+                AuthenticationErrorCode.CfgRegisterNotFound,
+                "註冊碼認證失敗",
+                failedLicenseResponse);
+        }
+
+        UserAccount? user = await GetUserByAccountAsync(account, ct);
         if (user == null)
         {
-            return Result<LoginResponseViewModel>.Fail(AuthenticationErrorCode.UserNotFound, "帳號或密碼錯誤");
+            LoginResponseViewModel failedUserResponse = BuildFailedResponse(
+                account,
+                licenseResult,
+                "帳號或密碼錯誤");
+
+            return Result<LoginResponseViewModel>.Fail(
+                AuthenticationErrorCode.UserNotFound,
+                "帳號或密碼錯誤",
+                failedUserResponse);
         }
 
-        bool isValid = !string.IsNullOrWhiteSpace(user.PasswordHash)
-            && !string.IsNullOrWhiteSpace(user.PasswordSalt)
-            && PasswordHasher.VerifyPassword(password, user.PasswordHash, user.PasswordSalt);
-
-        if (!isValid)
+        bool isValidPassword = VerifyPassword(user, password);
+        if (!isValidPassword)
         {
-            var failedLoginLogSid = RandomHelper.GenerateRandomDecimal();
-            var failedLoginLog = new UserLoginLogDto
-            {
-                ADM_USER_HIST_SID = failedLoginLogSid,
-                ADM_USER_SID = user.Id,
-                ACCOUNT_NO = user.Account,
-                REPORT_TIME = now,
-                LAST_ACTIVE_TIME = now,
-                IP_ADDRESS = httpContext?.Connection?.RemoteIpAddress?.ToString(),
-                ACTION_CODE = "User login",
-                ACTION_RESULT = false,
-                ACTION_COMMENT = "User login failed: invalid password."
-            };
+            await WriteLoginLogAsync(
+                user,
+                now,
+                false,
+                AuthConstants.LoginFailedComment,
+                ct);
 
-            await _sqlHelper.InsertAsync(failedLoginLog, false, ct);
+            LoginResponseViewModel failedPasswordResponse = BuildFailedResponse(
+                user.Account,
+                licenseResult,
+                "帳號或密碼錯誤");
 
-            return Result<LoginResponseViewModel>.Fail(AuthenticationErrorCode.UserNotFound, "帳號或密碼錯誤");
+            return Result<LoginResponseViewModel>.Fail(
+                AuthenticationErrorCode.UserNotFound,
+                "帳號或密碼錯誤",
+                failedPasswordResponse);
         }
 
-        int expireMinutes = _config.GetValue<int>("AuthSettings:ExpireTimeSpanMinutes");
-
-        var loginLogSid = RandomHelper.GenerateRandomDecimal();
-        var loginLog = new UserLoginLogDto
+        int expireMinutes = _config.GetValue<int>("TokenOptions:DefaultTokenKeyMinutes");
+        decimal loginLogSid = await WriteLoginLogAsync(
+            user,
+            now,
+            true,
+            AuthConstants.LoginSuccessComment,
+            ct);
+        
+        // 新版 token payload，加入身份資訊
+        TokenPayload tokenPayload = new TokenPayload
         {
-            ADM_USER_HIST_SID = loginLogSid,
-            ADM_USER_SID = user.Id,
-            ACCOUNT_NO = user.Account,
-            REPORT_TIME = now,
-            LAST_ACTIVE_TIME = now,
-            IP_ADDRESS = httpContext?.Connection?.RemoteIpAddress?.ToString(),
-            OPI_TYPE = "PC",
-            ACTION_CODE = "User login",
-            ACTION_RESULT = true,
-            ACTION_COMMENT = "User login successfully."
+            Domain = string.Empty, // TokenService 會自動帶 _options.Domain
+            TokenMinutes = expireMinutes,
+            TokenSeq = AuthConstants.DefaultTokenSeq,
+            UserId = user.Id,
+            Account = user.Account,
+            SessionId = Guid.NewGuid().ToString("N"), // 每次登入一個新的 session
+            UserLv = user.Lv
         };
 
-        await _sqlHelper.InsertAsync(loginLog, false, ct);
+        GenerateTokenResult tokenResult = _tokenService.GenerateToken(tokenPayload);
+        AuthInfo authInfo = await _menuService.GetFullMenuByLvAsync(user.Lv ?? "0", user.Id);
+        LoginResponseViewModel successResponse = BuildSuccessResponse(
+            user,
+            cfgRegister,
+            licenseResult,
+            authInfo,
+            tokenResult.TokenKey,
+            tokenResult.Expiration);
 
-        string userLv = user.LV?.ToString() ?? "0";
-
-        var claims = new List<Claim>
-        {
-            new (AppClaimTypes.Account, user.Account ?? string.Empty),
-            new (AppClaimTypes.UserId, user.Id.ToString()),
-            new (AppClaimTypes.UserLv, userLv),
-            new ("LoginLogSid", loginLogSid.ToString())
-        };
-
-        var claimsIdentity = new ClaimsIdentity(claims, CookieAuthenticationDefaults.AuthenticationScheme);
-
-        var authProperties = new AuthenticationProperties
-        {
-            IsPersistent = true,
-            ExpiresUtc = DateTimeOffset.UtcNow.AddMinutes(expireMinutes),
-        };
-
-        await httpContext.SignInAsync(
-            CookieAuthenticationDefaults.AuthenticationScheme,
-            new ClaimsPrincipal(claimsIdentity),
-            authProperties);
-
-        var setCookieHeader = httpContext.Response.Headers["Set-Cookie"].ToString();
-        string encryptedTicket = string.Empty;
-
-        if (!string.IsNullOrEmpty(setCookieHeader))
-        {
-            encryptedTicket = ExtractTokenFromResponse();
-        }
-
-        string expiresFrom = now.ToString("yyyy-MM-dd HH:mm:ss");
-        string expiresTo = authProperties.ExpiresUtc?.ToLocalTime().ToString("yyyy-MM-dd HH:mm:ss") ?? string.Empty;
-
-        var menuData = await _menuService.GetFullMenuByLvAsync(user.LV ?? 0, user.Id);
-
-        return Result<LoginResponseViewModel>.Ok(new LoginResponseViewModel
-        {
-            User = user.Account,
-            LV = user.LV?.ToString() ?? "0",
-            Sid = user.Id,
-            Token = encryptedTicket,
-            ExpiresFrom = expiresFrom,
-            ExpiresTo = expiresTo,
-            Menus = menuData
-        });
+        return Result<LoginResponseViewModel>.Ok(successResponse);
     }
-    
+
     /// <summary>
     /// 登出
     /// </summary>
     public async Task LogoutAsync()
     {
-        var httpContext = _httpContextAccessor.HttpContext;
-        var user = httpContext?.User;
-        var now = DateTime.Now;
+        HttpContext? httpContext = _httpContextAccessor.HttpContext;
+        ClaimsPrincipal? user = httpContext?.User;
+        DateTime now = DateTime.Now;
 
         try
         {
             if (user?.Identity?.IsAuthenticated == true)
             {
-                var userIdStr = user.FindFirst(AppClaimTypes.UserId)?.Value;
-                var account = user.FindFirst(AppClaimTypes.Account)?.Value ?? string.Empty;
+                string? userIdStr = user.FindFirst(AppClaimTypes.UserId)?.Value;
+                string account = user.FindFirst(AppClaimTypes.Account)?.Value ?? string.Empty;
 
-                if (Guid.TryParse(userIdStr, out var userId))
+                if (Guid.TryParse(userIdStr, out Guid userId))
                 {
-                    var logoutLogSid = RandomHelper.GenerateRandomDecimal();
+                    decimal logoutLogSid = RandomHelper.GenerateRandomDecimal();
 
-                    var logoutLog = new UserLoginLogDto
+                    UserLoginLogDto logoutLog = new UserLoginLogDto
                     {
                         ADM_USER_HIST_SID = logoutLogSid,
                         ADM_USER_SID = userId,
@@ -166,8 +181,8 @@ public class AuthenticationService : Interfaces.IAuthenticationService
                         REPORT_TIME = now,
                         LAST_ACTIVE_TIME = now,
                         IP_ADDRESS = httpContext?.Connection?.RemoteIpAddress?.ToString(),
-                        OPI_TYPE = "PC",
-                        ACTION_CODE = "User logout",
+                        OPI_TYPE = AuthConstants.OpiTypePc,
+                        ACTION_CODE = AuthConstants.LogoutActionCode,
                         ACTION_RESULT = true,
                         ACTION_COMMENT = "User logout successfully."
                     };
@@ -175,8 +190,6 @@ public class AuthenticationService : Interfaces.IAuthenticationService
                     await _sqlHelper.InsertAsync(logoutLog, false);
                 }
             }
-
-            await httpContext.SignOutAsync(CookieAuthenticationDefaults.AuthenticationScheme);
         }
         catch (Exception ex)
         {
@@ -184,17 +197,17 @@ public class AuthenticationService : Interfaces.IAuthenticationService
             {
                 if (user?.Identity?.IsAuthenticated == true)
                 {
-                    var userIdStr = user.FindFirst(AppClaimTypes.UserId)?.Value;
-                    var account = user.FindFirst(AppClaimTypes.Account)?.Value ?? string.Empty;
+                    string? userIdStr = user.FindFirst(AppClaimTypes.UserId)?.Value;
+                    string account = user.FindFirst(AppClaimTypes.Account)?.Value ?? string.Empty;
 
-                    if (Guid.TryParse(userIdStr, out var userId))
+                    if (Guid.TryParse(userIdStr, out Guid userId))
                     {
-                        var failedLogoutLogSid = RandomHelper.GenerateRandomDecimal();
-                        var errorMessage = ex.Message.Length > 200
+                        decimal failedLogoutLogSid = RandomHelper.GenerateRandomDecimal();
+                        string errorMessage = ex.Message.Length > 200
                             ? ex.Message[..200]
                             : ex.Message;
 
-                        var failedLogoutLog = new UserLoginLogDto
+                        UserLoginLogDto failedLogoutLog = new UserLoginLogDto
                         {
                             ADM_USER_HIST_SID = failedLogoutLogSid,
                             ADM_USER_SID = userId,
@@ -202,8 +215,8 @@ public class AuthenticationService : Interfaces.IAuthenticationService
                             REPORT_TIME = now,
                             LAST_ACTIVE_TIME = now,
                             IP_ADDRESS = httpContext?.Connection?.RemoteIpAddress?.ToString(),
-                            OPI_TYPE = "PC",
-                            ACTION_CODE = "User logout",
+                            OPI_TYPE = AuthConstants.OpiTypePc,
+                            ACTION_CODE = AuthConstants.LogoutActionCode,
                             ACTION_RESULT = false,
                             ACTION_COMMENT = $"User logout failed: {errorMessage}"
                         };
@@ -226,71 +239,172 @@ public class AuthenticationService : Interfaces.IAuthenticationService
         return await H5LoginAsync(account, password, ct);
     }
 
-    private async Task<Result<bool>> RefreshAuthCookieAsync()
+    private async Task<CfgRegisterDto?> GetCfgRegisterAsync(CancellationToken ct)
     {
-        var user = _httpContextAccessor.HttpContext.User;
+        WhereBuilder<CfgRegisterDto> whereCfgRegister = new WhereBuilder<CfgRegisterDto>();
+        return await _sqlHelper.SelectFirstOrDefaultAsync(whereCfgRegister, ct);
+    }
 
-        if (user == null || !user.Identity.IsAuthenticated)
+    private LicenseParseResponse ParseLicense(CfgRegisterDto cfgRegister)
+    {
+        if (string.IsNullOrWhiteSpace(cfgRegister.REGCODE))
         {
-            return Result<bool>.Fail(AuthenticationErrorCode.UserNotFound, "�����w�L���εL��");
+            return new LicenseParseResponse
+            {
+                VerifyResult = false,
+                ResultMessage = "授權碼為空白"
+            };
         }
-        
-        var userId = user.FindFirst("UserId")?.Value;
-        var userLv = user.FindFirst("UserLV")?.Value;
-        var account = user.Identity.Name;
 
-        // 4. ���s�ʸ� Claims
-        var claims = new List<Claim>
+        return _registrationLicenseService.Parse(cfgRegister.REGCODE, cfgRegister.CHECK_CODE);
+    }
+
+    private async Task<UserAccount?> GetUserByAccountAsync(string account, CancellationToken ct)
     {
-        new Claim(ClaimTypes.Name, account),
-        new Claim("UserId", userId),
-        new Claim("UserLV", userLv),
-        new Claim("RefreshTime", DateTime.Now.Ticks.ToString())
-    };
+        WhereBuilder<UserAccount> whereUser = new WhereBuilder<UserAccount>()
+            .AndEq(x => x.Account, account);
 
-        var claimsIdentity = new ClaimsIdentity(claims, CookieAuthenticationDefaults.AuthenticationScheme);
+        return await _sqlHelper.SelectFirstOrDefaultAsync(whereUser, ct);
+    }
 
-        var authProperties = new AuthenticationProperties
+    private static bool VerifyPassword(UserAccount user, string password)
+    {
+        return !string.IsNullOrWhiteSpace(user.PasswordHash)
+               && !string.IsNullOrWhiteSpace(user.PasswordSalt)
+               && PasswordHasher.VerifyPassword(password, user.PasswordHash, user.PasswordSalt);
+    }
+
+    private async Task<decimal> WriteLoginLogAsync(
+        UserAccount user,
+        DateTime now,
+        bool actionResult,
+        string actionComment,
+        CancellationToken ct)
+    {
+        decimal loginLogSid = RandomHelper.GenerateRandomDecimal();
+
+        UserLoginLogDto loginLog = new UserLoginLogDto
         {
-            IsPersistent = true,
-            AllowRefresh = true
+            ADM_USER_HIST_SID = loginLogSid,
+            ADM_USER_SID = user.Id,
+            ACCOUNT_NO = user.Account,
+            REPORT_TIME = now,
+            LAST_ACTIVE_TIME = now,
+            IP_ADDRESS = _httpContextAccessor.HttpContext?.Connection?.RemoteIpAddress?.ToString(),
+            OPI_TYPE = AuthConstants.OpiTypePc,
+            ACTION_CODE = AuthConstants.LoginActionCode,
+            ACTION_RESULT = actionResult,
+            ACTION_COMMENT = actionComment
         };
 
-        await _httpContextAccessor.HttpContext.SignInAsync(
-            CookieAuthenticationDefaults.AuthenticationScheme,
-            new ClaimsPrincipal(claimsIdentity),
-            authProperties);
+        await _sqlHelper.InsertAsync(loginLog, false, ct);
 
-        return Result<bool>.Ok(true);
+        return loginLogSid;
     }
 
-    public async Task<Result<LoginResponseViewModel>> ExtendSessionAsync()
+    private LoginResponseViewModel BuildSuccessResponse(
+        UserAccount user,
+        CfgRegisterDto cfgRegister,
+        LicenseParseResponse licenseResult,
+        AuthInfo authInfo,
+        string token,
+        DateTime tokenExpiry)
     {
-        var refreshResult = await RefreshAuthCookieAsync();
-        
-        if (!refreshResult.IsSuccess)
+        return new LoginResponseViewModel
         {
-            return Result<LoginResponseViewModel>.Fail(AuthenticationErrorCode.Unauthorized, refreshResult.Message);
-        }
-        
-        var setCookieHeader = _httpContextAccessor.HttpContext.Response.Headers["Set-Cookie"].ToString();
-        string newTicket = "";
-        if (setCookieHeader.Contains("DcMateAuthTicket="))
-        {
-            newTicket = ExtractTokenFromResponse();
-        }
-        
-        return Result<LoginResponseViewModel>.Ok(new LoginResponseViewModel
-        {
-            Token = newTicket,
-            ExpiresFrom = DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss"),
-            ExpiresTo = DateTime.Now.AddMinutes(_config.GetValue<int>("AuthSettings:ExpireTimeSpanMinutes")).ToString("yyyy-MM-dd HH:mm:ss")
-        });
+            tokenInfo = BuildTokenInfo(user.Account, token, tokenExpiry, true),
+            userInfo = BuildUserInfo(user, cfgRegister, licenseResult, true, "登入成功"),
+            authInfo = authInfo
+        };
     }
-    
+
+    private LoginResponseViewModel BuildFailedResponse(
+        string account,
+        LicenseParseResponse licenseResult,
+        string loginMessage)
+    {
+        return new LoginResponseViewModel
+        {
+            tokenInfo = new TokenInfo
+            {
+                TOKEN_STATUS = AuthConstants.TokenStatusFail,
+                ACCOUNT_NO = account,
+                TOKEN_KEY = string.Empty,
+                TOKEN_EXPIRY = null,
+                TOKEN_SEQ = AuthConstants.DefaultTokenSeq
+            },
+            userInfo = new UserInfo
+            {
+                ACCOUNT_NO = account,
+                NICKNAME = string.Empty,
+                EMP_NO = string.Empty,
+                DEPT_SID = "0",
+                TITLE_SID = "0",
+                SECURITY_ID = "0",
+                COMPANY = string.Empty,
+                LV = "0",
+                REG_DATABASE = licenseResult.DbDataSource ?? string.Empty,
+                REG_EXPIRE_DATE = licenseResult.ExpiredDate ?? string.Empty,
+                REG_CURR_USER_LIM = licenseResult.NumOfReg ?? string.Empty,
+                REG_CURR_USER = "0",
+                REG_COMPANY = licenseResult.CustomerName ?? string.Empty,
+                REG_MSG = licenseResult.ResultMessage ?? string.Empty,
+                LOGIN_STATUS = AuthConstants.TokenStatusFail,
+                LOGIN_MSG = loginMessage
+            },
+            authInfo = new AuthInfo()
+        };
+    }
+
+    private TokenInfo BuildTokenInfo(
+        string account,
+        string token,
+        DateTime tokenExpiry,
+        bool isSuccess)
+    {
+        return new TokenInfo
+        {
+            TOKEN_STATUS = isSuccess ? AuthConstants.TokenStatusSuccess : AuthConstants.TokenStatusFail,
+            ACCOUNT_NO = account,
+            TOKEN_KEY = token,
+            TOKEN_EXPIRY = tokenExpiry,
+            TOKEN_SEQ = AuthConstants.DefaultTokenSeq
+        };
+    }
+
+    private UserInfo BuildUserInfo(
+        UserAccount user,
+        CfgRegisterDto cfgRegister,
+        LicenseParseResponse licenseResult,
+        bool loginSuccess,
+        string loginMessage)
+    {
+        return new UserInfo
+        {
+            ACCOUNT_NO = user.Account ?? string.Empty,
+            NICKNAME = user.NickName ?? string.Empty,
+            EMP_NO = user.EmpNo ?? string.Empty,
+            DEPT_SID = user.DeptSid.ToString(),
+            TITLE_SID = user.TitleSid.ToString(),
+            SECURITY_ID = user.SecurityId.ToString(),
+            COMPANY = user.Company ?? string.Empty,
+            LV = user.Lv ?? "0",
+            REG_DATABASE = licenseResult.DbDataSource ?? string.Empty,
+            REG_EXPIRE_DATE = licenseResult.ExpiredDate ?? string.Empty,
+            REG_CURR_USER_LIM = licenseResult.NumOfReg ?? string.Empty,
+            REG_CURR_USER = "0",
+            REG_COMPANY = string.IsNullOrWhiteSpace(licenseResult.CustomerName)
+                ? cfgRegister.CUSTOMER_NAME ?? string.Empty
+                : licenseResult.CustomerName,
+            REG_MSG = licenseResult.ResultMessage ?? string.Empty,
+            LOGIN_STATUS = loginSuccess ? AuthConstants.TokenStatusSuccess : AuthConstants.TokenStatusFail,
+            LOGIN_MSG = loginMessage
+        };
+    }
+
     private string ExtractTokenFromResponse()
     {
-        var setCookieHeader = _httpContextAccessor.HttpContext.Response.Headers["Set-Cookie"].ToString();
+        string setCookieHeader = _httpContextAccessor.HttpContext?.Response.Headers["Set-Cookie"].ToString() ?? string.Empty;
 
         if (!string.IsNullOrEmpty(setCookieHeader) && setCookieHeader.Contains("DcMateAuthTicket="))
         {

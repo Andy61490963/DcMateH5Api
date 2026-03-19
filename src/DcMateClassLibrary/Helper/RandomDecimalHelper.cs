@@ -52,7 +52,7 @@ public static class RandomHelper
 
     /// <summary>
     /// 產生類似 Twitter Snowflake 演算法的唯一遞增 ID，回傳 long 值
-    /// 結構為：目前 UTC 毫秒時間 &lt;&lt; 22 | 22-bit 隨機值
+    /// 結構為：目前  毫秒時間 &lt;&lt; 22 | 22-bit 隨機值
     /// 適合用於排序用、唯一識別碼、不靠資料庫的主鍵
     /// </summary>
     /// <returns>唯一且遞增的 long ID</returns>
@@ -61,8 +61,8 @@ public static class RandomHelper
         // 鎖定區塊，避免 _rnd 同時被多執行緒呼叫造成碰撞
         lock (_lock)
         {
-            // 取得目前 UTC 時間（毫秒），為 long（13 位數），例如：1722486933000
-            var ms = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
+            // 取得目前  時間（毫秒），為 long（13 位數），例如：1722486933000
+            var ms = DateTimeOffset.Now.ToUnixTimeMilliseconds();
 
             // 產生一個 22-bit 內的隨機值（最大為 4,194,303）
             // 用來避免同一毫秒內重複（4M 筆以內可保證唯一）

@@ -17,5 +17,8 @@ public enum AuthenticationErrorCode
     RegisterFailed,
     
     [Display(Name = "未登入或 Token 無效", Description = "未登入或 Token 無效")]
-    Unauthorized
+    Unauthorized,
+    
+    [Display(Name = "註冊碼認證失敗", Description = "註冊碼認證失敗")]
+    CfgRegisterNotFound
 }

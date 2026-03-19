@@ -1,4 +1,5 @@
 using DcMateClassLibrary.Helper;
+using DcMateH5Api.Controllers;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 
@@ -12,7 +13,7 @@ namespace DcMateH5Api.Areas.Security.Controllers
     [ApiController]
     [ApiExplorerSettings(GroupName = SwaggerGroups.Security)]
     [Route("[area]/[controller]")]
-    public class SecureDataController : ControllerBase
+    public class SecureDataController : BaseController
     {
         /// <summary>
         /// 取得受保護的資料。
@@ -21,7 +22,8 @@ namespace DcMateH5Api.Areas.Security.Controllers
         [HttpGet("data")]
         public IActionResult GetSecureData()
         {
-            return Ok(new { Message = "This is protected data." });
+            var userinfo = CurrentUser.Account;
+            return Ok(new { Message = $"This is protected data. You are {userinfo}" });
         }
     }
 }

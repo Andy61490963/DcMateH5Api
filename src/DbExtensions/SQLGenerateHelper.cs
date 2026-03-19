@@ -758,7 +758,10 @@ namespace DbExtensions
 
         internal (string sql, DynamicParameters param) Build()
         {
-            if (_clauses.Count == 0) throw new InvalidOperationException("WHERE 需要至少一個條件（避免誤刪/誤更整張表）");
+            if (_clauses.Count == 0)
+            {
+                return (string.Empty, _param);
+            }
             return ("WHERE " + string.Join(" AND ", _clauses), _param);
         }
 

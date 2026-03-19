@@ -1,5 +1,6 @@
 using DcMateClassLibrary.Helper;
 using DcMateH5Api.Areas.Security.ViewModels;
+using DcMateH5Api.Areas.Security.ViewModels.Login;
 using DcMateH5Api.Controllers;
 using DcMateH5Api.Models;
 using Microsoft.AspNetCore.Authorization;
@@ -51,17 +52,6 @@ namespace DcMateH5Api.Areas.Security.Controllers
             }
             
             return Unauthorized(result);
-        }
-
-        [Authorize]
-        [HttpPost("extend-session")]
-        public async Task<IActionResult> ExtendSession()
-        {
-            var result = await _authService.ExtendSessionAsync(); // 只要呼叫這行
-
-            if (result.IsSuccess) return Ok(result.Data);
-
-            return Unauthorized(result.Message);
         }
 
         /// <summary>
