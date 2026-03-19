@@ -156,31 +156,26 @@ builder.Services
     {
         options.Cookie.Name = "DcMateAuthTicket";
         options.Cookie.Path = "/";
+        options.Cookie.HttpOnly = true;
 
-        // 保持您的安全設定，相容集中式佈署 (HTTP 同源)
-        options.Cookie.SameSite = SameSiteMode.Lax;
-        options.Cookie.SecurePolicy = CookieSecurePolicy.SameAsRequest;
+        // 最開放核心
+        options.Cookie.SameSite = SameSiteMode.None;
+        options.Cookie.SecurePolicy = CookieSecurePolicy.Always;
 
-        options.ExpireTimeSpan = TimeSpan.FromMinutes(expireMinutes);
+        options.ExpireTimeSpan = TimeSpan.FromMinutes(expireMinutes); // 拉長避免頻繁失效
         options.SlidingExpiration = true;
 
         options.Events = new CookieAuthenticationEvents
         {
-            // 修正重點：Cookie 驗證中，攔截請求的正確事件是 OnValidatePrincipal
-            OnValidatePrincipal = context =>
-            {
-                // 如果 Cookie 沒抓到，我們張開眼睛去看看 Header 有沒有
-                if (!context.Principal.Identity.IsAuthenticated)
-                {
-                    // 這裡的邏輯需要配合自定義的 Middleware 處理更順暢
-                }
-                return Task.CompletedTask;
-            },
-
-            // 針對 API 調整：未授權回傳 401
+            // API 不 redirect，直接 401
             OnRedirectToLogin = context =>
             {
                 context.Response.StatusCode = StatusCodes.Status401Unauthorized;
+                return Task.CompletedTask;
+            },
+            OnRedirectToAccessDenied = context =>
+            {
+                context.Response.StatusCode = StatusCodes.Status403Forbidden;
                 return Task.CompletedTask;
             }
         };
