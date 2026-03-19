@@ -473,6 +473,78 @@ namespace DbExtensions
 
         #endregion 
         
+        #region Raw SQL
+
+        /// <summary>
+        /// 執行純 SQL 並回傳單一標量結果（短連線）。
+        /// 適用於 UPDATE ... OUTPUT、SELECT COUNT、SCOPE_IDENTITY 等場景。
+        /// </summary>
+        public Task<T?> ExecuteScalarAsync<T>(
+            string sql,
+            object? param = null,
+            CancellationToken ct = default)
+        {
+            return _db.ExecuteScalarAsync<T>(sql, param, ct: ct);
+        }
+
+        /// <summary>
+        /// 執行純 SQL 並回傳單一標量結果（交易內版本）。
+        /// 適用於 UPDATE ... OUTPUT、SELECT COUNT、SCOPE_IDENTITY 等場景。
+        /// </summary>
+        public Task<T?> ExecuteScalarInTxAsync<T>(
+            SqlConnection conn,
+            SqlTransaction tx,
+            string sql,
+            object? param = null,
+            int? timeoutSeconds = null,
+            CancellationToken ct = default)
+        {
+            return _db.ExecuteScalarInTxAsync<T>(
+                conn,
+                tx,
+                sql,
+                param,
+                timeoutSeconds: timeoutSeconds,
+                commandType: CommandType.Text,
+                ct: ct);
+        }
+
+        /// <summary>
+        /// 執行純 SQL 指令並回傳受影響筆數（短連線）。
+        /// 適合處理非 Entity 型的更新語句。
+        /// </summary>
+        public Task<int> ExecuteAsync(
+            string sql,
+            object? param = null,
+            CancellationToken ct = default)
+        {
+            return _db.ExecuteAsync(sql, param, ct: ct);
+        }
+
+        /// <summary>
+        /// 執行純 SQL 指令並回傳受影響筆數（交易內版本）。
+        /// 適合處理非 Entity 型的更新語句。
+        /// </summary>
+        public Task<int> ExecuteInTxAsync(
+            SqlConnection conn,
+            SqlTransaction tx,
+            string sql,
+            object? param = null,
+            int? timeoutSeconds = null,
+            CancellationToken ct = default)
+        {
+            return _db.ExecuteInTxAsync(
+                conn,
+                tx,
+                sql,
+                param,
+                timeoutSeconds: timeoutSeconds,
+                commandType: CommandType.Text,
+                ct: ct);
+        }
+
+        #endregion
+        
         #region 反射快取 
 
         private static readonly ConcurrentDictionary<Type, (string table, List<PropertyInfo> props, PropertyInfo? rowVersion, PropertyInfo key, Dictionary<string, string> colByProp)>

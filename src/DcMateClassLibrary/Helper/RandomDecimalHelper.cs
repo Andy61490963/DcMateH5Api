@@ -1,76 +1,122 @@
-﻿using System;
-using System.Security.Cryptography;
-
-namespace DcMateClassLibrary.Helper;
-
-/// <summary>
-/// 用於產生高品質亂數與唯一雪花 ID 的輔助工具類別
-/// </summary>
-public static class RandomHelper
+﻿namespace DcMateClassLibrary.Helper
 {
     /// <summary>
-    /// 使用系統內建 Random 實例（注意：非 thread-safe）
-    /// 這邊透過 lock 確保多執行緒下不會產生重複
+    /// 提供 SID 與雪花 ID 產生功能。
     /// </summary>
-    private static readonly Random _rnd = new();
-
-    /// <summary>
-    /// 鎖定物件，確保 thread-safe 的執行（避免多執行緒同時使用 _rnd）
-    /// </summary>
-    private static readonly object _lock = new();
-    
-    /// <summary>
-    /// 產生固定 15 位數的 decimal：
-    /// 格式為 [3 位亂數][yyMMddHHmmss]
-    /// 例如：742240129154233
-    /// </summary>
-    /// <summary>
-    /// 產生固定 15 位數的時間型亂數碼
-    /// 格式：yyyyMMddHHmm + 3 位亂數
-    /// 範例：202512290524742
-    /// 
-    /// 注意：
-    /// - 同一分鐘內最多可承受約 1000 筆不重複
-    /// - 適合用於業務流水號 / SID / Mapping 識別
-    /// - 非加密用途
-    /// </summary>
-    public static decimal GenerateRandomDecimal()
+    public static class RandomHelper
     {
-        // 產生時間碼（年到分鐘，12 位）
-        var timePart = DateTime.Now.ToString("yyyyMMddHHmm");
+        /// <summary>
+        /// 舊 H5Core SID 預設起始時間。
+        /// </summary>
+        private static readonly DateTime DefaultSidStartDate = new(2023, 4, 1, 0, 0, 0, DateTimeKind.Local);
 
-        // 產生 3 位亂數（000~999）
-        var bytes = new byte[2];
-        RandomNumberGenerator.Fill(bytes);
+        /// <summary>
+        /// 同步鎖，確保自動序號模式在多執行緒下不會重複。
+        /// </summary>
+        private static readonly object SidLock = new();
 
-        var rand = BitConverter.ToUInt16(bytes, 0) % 1000;
-        var randPart = rand.ToString("D3");
+        /// <summary>
+        /// 上一次產 SID 時使用的毫秒時間戳。
+        /// </summary>
+        private static long _lastTimestampMilliseconds;
 
-        // 組合成 15 位
-        return decimal.Parse(timePart + randPart);
-    }
+        /// <summary>
+        /// 同一毫秒內的自增序號。
+        /// </summary>
+        private static int _sequence;
 
-    /// <summary>
-    /// 產生類似 Twitter Snowflake 演算法的唯一遞增 ID，回傳 long 值
-    /// 結構為：目前  毫秒時間 &lt;&lt; 22 | 22-bit 隨機值
-    /// 適合用於排序用、唯一識別碼、不靠資料庫的主鍵
-    /// </summary>
-    /// <returns>唯一且遞增的 long ID</returns>
-    public static long NextSnowflakeId()
-    {
-        // 鎖定區塊，避免 _rnd 同時被多執行緒呼叫造成碰撞
-        lock (_lock)
+        /// <summary>
+        /// 單一毫秒內可用的最大序號。
+        /// 對齊舊邏輯保留 3 位數空間：000 ~ 999。
+        /// </summary>
+        private const int MaxSequence = 999;
+
+        /// <summary>
+        /// 依照舊 H5Core 規則產生 SID。
+        /// SID = [起始日至今分鐘數] * 100000000 + [秒] * 1000000 + [毫秒] * 1000 + [序號]
+        /// </summary>
+        /// <param name="sequence">同一時間片內的流水號，範圍 0 ~ 999。</param>
+        /// SID 起始時間。若未指定，則使用 2023-04-01 00:00:00。
+        /// 若指定時間早於預設值，仍使用預設值，以貼近舊版邏輯。
+        /// <returns>符合舊系統規則的 SID。</returns>
+        /// <exception cref="ArgumentOutOfRangeException">當 sequence 超出 0~999 時拋出。</exception>
+        /// <exception cref="ArgumentException">當有效起始時間晚於目前時間時拋出。</exception>
+        public static decimal GenerateRandomDecimal(int sequence = 999)
         {
-            // 取得目前  時間（毫秒），為 long（13 位數），例如：1722486933000
-            var ms = DateTimeOffset.Now.ToUnixTimeMilliseconds();
+            if (sequence < 0 || sequence > MaxSequence)
+            {
+                throw new ArgumentOutOfRangeException(nameof(sequence), sequence, "sequence 必須介於 0 到 999 之間。");
+            }
 
-            // 產生一個 22-bit 內的隨機值（最大為 4,194,303）
-            // 用來避免同一毫秒內重複（4M 筆以內可保證唯一）
-            var rand = _rnd.Next(0, 1 << 22);
+            DateTime effectiveStartDate = DefaultSidStartDate;
+            DateTime now = DateTime.Now;
 
-            // 將時間左移 22 位，空出低位給亂數
-            // 並用 OR 將亂數放入低 22 位 => 組合成唯一 ID
-            return (ms << 22) | (uint)rand;
+            if (effectiveStartDate > now)
+            {
+                throw new ArgumentException("startDate 不可晚於目前時間。", nameof(DefaultSidStartDate));
+            }
+
+            TimeSpan duration = now - effectiveStartDate;
+            long totalMinutes = (long)duration.TotalMinutes;
+
+            decimal sid =
+                totalMinutes * 100000000M +
+                now.Second * 1000000M +
+                now.Millisecond * 1000M +
+                sequence;
+
+            return sid;
+        }
+
+        /// <summary>
+        /// 產生類似 Snowflake 的唯一遞增 ID。
+        /// 結構：
+        /// [UnixTimeMilliseconds 左移 22 bit] | [低 22 bit 序號]
+        /// </summary>
+        /// <returns>唯一且大致遞增的 long ID。</returns>
+        /// <exception cref="InvalidOperationException">當單一毫秒內請求量超過可容納上限時拋出。</exception>
+        public static long NextSnowflakeId()
+        {
+            lock (SidLock)
+            {
+                long timestamp = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
+
+                if (timestamp == _lastTimestampMilliseconds)
+                {
+                    _sequence++;
+
+                    if (_sequence >= (1 << 22))
+                    {
+                        throw new InvalidOperationException("同一毫秒內產生的 ID 已超過 22-bit 可容納上限。");
+                    }
+                }
+                else
+                {
+                    _lastTimestampMilliseconds = timestamp;
+                    _sequence = 0;
+                }
+
+                return (timestamp << 22) | (uint)_sequence;
+            }
+        }
+
+        /// <summary>
+        /// 等待到下一個毫秒。
+        /// </summary>
+        /// <param name="currentTimestampMilliseconds">目前毫秒時間戳。</param>
+        /// <returns>下一個毫秒對應的本地時間。</returns>
+        private static DateTime WaitNextMillisecond(long currentTimestampMilliseconds)
+        {
+            DateTime now;
+
+            do
+            {
+                Thread.SpinWait(20);
+                now = DateTime.Now;
+            }
+            while (new DateTimeOffset(now).ToUnixTimeMilliseconds() <= currentTimestampMilliseconds);
+
+            return now;
         }
     }
 }

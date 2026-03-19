@@ -48,7 +48,7 @@ namespace DcMateH5Api.Controllers
         
         public Guid SessionId { get; private init; }
         
-        public string TokenSeq { get; private init; } = string.Empty;
+        public int TokenSeq { get; private init; }
         
         /// <summary>
         /// 從 ClaimsPrincipal 建立目前使用者的快照
@@ -70,6 +70,7 @@ namespace DcMateH5Api.Controllers
             
             Guid.TryParse(id, out var userId);
             Guid.TryParse(session, out var sessionId);
+            int.TryParse(tokenSeq, out var tokenSeqInt);
 
             return new CurrentUserSnapshot
             {
@@ -77,7 +78,7 @@ namespace DcMateH5Api.Controllers
                 Id = userId,
                 Lv = lv,
                 SessionId = sessionId,
-                TokenSeq = tokenSeq,
+                TokenSeq = tokenSeqInt,
                 IsAuthenticated = userId != Guid.Empty
             };
         }

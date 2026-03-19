@@ -25,5 +25,17 @@ namespace DcMateH5Api.Areas.Security.Controllers
             var userinfo = CurrentUser.Account;
             return Ok(new { Message = $"This is protected data. You are {userinfo}" });
         }
+        
+        /// <summary>
+        /// 取得受保護的資料。
+        /// </summary>
+        /// <returns>簡單的訊息。</returns>
+        [HttpGet("GenerateRandomDecimal")]
+        public IActionResult GenerateRandomDecimal()
+        {
+            var x = RandomHelper.GenerateRandomDecimal(CurrentUser.TokenSeq);
+            return Ok(new { GenerateRandomDecimal = $"{x}" });
+        }
+        
     }
 }

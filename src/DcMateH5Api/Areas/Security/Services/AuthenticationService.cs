@@ -25,7 +25,8 @@ public class AuthenticationService : Interfaces.IAuthenticationService
         public const string LoginFailedComment = "User login failed: invalid password.";
         public const string TokenStatusSuccess = "true";
         public const string TokenStatusFail = "false";
-        public const int DefaultTokenSeq = 22;
+        public const int MinTokenSeq = 1;
+        public const int MaxTokenSeq = 999;
     }
 
     private readonly SQLGenerateHelper _sqlHelper;
@@ -128,12 +129,14 @@ public class AuthenticationService : Interfaces.IAuthenticationService
             AuthConstants.LoginSuccessComment,
             ct);
         
+        int nextTokenSeq = await GetNextTokenSeqAsync(ct);
+        
         // 新版 token payload，加入身份資訊
         TokenPayload tokenPayload = new TokenPayload
         {
             Domain = string.Empty, // TokenService 會自動帶 _options.Domain
             TokenMinutes = expireMinutes,
-            TokenSeq = AuthConstants.DefaultTokenSeq,
+            TokenSeq = nextTokenSeq,
             UserId = user.Id,
             Account = user.Account,
             SessionId = Guid.NewGuid().ToString("N"), // 每次登入一個新的 session
@@ -148,7 +151,8 @@ public class AuthenticationService : Interfaces.IAuthenticationService
             licenseResult,
             authInfo,
             tokenResult.TokenKey,
-            tokenResult.Expiration);
+            tokenResult.Expiration,
+            nextTokenSeq);
 
         return Result<LoginResponseViewModel>.Ok(successResponse);
     }
@@ -308,11 +312,12 @@ public class AuthenticationService : Interfaces.IAuthenticationService
         LicenseParseResponse licenseResult,
         AuthInfo authInfo,
         string token,
-        DateTime tokenExpiry)
+        DateTime tokenExpiry,
+        int tokenSeq)
     {
         return new LoginResponseViewModel
         {
-            tokenInfo = BuildTokenInfo(user.Account, token, tokenExpiry, true),
+            tokenInfo = BuildTokenInfo(user.Account, token, tokenExpiry, tokenSeq, true),
             userInfo = BuildUserInfo(user, cfgRegister, licenseResult, true, "登入成功"),
             authInfo = authInfo
         };
@@ -331,7 +336,7 @@ public class AuthenticationService : Interfaces.IAuthenticationService
                 ACCOUNT_NO = account,
                 TOKEN_KEY = string.Empty,
                 TOKEN_EXPIRY = null,
-                TOKEN_SEQ = AuthConstants.DefaultTokenSeq
+                TOKEN_SEQ = 0
             },
             userInfo = new UserInfo
             {
@@ -360,6 +365,7 @@ public class AuthenticationService : Interfaces.IAuthenticationService
         string account,
         string token,
         DateTime tokenExpiry,
+        int tokenSeq,
         bool isSuccess)
     {
         return new TokenInfo
@@ -368,7 +374,7 @@ public class AuthenticationService : Interfaces.IAuthenticationService
             ACCOUNT_NO = account,
             TOKEN_KEY = token,
             TOKEN_EXPIRY = tokenExpiry,
-            TOKEN_SEQ = AuthConstants.DefaultTokenSeq
+            TOKEN_SEQ = tokenSeq
         };
     }
 
@@ -402,15 +408,27 @@ public class AuthenticationService : Interfaces.IAuthenticationService
         };
     }
 
-    private string ExtractTokenFromResponse()
+    private async Task<int> GetNextTokenSeqAsync(CancellationToken ct)
     {
-        string setCookieHeader = _httpContextAccessor.HttpContext?.Response.Headers["Set-Cookie"].ToString() ?? string.Empty;
+        const string sql = @"
+UPDATE CFG_REGISTER
+SET TOKEN_SEQ =
+    CASE
+        WHEN ISNULL(TOKEN_SEQ, 0) >= @MaxTokenSeq THEN @MinTokenSeq
+        WHEN ISNULL(TOKEN_SEQ, 0) < @MinTokenSeq THEN @MinTokenSeq
+        ELSE TOKEN_SEQ + 1
+    END
+OUTPUT INSERTED.TOKEN_SEQ;";
+        
+        int nextTokenSeq = await _sqlHelper.ExecuteScalarAsync<int>(
+            sql,
+            new
+            {
+                MinTokenSeq = AuthConstants.MinTokenSeq,
+                MaxTokenSeq = AuthConstants.MaxTokenSeq
+            },
+            ct);
 
-        if (!string.IsNullOrEmpty(setCookieHeader) && setCookieHeader.Contains("DcMateAuthTicket="))
-        {
-            return setCookieHeader.Split(';')[0].Replace("DcMateAuthTicket=", "");
-        }
-
-        return string.Empty;
+        return nextTokenSeq;
     }
 }
