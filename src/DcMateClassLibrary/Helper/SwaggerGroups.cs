@@ -16,6 +16,7 @@ public static class SwaggerGroups
     public const string FormTableValueFunction = nameof(FormTableValueFunction);
 
     public const string Security = nameof(Security);
+    public const string LanguageKeywords = nameof(LanguageKeywords);
     public const string Menu = nameof(Menu);
 
     public const string Wip = nameof(Wip);
@@ -35,6 +36,7 @@ public static class SwaggerGroups
         { FormTableValueFunction, "TVP 維護" },
 
         { Security, "登入、測試 API 權限" },
+        { LanguageKeywords, "多語系" },
         { Menu, "群組、功能、權限設定" },
 
         { Wip, "報工" },
