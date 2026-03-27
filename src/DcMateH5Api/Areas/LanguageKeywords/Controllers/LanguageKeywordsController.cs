@@ -57,7 +57,7 @@ namespace DcMateH5Api.Areas.LanguageKeywords.Controllers
         [ProducesResponseType(StatusCodes.Status400BadRequest)]
         public async Task<IActionResult> Create([FromBody] CreateLanguageKeywordRequest request, CancellationToken cancellationToken)
         {
-            CreateLanguageKeywordResponse result = await _languageKeywordService.CreateAsync(
+            var result = await _languageKeywordService.CreateAsync(
                 request,
                 cancellationToken);
 

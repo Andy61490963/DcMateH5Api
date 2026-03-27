@@ -1,9 +1,12 @@
-﻿using System.Data;
+﻿using ClassLibrary;
+using ClassLibrary.Areas.LanguageKeywords;
 using DbExtensions.DbExecutor.Interface;
 using DcMateClassLibrary.Helper;
 using DcMateH5.Abstractions.CurrentUser;
 using DcMateH5.Abstractions.Language.Models;
 using DcMateH5.Abstractions.LanguageKeywords;
+using DcMateH5Api.Models;
+using Microsoft.Data.SqlClient;
 
 namespace DcMateH5.Infrastructure.LanguageKeywords
 {
@@ -20,6 +23,12 @@ SELECT
 FROM dbo.CFG_LANG_TYPE
 WHERE LANG_CODE IS NOT NULL
 ORDER BY SEQ, SID;";
+
+            public const string ExistsKeyword = @"
+SELECT COUNT(1)
+FROM dbo.CFG_LANG_KEYWORDS
+WHERE TYPE = @Type
+  AND KEYWORDS = @Keywords;";
 
             public const string InsertKeyword = @"
 INSERT INTO dbo.CFG_LANG_KEYWORDS
@@ -163,48 +172,96 @@ ORDER BY k.SID;";
         /// <param name="request">建立請求</param>
         /// <param name="cancellationToken">取消權杖</param>
         /// <returns>建立結果</returns>
-        public async Task<CreateLanguageKeywordResponse> CreateAsync(
+        public async Task<Result<CreateLanguageKeywordResponse>>  CreateAsync(
             CreateLanguageKeywordRequest request,
             CancellationToken cancellationToken)
         {
-            ValidateCreateRequest(request);
-
-            List<string> languageCodes = await GetLanguageCodesAsync(cancellationToken);
-            if (languageCodes.Count == 0)
+            try
             {
-                throw new InvalidOperationException("No language codes were found in CFG_LANG_TYPE.");
+                ValidateCreateRequest(request);
+
+                string normalizedType = request.Type.Trim();
+                string normalizedKeywords = request.Keywords.Trim();
+
+                bool keywordExists = await KeywordExistsAsync(
+                    normalizedType,
+                    normalizedKeywords,
+                    cancellationToken);
+
+                if (keywordExists)
+                {
+                    return Result<CreateLanguageKeywordResponse>.Fail(
+                        LanguageKeywordsErrorCode.KeyWordExisted,
+                        $"Keyword '{normalizedKeywords}' already exists.");
+                }
+
+                List<string> languageCodes = await GetLanguageCodesAsync(cancellationToken);
+                if (languageCodes.Count == 0)
+                {
+                    throw new InvalidOperationException("No language codes were found in CFG_LANG_TYPE.");
+                }
+
+                DateTime now = DateTime.Now;
+
+                var userName = _currentUser.Get().Account;
+
+                decimal keywordSid = RandomHelper.GenerateRandomDecimal();
+
+                await _db.TxAsync(async (_, _, ct) =>
+                {
+                    await InsertKeywordAsync(
+                        keywordSid,
+                        request,
+                        userName,
+                        now,
+                        ct);
+
+                    IReadOnlyList<CreateLanguageDataRow> languageDataRows = BuildLanguageDataRows(
+                        keywordSid,
+                        languageCodes,
+                        userName,
+                        now);
+
+                    await InsertLanguageDataAsync(languageDataRows, ct);
+                }, ct: cancellationToken);
+
+                return Result<CreateLanguageKeywordResponse>.Ok(
+                    new CreateLanguageKeywordResponse
+                    {
+                        KeywordSid = keywordSid,
+                        CreatedLanguageDataCount = languageCodes.Count
+                    });
             }
-
-            DateTime now = DateTime.Now;
-            var userName = _currentUser.Get().Account;
-
-            decimal keywordSid = RandomHelper.GenerateRandomDecimal();
-
-            await _db.TxAsync(async (_, _, ct) =>
+            catch (SqlException ex) when (ex.Number == 2627)
             {
-                await InsertKeywordAsync(
-                    keywordSid,
-                    request,
-                    userName,
-                    now,
-                    ct);
-
-                IReadOnlyList<CreateLanguageDataRow> languageDataRows = BuildLanguageDataRows(
-                    keywordSid,
-                    languageCodes,
-                    userName,
-                    now);
-
-                await InsertLanguageDataAsync(languageDataRows, ct);
-            }, ct: cancellationToken);
-
-            return new CreateLanguageKeywordResponse
-            {
-                KeywordSid = keywordSid,
-                CreatedLanguageDataCount = languageCodes.Count
-            };
+                throw new InvalidOperationException($"Keyword '{request.Keywords?.Trim()}' already exists.");
+            }
         }
 
+        /// <summary>
+        /// 檢查關鍵字是否已存在
+        /// </summary>
+        /// <param name="type">關鍵字類型</param>
+        /// <param name="keywords">關鍵字</param>
+        /// <param name="cancellationToken">取消權杖</param>
+        /// <returns>是否存在</returns>
+        private async Task<bool> KeywordExistsAsync(
+            string type,
+            string keywords,
+            CancellationToken cancellationToken)
+        {
+            IReadOnlyList<int> rows = await _db.QueryAsync<int>(
+                SqlStatements.ExistsKeyword,
+                new
+                {
+                    Type = type,
+                    Keywords = keywords
+                },
+                ct: cancellationToken);
+
+            return rows.FirstOrDefault() > 0;
+        }
+        
         /// <summary>
         /// 驗證建立請求
         /// </summary>

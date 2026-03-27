@@ -1,4 +1,5 @@
 ﻿using DcMateH5.Abstractions.Language.Models;
+using DcMateH5Api.Models;
 
 namespace DcMateH5.Abstractions.LanguageKeywords;
 
@@ -23,7 +24,7 @@ public interface ILanguageKeywordService
     /// <param name="request">建立請求</param>
     /// <param name="cancellationToken">取消權杖</param>
     /// <returns>建立結果</returns>
-    Task<CreateLanguageKeywordResponse> CreateAsync(
+    Task<Result<CreateLanguageKeywordResponse>> CreateAsync(
         CreateLanguageKeywordRequest request,
         CancellationToken cancellationToken);
 }
