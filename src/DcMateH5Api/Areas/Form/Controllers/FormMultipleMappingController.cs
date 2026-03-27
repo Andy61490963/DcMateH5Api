@@ -141,6 +141,7 @@ public class FormMultipleMappingController : ControllerBase
                 query.Type,
                 query.Page,
                 query.PageSize,
+                query.OrderBySeqAscending,
                 ct);
 
             return Ok(result);

@@ -82,9 +82,20 @@ SELECT ID AS Id,
         MappingListType? type,
         int page,
         int pageSize,
+        bool orderBySeqAscending = true,
         CancellationToken ct = default)
     {
         ct.ThrowIfCancellationRequested();
+
+        if (page <= 0)
+        {
+            throw new InvalidOperationException("page 必須大於 0");
+        }
+
+        if (pageSize <= 0)
+        {
+            throw new InvalidOperationException("pageSize 必須大於 0");
+        }
 
         var header = GetMappingHeader(formMasterId);
 
@@ -109,7 +120,8 @@ SELECT ID AS Id,
                 basePkValue!,
                 filters,
                 page,
-                pageSize);
+                pageSize,
+                orderBySeqAscending);
 
             linked = ToDictionaryByDetailPk(result.Items);
             linkedTotalCount = result.TotalCount;
@@ -668,6 +680,7 @@ WHERE b.[{header.MAPPING_BASE_FK_COLUMN}] = @BaseId;";
         Dictionary<string, string>? filters,
         int page,
         int pageSize,
+        bool orderBySeqAscending,
         SqlTransaction? tx = null)
     {
         if (string.IsNullOrWhiteSpace(header.MAPPING_BASE_COLUMN_NAME))
@@ -682,6 +695,8 @@ WHERE b.[{header.MAPPING_BASE_FK_COLUMN}] = @BaseId;";
         {
             throw new InvalidOperationException("Detail PK 不存在");
         }
+
+        EnsureColumnExists(header.MAPPING_TABLE_NAME!, MappingColumnNames.Sequence, "Mapping 表缺少 SEQ 欄位", tx);
 
         var defaultMap = GetDetailToRelationDefaultColumnMap(
             header.DETAIL_TABLE_ID,
@@ -713,6 +728,8 @@ WHERE b.[{header.MAPPING_BASE_FK_COLUMN}] = @BaseId;";
 
         var totalCount = _con.ExecuteScalar<int>(countSql, param, transaction: tx);
 
+        var orderBySql = BuildLinkedOrderBySql(header, orderBySeqAscending);
+
         var dataSql = $@"/**/
     SELECT
         {mappingSelect},
@@ -725,7 +742,7 @@ WHERE b.[{header.MAPPING_BASE_FK_COLUMN}] = @BaseId;";
       ON m.[{header.MAPPING_BASE_FK_COLUMN}] = b.[{header.MAPPING_BASE_FK_COLUMN}]
     WHERE m.[{header.MAPPING_BASE_FK_COLUMN}] = @BaseId
     {filterSql}
-    ORDER BY m.[SEQ], m.[{header.MAPPING_DETAIL_FK_COLUMN}]
+    {orderBySql}
     OFFSET @Offset ROWS FETCH NEXT @PageSize ROWS ONLY;";
 
         var rows = _con.Query(dataSql, param, transaction: tx)
@@ -1171,5 +1188,27 @@ WHERE b.[{header.MAPPING_BASE_FK_COLUMN}] = @BaseId;";
         public int TotalCount { get; init; }
 
         public List<T> Items { get; init; } = new();
+    }
+    
+    private static class MappingColumnNames
+    {
+        public const string Sequence = "SEQ";
+    }
+
+    private static class SqlSortDirection
+    {
+        public const string Asc = "ASC";
+        public const string Desc = "DESC";
+    }
+
+    private string BuildLinkedOrderBySql(FormFieldMasterDto header, bool orderBySeqAscending)
+    {
+        var direction = orderBySeqAscending
+            ? SqlSortDirection.Asc
+            : SqlSortDirection.Desc;
+
+        return
+            $"ORDER BY m.[{MappingColumnNames.Sequence}] {direction}, " +
+            $"m.[{header.MAPPING_DETAIL_FK_COLUMN}] {direction}";
     }
 }
