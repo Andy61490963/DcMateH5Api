@@ -86,6 +86,13 @@ public class AuthenticationService : Interfaces.IAuthenticationService
                 failedLicenseResponse);
         }
 
+        if (await IsAccountLockedAsync(account, ct))
+        {
+            return Result<LoginResponseViewModel>.Fail(
+                AuthenticationErrorCode.AccountLocked,
+                $"Account locked. Try again after {_config.GetValue<int>("LoginOptions:LockoutMinutes")} minutes.");
+        }
+        
         UserAccount? user = await GetUserByAccountAsync(account, ct);
         if (user == null)
         {
@@ -125,12 +132,6 @@ public class AuthenticationService : Interfaces.IAuthenticationService
         //throw new InvalidOperationException("Mock login exception for testing.");
         
         int expireMinutes = _config.GetValue<int>("TokenOptions:DefaultTokenKeyMinutes");
-        decimal loginLogSid = await WriteLoginLogAsync(
-            user,
-            now,
-            true,
-            AuthConstants.LoginSuccessComment,
-            ct);
         
         int nextTokenSeq = await GetNextTokenSeqAsync(ct);
         
@@ -156,7 +157,14 @@ public class AuthenticationService : Interfaces.IAuthenticationService
             tokenResult.TokenKey,
             tokenResult.Expiration,
             nextTokenSeq);
-
+        
+        decimal loginLogSid = await WriteLoginLogAsync(
+            user,
+            now,
+            true,
+            AuthConstants.LoginSuccessComment,
+            ct);
+        
         return Result<LoginResponseViewModel>.Ok(successResponse);
     }
 
@@ -274,6 +282,32 @@ public class AuthenticationService : Interfaces.IAuthenticationService
         return await _sqlHelper.SelectFirstOrDefaultAsync(whereUser, ct);
     }
 
+    private async Task<bool> IsAccountLockedAsync(string account, CancellationToken ct)
+    {
+        const string sql = @"
+SELECT COUNT(1)
+FROM ADM_USER_HIST
+WHERE ACCOUNT_NO = @Account
+AND ACTION_CODE = @ActionCode
+AND ACTION_RESULT = 0
+AND REPORT_TIME >= DATEADD(MINUTE, -@LockoutMinutes, GETDATE())";
+
+        var maxFailedAttempts = _config.GetValue<int>("LoginOptions:MaxFailedAttempts");
+        var lockoutMinutes = _config.GetValue<int>("LoginOptions:LockoutMinutes");
+        
+        int failedCount = await _sqlHelper.ExecuteScalarAsync<int>(
+            sql,
+            new
+            {
+                Account = account,
+                ActionCode = AuthConstants.LoginActionCode,
+                lockoutMinutes
+            },
+            ct);
+
+        return failedCount >= maxFailedAttempts;
+    }
+    
     private static bool VerifyPassword(UserAccount user, string password)
     {
         return !string.IsNullOrWhiteSpace(user.PasswordHash)

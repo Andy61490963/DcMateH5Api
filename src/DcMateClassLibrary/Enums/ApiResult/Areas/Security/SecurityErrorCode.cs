@@ -20,5 +20,8 @@ public enum AuthenticationErrorCode
     Unauthorized,
     
     [Display(Name = "註冊碼認證失敗", Description = "註冊碼認證失敗")]
-    CfgRegisterNotFound
+    CfgRegisterNotFound,
+    
+    [Display(Name = "帳號遭鎖定", Description = "帳號遭鎖定")]
+    AccountLocked
 }
