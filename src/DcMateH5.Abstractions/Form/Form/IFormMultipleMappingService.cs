@@ -26,8 +26,8 @@ public interface IFormMultipleMappingService
         string baseId,
         Dictionary<string, string>? filters,
         MappingListType? type,
-        int page,
-        int pageSize,
+        int? page,
+        int? pageSize,
         bool orderBySeqAscending = true,
         CancellationToken ct = default);
 

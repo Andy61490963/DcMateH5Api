@@ -80,21 +80,31 @@ SELECT ID AS Id,
         string baseId,
         Dictionary<string, string>? filters,
         MappingListType? type,
-        int page,
-        int pageSize,
+        int? page,
+        int? pageSize,
         bool orderBySeqAscending = true,
         CancellationToken ct = default)
     {
         ct.ThrowIfCancellationRequested();
 
-        if (page <= 0)
+        var usePaging = page.HasValue && pageSize.HasValue;
+
+        if (page.HasValue != pageSize.HasValue)
         {
-            throw new InvalidOperationException("page 必須大於 0");
+            throw new InvalidOperationException("page 與 pageSize 必須同時提供，或同時為 null。");
         }
 
-        if (pageSize <= 0)
+        if (usePaging)
         {
-            throw new InvalidOperationException("pageSize 必須大於 0");
+            if (page!.Value <= 0)
+            {
+                throw new InvalidOperationException("page 必須大於 0");
+            }
+
+            if (pageSize!.Value <= 0)
+            {
+                throw new InvalidOperationException("pageSize 必須大於 0");
+            }
         }
 
         var header = GetMappingHeader(formMasterId);
@@ -678,8 +688,8 @@ WHERE b.[{header.MAPPING_BASE_FK_COLUMN}] = @BaseId;";
         string detailPkName,
         object basePkValue,
         Dictionary<string, string>? filters,
-        int page,
-        int pageSize,
+        int? page,
+        int? pageSize,
         bool orderBySeqAscending,
         SqlTransaction? tx = null)
     {
@@ -713,8 +723,6 @@ WHERE b.[{header.MAPPING_BASE_FK_COLUMN}] = @BaseId;";
 
         var (filterSql, param) = BuildLikeWhere(filters, mappingColumns, "m", "mLike");
         param.Add("BaseId", basePkValue);
-        param.Add("Offset", (page - 1) * pageSize);
-        param.Add("PageSize", pageSize);
 
         var countSql = $@"/**/
     SELECT COUNT(1)
@@ -729,6 +737,7 @@ WHERE b.[{header.MAPPING_BASE_FK_COLUMN}] = @BaseId;";
         var totalCount = _con.ExecuteScalar<int>(countSql, param, transaction: tx);
 
         var orderBySql = BuildLinkedOrderBySql(header, orderBySeqAscending);
+        var pagingSql = BuildPagingSql(page, pageSize, param);
 
         var dataSql = $@"/**/
     SELECT
@@ -743,7 +752,7 @@ WHERE b.[{header.MAPPING_BASE_FK_COLUMN}] = @BaseId;";
     WHERE m.[{header.MAPPING_BASE_FK_COLUMN}] = @BaseId
     {filterSql}
     {orderBySql}
-    OFFSET @Offset ROWS FETCH NEXT @PageSize ROWS ONLY;";
+    {pagingSql};";
 
         var rows = _con.Query(dataSql, param, transaction: tx)
             .Cast<IDictionary<string, object?>>()
@@ -796,8 +805,8 @@ WHERE b.[{header.MAPPING_BASE_FK_COLUMN}] = @BaseId;";
         object basePkValue,
         string? baseDisplayText,
         Dictionary<string, string>? filters,
-        int page,
-        int pageSize,
+        int? page,
+        int? pageSize,
         SqlTransaction? tx = null)
     {
         var detailColumns = _schemaService.GetFormFieldMaster(header.DETAIL_TABLE_NAME!, tx).ToList();
@@ -812,8 +821,6 @@ WHERE b.[{header.MAPPING_BASE_FK_COLUMN}] = @BaseId;";
 
         var (filterSql, param) = BuildLikeWhere(filters, detailColumns, "d", "dLike");
         param.Add("BaseId", basePkValue);
-        param.Add("Offset", (page - 1) * pageSize);
-        param.Add("PageSize", pageSize);
 
         var countSql = $@"/**/
     SELECT COUNT(1)
@@ -829,6 +836,8 @@ WHERE b.[{header.MAPPING_BASE_FK_COLUMN}] = @BaseId;";
 
         var totalCount = _con.ExecuteScalar<int>(countSql, param, transaction: tx);
 
+        var pagingSql = BuildPagingSql(page, pageSize, param);
+
         var dataSql = $@"/**/
     SELECT
         {detailSelect}
@@ -842,7 +851,7 @@ WHERE b.[{header.MAPPING_BASE_FK_COLUMN}] = @BaseId;";
           AND m.[{header.MAPPING_DETAIL_FK_COLUMN}] = d.[{detailPkName}]
     )
     ORDER BY d.[{detailPkName}]
-    OFFSET @Offset ROWS FETCH NEXT @PageSize ROWS ONLY;";
+    {pagingSql};";
 
         var rows = _con.Query(dataSql, param, transaction: tx)
             .Cast<IDictionary<string, object?>>()
@@ -882,6 +891,34 @@ WHERE b.[{header.MAPPING_BASE_FK_COLUMN}] = @BaseId;";
             TotalCount = totalCount,
             Items = items
         };
+    }
+    
+    private static string BuildPagingSql(int? page, int? pageSize, DynamicParameters parameters)
+    {
+        if (!page.HasValue && !pageSize.HasValue)
+        {
+            return string.Empty;
+        }
+
+        if (!page.HasValue || !pageSize.HasValue)
+        {
+            throw new InvalidOperationException("page 與 pageSize 必須同時提供，或同時為 null。");
+        }
+
+        if (page.Value <= 0)
+        {
+            throw new InvalidOperationException("page 必須大於 0");
+        }
+
+        if (pageSize.Value <= 0)
+        {
+            throw new InvalidOperationException("pageSize 必須大於 0");
+        }
+
+        parameters.Add("Offset", (page.Value - 1) * pageSize.Value);
+        parameters.Add("PageSize", pageSize.Value);
+
+        return "OFFSET @Offset ROWS FETCH NEXT @PageSize ROWS ONLY";
     }
     
     private static Dictionary<string, FieldValueViewModel> BuildFieldValueDict(
