@@ -16,4 +16,14 @@ public interface ILanguageKeywordService
     Task<IReadOnlyList<LanguageKeywordDto>> GetKeywordsAsync(
         IReadOnlyCollection<string> languages,
         CancellationToken cancellationToken);
+    
+    /// <summary>
+    /// 建立多語系關鍵字
+    /// </summary>
+    /// <param name="request">建立請求</param>
+    /// <param name="cancellationToken">取消權杖</param>
+    /// <returns>建立結果</returns>
+    Task<CreateLanguageKeywordResponse> CreateAsync(
+        CreateLanguageKeywordRequest request,
+        CancellationToken cancellationToken);
 }

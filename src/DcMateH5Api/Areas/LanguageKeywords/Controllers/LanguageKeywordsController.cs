@@ -18,6 +18,7 @@ namespace DcMateH5Api.Areas.LanguageKeywords.Controllers
         private static class Routes
         {
             public const string Query = "query";
+            public const string Create = "create";
         }
 
         private readonly ILanguageKeywordService _languageKeywordService;
@@ -45,5 +46,22 @@ namespace DcMateH5Api.Areas.LanguageKeywords.Controllers
             return Ok(result);
         }
 
+        /// <summary>
+        /// 建立多語系關鍵字與各語系資料
+        /// </summary>
+        /// <param name="request">建立條件</param>
+        /// <param name="cancellationToken">取消權杖</param>
+        /// <returns>建立結果</returns>
+        [HttpPost(Routes.Create)]
+        [ProducesResponseType(typeof(CreateLanguageKeywordResponse), StatusCodes.Status200OK)]
+        [ProducesResponseType(StatusCodes.Status400BadRequest)]
+        public async Task<IActionResult> Create([FromBody] CreateLanguageKeywordRequest request, CancellationToken cancellationToken)
+        {
+            CreateLanguageKeywordResponse result = await _languageKeywordService.CreateAsync(
+                request,
+                cancellationToken);
+
+            return Ok(result);
+        }
     }
 }

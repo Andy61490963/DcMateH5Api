@@ -52,7 +52,7 @@ public class AuthenticationService : Interfaces.IAuthenticationService
             _tokenService = tokenService;
         }
 
-        public async Task<Result<LoginResponseViewModel>> H5LoginAsync(string account, string password, CancellationToken ct = default)
+    public async Task<Result<LoginResponseViewModel>> H5LoginAsync(string account, string password, CancellationToken ct = default)
     {
         HttpContext? httpContext = _httpContextAccessor.HttpContext;
         DateTime now = DateTime.Now;
@@ -121,6 +121,9 @@ public class AuthenticationService : Interfaces.IAuthenticationService
                 failedPasswordResponse);
         }
 
+        // 錯誤測試
+        //throw new InvalidOperationException("Mock login exception for testing.");
+        
         int expireMinutes = _config.GetValue<int>("TokenOptions:DefaultTokenKeyMinutes");
         decimal loginLogSid = await WriteLoginLogAsync(
             user,

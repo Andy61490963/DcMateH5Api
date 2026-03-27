@@ -18,7 +18,7 @@
         /// <summary>
         /// 上一次產 SID 時使用的毫秒時間戳。
         /// </summary>
-        private static long _lastTimestampMilliseconds;
+        private static long _lastTimestampMilliseconds = -1;
 
         /// <summary>
         /// 同一毫秒內的自增序號。
@@ -35,25 +35,60 @@
         /// 依照舊 H5Core 規則產生 SID。
         /// SID = [起始日至今分鐘數] * 100000000 + [秒] * 1000000 + [毫秒] * 1000 + [序號]
         /// </summary>
-        /// <param name="sequence">同一時間片內的流水號，範圍 0 ~ 999。</param>
-        /// SID 起始時間。若未指定，則使用 2023-04-01 00:00:00。
-        /// 若指定時間早於預設值，仍使用預設值，以貼近舊版邏輯。
+        /// <param name="sequence">
+        /// 可選。若有指定，使用指定序號；若未指定，則於同一毫秒內自動遞增。
+        /// </param>
         /// <returns>符合舊系統規則的 SID。</returns>
         /// <exception cref="ArgumentOutOfRangeException">當 sequence 超出 0~999 時拋出。</exception>
         /// <exception cref="ArgumentException">當有效起始時間晚於目前時間時拋出。</exception>
-        public static decimal GenerateRandomDecimal(int sequence = 999)
+        public static decimal GenerateRandomDecimal(int? sequence = null)
         {
-            if (sequence < 0 || sequence > MaxSequence)
-            {
-                throw new ArgumentOutOfRangeException(nameof(sequence), sequence, "sequence 必須介於 0 到 999 之間。");
-            }
-
             DateTime effectiveStartDate = DefaultSidStartDate;
             DateTime now = DateTime.Now;
 
             if (effectiveStartDate > now)
             {
                 throw new ArgumentException("startDate 不可晚於目前時間。", nameof(DefaultSidStartDate));
+            }
+
+            int actualSequence;
+
+            if (sequence.HasValue)
+            {
+                if (sequence.Value < 0 || sequence.Value > MaxSequence)
+                {
+                    throw new ArgumentOutOfRangeException(nameof(sequence), sequence.Value, "sequence 必須介於 0 到 999 之間。");
+                }
+
+                actualSequence = sequence.Value;
+            }
+            else
+            {
+                lock (SidLock)
+                {
+                    now = DateTime.Now;
+                    long currentTimestampMilliseconds = new DateTimeOffset(now).ToUnixTimeMilliseconds();
+
+                    if (currentTimestampMilliseconds == _lastTimestampMilliseconds)
+                    {
+                        _sequence++;
+
+                        if (_sequence > MaxSequence)
+                        {
+                            now = WaitNextMillisecond(currentTimestampMilliseconds);
+                            currentTimestampMilliseconds = new DateTimeOffset(now).ToUnixTimeMilliseconds();
+                            _lastTimestampMilliseconds = currentTimestampMilliseconds;
+                            _sequence = 0;
+                        }
+                    }
+                    else
+                    {
+                        _lastTimestampMilliseconds = currentTimestampMilliseconds;
+                        _sequence = 0;
+                    }
+
+                    actualSequence = _sequence;
+                }
             }
 
             TimeSpan duration = now - effectiveStartDate;
@@ -63,7 +98,7 @@
                 totalMinutes * 100000000M +
                 now.Second * 1000000M +
                 now.Millisecond * 1000M +
-                sequence;
+                actualSequence;
 
             return sid;
         }
