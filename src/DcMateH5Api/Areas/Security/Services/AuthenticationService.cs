@@ -37,22 +37,22 @@ public class AuthenticationService : Interfaces.IAuthenticationService
     private readonly ITokenService _tokenService;
 
     public AuthenticationService(
-        SQLGenerateHelper sqlHelper,
-        IHttpContextAccessor httpContextAccessor,
-        IConfiguration config,
-        IMenuService menuService,
-        IRegistrationLicenseService registrationLicenseService,
-        ITokenService tokenService)
-    {
-        _sqlHelper = sqlHelper;
-        _httpContextAccessor = httpContextAccessor;
-        _config = config;
-        _menuService = menuService;
-        _registrationLicenseService = registrationLicenseService;
-        _tokenService = tokenService;
-    }
+            SQLGenerateHelper sqlHelper,
+            IHttpContextAccessor httpContextAccessor,
+            IConfiguration config,
+            IMenuService menuService,
+            IRegistrationLicenseService registrationLicenseService,
+            ITokenService tokenService)
+        {
+            _sqlHelper = sqlHelper;
+            _httpContextAccessor = httpContextAccessor;
+            _config = config;
+            _menuService = menuService;
+            _registrationLicenseService = registrationLicenseService;
+            _tokenService = tokenService;
+        }
 
-    public async Task<Result<LoginResponseViewModel>> H5LoginAsync(string account, string password, CancellationToken ct = default)
+        public async Task<Result<LoginResponseViewModel>> H5LoginAsync(string account, string password, CancellationToken ct = default)
     {
         HttpContext? httpContext = _httpContextAccessor.HttpContext;
         DateTime now = DateTime.Now;
@@ -61,7 +61,7 @@ public class AuthenticationService : Interfaces.IAuthenticationService
         {
             return Result<LoginResponseViewModel>.Fail(
                 AuthenticationErrorCode.Unauthorized,
-                "登入環境不存在");
+                "Login context is not available.");
         }
 
         CfgRegisterDto? cfgRegister = await GetCfgRegisterAsync(ct);
@@ -69,7 +69,7 @@ public class AuthenticationService : Interfaces.IAuthenticationService
         {
             return Result<LoginResponseViewModel>.Fail(
                 AuthenticationErrorCode.CfgRegisterNotFound,
-                "註冊碼認證失敗");
+                "License validation failed.");
         }
 
         LicenseParseResponse licenseResult = ParseLicense(cfgRegister);
@@ -78,11 +78,11 @@ public class AuthenticationService : Interfaces.IAuthenticationService
             LoginResponseViewModel failedLicenseResponse = BuildFailedResponse(
                 account,
                 licenseResult,
-                "註冊碼認證失敗");
+                "License validation failed.");
 
             return Result<LoginResponseViewModel>.Fail(
                 AuthenticationErrorCode.CfgRegisterNotFound,
-                "註冊碼認證失敗",
+                "License validation failed.",
                 failedLicenseResponse);
         }
 
@@ -92,11 +92,11 @@ public class AuthenticationService : Interfaces.IAuthenticationService
             LoginResponseViewModel failedUserResponse = BuildFailedResponse(
                 account,
                 licenseResult,
-                "帳號或密碼錯誤");
+                "Invalid account or password.");
 
             return Result<LoginResponseViewModel>.Fail(
                 AuthenticationErrorCode.UserNotFound,
-                "帳號或密碼錯誤",
+                "Invalid account or password.",
                 failedUserResponse);
         }
 
@@ -113,11 +113,11 @@ public class AuthenticationService : Interfaces.IAuthenticationService
             LoginResponseViewModel failedPasswordResponse = BuildFailedResponse(
                 user.Account,
                 licenseResult,
-                "帳號或密碼錯誤");
+                "Invalid account or password.");
 
             return Result<LoginResponseViewModel>.Fail(
                 AuthenticationErrorCode.UserNotFound,
-                "帳號或密碼錯誤",
+                "Invalid account or password.",
                 failedPasswordResponse);
         }
 
@@ -131,20 +131,20 @@ public class AuthenticationService : Interfaces.IAuthenticationService
         
         int nextTokenSeq = await GetNextTokenSeqAsync(ct);
         
-        // 新版 token payload，加入身份資訊
         TokenPayload tokenPayload = new TokenPayload
         {
-            Domain = string.Empty, // TokenService 會自動帶 _options.Domain
+            Domain = string.Empty,
             TokenMinutes = expireMinutes,
             TokenSeq = nextTokenSeq,
             UserId = user.Id,
             Account = user.Account,
-            SessionId = Guid.NewGuid().ToString("N"), // 每次登入一個新的 session
+            SessionId = Guid.NewGuid().ToString("N"),
             UserLv = user.Lv
         };
 
         GenerateTokenResult tokenResult = _tokenService.GenerateToken(tokenPayload);
         AuthInfo authInfo = await _menuService.GetFullMenuByLvAsync(user.Lv ?? "0", user.Id);
+
         LoginResponseViewModel successResponse = BuildSuccessResponse(
             user,
             cfgRegister,
@@ -256,7 +256,7 @@ public class AuthenticationService : Interfaces.IAuthenticationService
             return new LicenseParseResponse
             {
                 VerifyResult = false,
-                ResultMessage = "授權碼為空白"
+                ResultMessage = "License Code is Empty."
             };
         }
 
@@ -318,7 +318,7 @@ public class AuthenticationService : Interfaces.IAuthenticationService
         return new LoginResponseViewModel
         {
             tokenInfo = BuildTokenInfo(user.Account, token, tokenExpiry, tokenSeq, true),
-            userInfo = BuildUserInfo(user, cfgRegister, licenseResult, true, "登入成功"),
+            userInfo = BuildUserInfo(user, cfgRegister, licenseResult, true, "Login succeeded."),
             authInfo = authInfo
         };
     }
