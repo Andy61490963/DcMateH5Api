@@ -82,31 +82,69 @@ namespace DcMateClassLibrary.Helper
         }
 
         /// <summary>
-        /// 驗證密碼是否正確。
+        /// 驗證密碼（相容新舊兩種儲存格式）。
         /// 
-        /// 驗證方式：
-        /// - 使用「相同 Salt」重新計算輸入密碼的 Hash
-        /// - 與資料庫中儲存的 Hash 做比較
-        /// 
-        /// 使用 FixedTimeEquals：
-        /// - 避免根據比對時間長短洩漏資訊
-        /// - 防止 Timing Attack
+        /// 業務邏輯：
+        /// 1. 先嘗試新版 PBKDF2，對應目前系統標準儲存方式。
+        /// 2. 若 PBKDF2 不符合，再嘗試舊版 WeYu AES 邏輯，確保既有帳號可登入。
+        /// 3. 任一驗證成功即視為成功，避免升級期間造成使用者無法登入。
         /// </summary>
-        /// <param name="password">使用者輸入的明文密碼</param>
-        /// <param name="storedHash">資料庫中儲存的 Hash（Base64）</param>
-        /// <param name="storedSalt">資料庫中儲存的 Salt（Base64）</param>
-        /// <returns>是否驗證成功</returns>
+        /// <param name="password">使用者輸入的明文密碼。</param>
+        /// <param name="storedHash">資料庫中儲存的雜湊/密文。</param>
+        /// <param name="storedSalt">資料庫中儲存的 Salt。</param>
+        /// <returns>是否驗證成功。</returns>
         public static bool VerifyPassword(string password, string storedHash, string storedSalt)
         {
-            //// 使用同一個 Salt 重新計算 Hash
-            //var hashToCompare = HashPassword(password, storedSalt);
+            if (string.IsNullOrWhiteSpace(password) || string.IsNullOrWhiteSpace(storedHash) || string.IsNullOrWhiteSpace(storedSalt))
+            {
+                return false;
+            }
 
-            //var storedHashBytes = Convert.FromBase64String(storedHash);
-            //var hashBytes = Convert.FromBase64String(hashToCompare);
+            return VerifyPbkdf2Password(password, storedHash, storedSalt)
+                || WeYuVerifyPassword(password, storedHash, storedSalt);
+        }
 
-            //// 使用固定時間比較，避免 timing attack
-            //return CryptographicOperations.FixedTimeEquals(storedHashBytes, hashBytes);
-            return WeYuVerifyPassword(password, storedHash, storedSalt);
+        /// <summary>
+        /// 驗證 PBKDF2 密碼。
+        /// 
+        /// 業務邏輯：
+        /// - 只要資料格式符合 Base64，且固定時間比對成功即通過。
+        /// - 若資料格式不是 PBKDF2（例如舊系統 AES 密文）則直接回傳 false，交由舊邏輯處理。
+        /// </summary>
+        /// <param name="password">使用者輸入的明文密碼。</param>
+        /// <param name="storedHash">資料庫中的 PBKDF2 雜湊（Base64）。</param>
+        /// <param name="storedSalt">資料庫中的 Salt（Base64）。</param>
+        /// <returns>是否驗證成功。</returns>
+        private static bool VerifyPbkdf2Password(string password, string storedHash, string storedSalt)
+        {
+            if (!TryDecodeBase64(storedHash, out var storedHashBytes) || !TryDecodeBase64(storedSalt, out var saltBytes))
+            {
+                return false;
+            }
+
+            using var pbkdf2 = new Rfc2898DeriveBytes(password, saltBytes, Iterations, HashAlgorithmName.SHA256);
+            var hashBytes = pbkdf2.GetBytes(HashSize);
+            return CryptographicOperations.FixedTimeEquals(storedHashBytes, hashBytes);
+        }
+
+        /// <summary>
+        /// 安全地解析 Base64 字串，避免例外直接中斷登入流程。
+        /// </summary>
+        /// <param name="input">待解析字串。</param>
+        /// <param name="bytes">成功時輸出的位元組陣列。</param>
+        /// <returns>是否解析成功。</returns>
+        private static bool TryDecodeBase64(string input, out byte[] bytes)
+        {
+            try
+            {
+                bytes = Convert.FromBase64String(input);
+                return true;
+            }
+            catch (FormatException)
+            {
+                bytes = Array.Empty<byte>();
+                return false;
+            }
         }
 
         public string WeYuHashPassword(string password, string salt)
