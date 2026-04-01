@@ -188,4 +188,11 @@ public class MultipleMappingUpsertViewModel
     /// 需要建立或移除的明細主鍵清單。
     /// </summary>
     public List<string> DetailIds { get; set; } = new();
+    
+    /// <summary>
+    /// 額外要寫入 Mapping Table 的欄位資料。
+    /// Key = 欄位名稱
+    /// Value = 欄位值
+    /// </summary>
+    public Dictionary<string, object?> ExtraFields { get; set; } = new(StringComparer.OrdinalIgnoreCase);
 }

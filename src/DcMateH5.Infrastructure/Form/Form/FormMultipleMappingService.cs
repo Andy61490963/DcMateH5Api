@@ -255,7 +255,7 @@ SELECT ID AS Id,
 
             EnsureRowExists(header.BASE_TABLE_NAME!, basePkName, basePkValue!, tx);
 
-            var detailIds = ConvertDetailIds(request.DetailIds, detailPkType);
+            var detailIds = ConvertDetailIds(request.DetailIds, detailPkType).ToList();
 
             var mappingPkColumn = header.MAPPING_PK_COLUMN
                 ?? throw new InvalidOperationException("設定檔缺少 MAPPING_PK_COLUMN");
@@ -264,14 +264,24 @@ SELECT ID AS Id,
             EnsureColumnExists(header.MAPPING_TABLE_NAME!, mappingPkColumn, "Mapping 表缺少主鍵欄位", tx);
 
             var columnTypes = LoadColumnTypes(header.MAPPING_TABLE_NAME!, tx);
-            var mappingPkType = columnTypes[mappingPkColumn];
+            var mappingPkType = columnTypes.TryGetValue(mappingPkColumn, out var pkType)
+                ? pkType
+                : throw new InvalidOperationException($"無法取得 Mapping PK 欄位型別：{mappingPkColumn}");
+
             var isIdentityPk = _schemaService.IsIdentityColumn(header.MAPPING_TABLE_NAME!, mappingPkColumn, tx);
 
-            // ---------- SEQ 起始值 ----------
+            var normalizedExtraFields = NormalizeExtraFields(
+                header,
+                request.ExtraFields,
+                columnTypes,
+                mappingPkColumn,
+                tx);
+
             var seq = 0;
             if (isSeq)
             {
-                seq = _con.ExecuteScalar<int>($@"/**/
+                seq = _con.ExecuteScalar<int>(
+                    $@"/**/
     SELECT ISNULL(MAX([SEQ]), 0)
     FROM [{header.MAPPING_TABLE_NAME}]
     WHERE [{header.MAPPING_BASE_FK_COLUMN}] = @BaseId;",
@@ -283,43 +293,61 @@ SELECT ID AS Id,
             {
                 EnsureRowExists(header.DETAIL_TABLE_NAME!, detailPkName, detailId!, tx);
 
-                var insertColumns = new List<string>
-                {
-                    $"[{header.MAPPING_BASE_FK_COLUMN}]",
-                    $"[{header.MAPPING_DETAIL_FK_COLUMN}]"
-                };
-
-                var insertValues = new List<string>
-                {
-                    "@BaseId",
-                    "@DetailId"
-                };
+                var insertColumns = new List<string>();
+                var insertValues = new List<string>();
+                var parameters = new DynamicParameters();
 
                 object? pkValue = null;
 
                 if (!isIdentityPk)
                 {
                     pkValue = GeneratePkValueHelper.GeneratePkValue(mappingPkType);
-                    insertColumns.Insert(0, $"[{mappingPkColumn}]");
-                    insertValues.Insert(0, "@Pk");
+                    insertColumns.Add($"[{mappingPkColumn}]");
+                    insertValues.Add("@Pk");
+                    parameters.Add("Pk", pkValue);
                 }
+
+                insertColumns.Add($"[{header.MAPPING_BASE_FK_COLUMN}]");
+                insertValues.Add("@BaseId");
+                parameters.Add("BaseId", basePkValue);
+
+                insertColumns.Add($"[{header.MAPPING_DETAIL_FK_COLUMN}]");
+                insertValues.Add("@DetailId");
+                parameters.Add("DetailId", detailId);
 
                 if (isSeq)
                 {
                     insertColumns.Add("[SEQ]");
                     insertValues.Add("@Seq");
+                    parameters.Add("Seq", ++seq);
                 }
 
-                insertColumns.Add("CREATE_TIME");
-                insertColumns.Add("EDIT_TIME");
+                foreach (var extraField in normalizedExtraFields)
+                {
+                    insertColumns.Add($"[{extraField.Key}]");
+                    insertValues.Add($"@{extraField.Key}");
+                    parameters.Add(extraField.Key, extraField.Value);
+                }
+
+                var now = DateTime.Now;
+                var createUser = Guid.NewGuid();
+                var editUser = Guid.NewGuid();
+
+                insertColumns.Add("[CREATE_TIME]");
                 insertValues.Add("@CreateTime");
+                parameters.Add("CreateTime", now);
+
+                insertColumns.Add("[EDIT_TIME]");
                 insertValues.Add("@EditTime");
-                
-                
-                insertColumns.Add("CREATE_USER");
-                insertColumns.Add("EDIT_USER");
+                parameters.Add("EditTime", now);
+
+                insertColumns.Add("[CREATE_USER]");
                 insertValues.Add("@CreateUser");
+                parameters.Add("CreateUser", createUser);
+
+                insertColumns.Add("[EDIT_USER]");
                 insertValues.Add("@EditUser");
+                parameters.Add("EditUser", editUser);
 
                 var sql = $@"/**/
     IF NOT EXISTS (
@@ -330,24 +358,16 @@ SELECT ID AS Id,
     )
     BEGIN
         INSERT INTO [{header.MAPPING_TABLE_NAME}]
-            ({string.Join(", ", insertColumns)})
+        (
+            {string.Join(", ", insertColumns)}
+        )
         VALUES
-            ({string.Join(", ", insertValues)});
+        (
+            {string.Join(", ", insertValues)}
+        );
     END";
 
-                _con.Execute(sql,
-                    new
-                    {
-                        Pk = pkValue,
-                        BaseId = basePkValue,
-                        DetailId = detailId,
-                        Seq = isSeq ? ++seq : (int?)null,
-                        CreateTime = DateTime.Now,
-                        EditTime = DateTime.Now,
-                        CreateUser = Guid.NewGuid(),
-                        EditUser = Guid.NewGuid()
-                    },
-                    transaction: tx);
+                _con.Execute(sql, parameters, transaction: tx);
             }
         });
     }
@@ -1247,5 +1267,78 @@ WHERE b.[{header.MAPPING_BASE_FK_COLUMN}] = @BaseId;";
         return
             $"ORDER BY m.[{MappingColumnNames.Sequence}] {direction}, " +
             $"m.[{header.MAPPING_DETAIL_FK_COLUMN}] {direction}";
+    }
+    
+    private Dictionary<string, object?> NormalizeExtraFields(
+        FormFieldMasterDto header,
+        IDictionary<string, object?>? extraFields,
+        IReadOnlyDictionary<string, string> columnTypes,
+        string mappingPkColumn,
+        SqlTransaction tx)
+    {
+        var result = new Dictionary<string, object?>(StringComparer.OrdinalIgnoreCase);
+
+        if (extraFields == null || extraFields.Count == 0)
+        {
+            return result;
+        }
+
+        var mappingTableName = header.MAPPING_TABLE_NAME
+            ?? throw new InvalidOperationException("設定檔缺少 MAPPING_TABLE_NAME");
+
+        var mappingColumns = _schemaService.GetFormFieldMaster(mappingTableName, tx)
+            .ToHashSet(StringComparer.OrdinalIgnoreCase);
+
+        var reservedColumns = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
+        {
+            mappingPkColumn,
+            header.MAPPING_BASE_FK_COLUMN!,
+            header.MAPPING_DETAIL_FK_COLUMN!,
+            "CREATE_TIME",
+            "EDIT_TIME",
+            "CREATE_USER",
+            "EDIT_USER"
+        };
+
+        if (columnTypes.ContainsKey("SEQ"))
+        {
+            reservedColumns.Add("SEQ");
+        }
+
+        foreach (var pair in extraFields)
+        {
+            var columnName = pair.Key?.Trim();
+            if (string.IsNullOrWhiteSpace(columnName))
+            {
+                throw new InvalidOperationException("ExtraFields 欄位名稱不可為空");
+            }
+
+            ValidateColumnName(columnName);
+
+            if (!mappingColumns.Contains(columnName))
+            {
+                throw new InvalidOperationException($"Mapping 表不存在欄位：{columnName}");
+            }
+
+            if (reservedColumns.Contains(columnName))
+            {
+                throw new InvalidOperationException($"欄位不可由 ExtraFields 指定：{columnName}");
+            }
+
+            if (_schemaService.IsIdentityColumn(mappingTableName, columnName, tx))
+            {
+                throw new InvalidOperationException($"不可寫入 Identity 欄位：{columnName}");
+            }
+
+            if (!columnTypes.TryGetValue(columnName, out var sqlType))
+            {
+                throw new InvalidOperationException($"無法取得欄位型別：{columnName}");
+            }
+
+            var convertedValue = ConvertToColumnTypeHelper.Convert(sqlType, pair.Value);
+            result[columnName] = convertedValue;
+        }
+
+        return result;
     }
 }
