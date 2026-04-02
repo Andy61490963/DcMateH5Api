@@ -21,8 +21,15 @@ public interface IFormMultipleMappingService
     /// <summary>
     /// 依設定檔與主鍵取得已關聯/未關聯的左右清單。
     /// </summary>
-    MultipleMappingListViewModel GetMappingList(Guid formMasterId, string baseId, Dictionary<string, string>? filters, MappingListType? type, 
-        int page, int pageSize, CancellationToken ct = default);
+    MultipleMappingListViewModel GetMappingList(
+        Guid formMasterId,
+        string baseId,
+        Dictionary<string, string>? filters,
+        MappingListType? type,
+        int? page,
+        int? pageSize,
+        bool orderBySeqAscending = true,
+        CancellationToken ct = default);
 
     /// <summary>
     /// 批次新增對應關係（右 → 左）。

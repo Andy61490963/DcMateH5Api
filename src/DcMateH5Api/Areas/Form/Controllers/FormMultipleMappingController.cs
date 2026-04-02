@@ -114,7 +114,7 @@ public class FormMultipleMappingController : ControllerBase
             return StatusCode((int)ex.StatusCode, ex.Message);
         }
     }
-
+    
     /// <summary>
     /// 依設定檔與主表主鍵取得清單（已關聯 / 未關聯），查詢欄位前端動態解析。
     /// </summary>
@@ -141,6 +141,7 @@ public class FormMultipleMappingController : ControllerBase
                 query.Type,
                 query.Page,
                 query.PageSize,
+                query.OrderBySeqAscending,
                 ct);
 
             return Ok(result);
