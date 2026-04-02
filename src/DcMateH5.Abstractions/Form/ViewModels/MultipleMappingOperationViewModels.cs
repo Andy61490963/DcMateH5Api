@@ -175,7 +175,7 @@ public class MultipleMappingListViewModel
 }
 
 /// <summary>
-/// 批次建立或刪除關聯的輸入模型。
+/// 批次建立關聯的輸入模型。
 /// </summary>
 public class MultipleMappingUpsertViewModel
 {
@@ -185,14 +185,27 @@ public class MultipleMappingUpsertViewModel
     public string BaseId { get; set; } = string.Empty;
 
     /// <summary>
-    /// 需要建立或移除的明細主鍵清單。
+    /// 要建立關聯的明細資料清單。
+    /// 每筆資料都可以帶自己的額外欄位。
     /// </summary>
-    public List<string> DetailIds { get; set; } = new();
-    
+    public List<MultipleMappingItemUpsertViewModel> Items { get; set; } = new();
+}
+
+/// <summary>
+/// 單筆關聯建立資料。
+/// </summary>
+public class MultipleMappingItemUpsertViewModel
+{
+    /// <summary>
+    /// 明細主鍵值。
+    /// </summary>
+    public string DetailId { get; set; } = string.Empty;
+
     /// <summary>
     /// 額外要寫入 Mapping Table 的欄位資料。
     /// Key = 欄位名稱
     /// Value = 欄位值
     /// </summary>
-    public Dictionary<string, object?> ExtraFields { get; set; } = new(StringComparer.OrdinalIgnoreCase);
+    public Dictionary<string, object?> ExtraFields { get; set; } =
+        new(StringComparer.OrdinalIgnoreCase);
 }

@@ -255,8 +255,6 @@ SELECT ID AS Id,
 
             EnsureRowExists(header.BASE_TABLE_NAME!, basePkName, basePkValue!, tx);
 
-            var detailIds = ConvertDetailIds(request.DetailIds, detailPkType).ToList();
-
             var mappingPkColumn = header.MAPPING_PK_COLUMN
                 ?? throw new InvalidOperationException("設定檔缺少 MAPPING_PK_COLUMN");
 
@@ -270,13 +268,6 @@ SELECT ID AS Id,
 
             var isIdentityPk = _schemaService.IsIdentityColumn(header.MAPPING_TABLE_NAME!, mappingPkColumn, tx);
 
-            var normalizedExtraFields = NormalizeExtraFields(
-                header,
-                request.ExtraFields,
-                columnTypes,
-                mappingPkColumn,
-                tx);
-
             var seq = 0;
             if (isSeq)
             {
@@ -289,19 +280,26 @@ SELECT ID AS Id,
                     transaction: tx);
             }
 
-            foreach (var detailId in detailIds)
+            foreach (var item in request.Items)
             {
+                var detailId = ConvertToColumnTypeHelper.ConvertPkType(item.DetailId, detailPkType);
+
                 EnsureRowExists(header.DETAIL_TABLE_NAME!, detailPkName, detailId!, tx);
+
+                var normalizedExtraFields = NormalizeExtraFields(
+                    header,
+                    item.ExtraFields,
+                    columnTypes,
+                    mappingPkColumn,
+                    tx);
 
                 var insertColumns = new List<string>();
                 var insertValues = new List<string>();
                 var parameters = new DynamicParameters();
 
-                object? pkValue = null;
-
                 if (!isIdentityPk)
                 {
-                    pkValue = GeneratePkValueHelper.GeneratePkValue(mappingPkType);
+                    var pkValue = GeneratePkValueHelper.GeneratePkValue(mappingPkType);
                     insertColumns.Add($"[{mappingPkColumn}]");
                     insertValues.Add("@Pk");
                     parameters.Add("Pk", pkValue);
@@ -385,16 +383,25 @@ SELECT ID AS Id,
             var (detailPkName, detailPkType, _) = _schemaService.ResolvePk(header.DETAIL_TABLE_NAME!, null, tx);
 
             EnsureRowExists(header.BASE_TABLE_NAME!, basePkName, basePkValue!, tx);
-            var detailIds = ConvertDetailIds(request.DetailIds, detailPkType);
+
+            var detailIds = request.Items
+                .Select(item => ConvertToColumnTypeHelper.ConvertPkType(item.DetailId, detailPkType))
+                .ToList();
 
             foreach (var detailId in detailIds)
             {
                 EnsureRowExists(header.DETAIL_TABLE_NAME!, detailPkName, detailId!, tx);
+
                 _con.Execute($@"/**/
 DELETE FROM [{header.MAPPING_TABLE_NAME}]
 WHERE [{header.MAPPING_BASE_FK_COLUMN}] = @BaseId
   AND [{header.MAPPING_DETAIL_FK_COLUMN}] = @DetailId",
-                    new { BaseId = basePkValue, DetailId = detailId }, transaction: tx);
+                    new
+                    {
+                        BaseId = basePkValue,
+                        DetailId = detailId
+                    },
+                    transaction: tx);
             }
         });
     }
@@ -1012,15 +1019,39 @@ WHERE b.[{header.MAPPING_BASE_FK_COLUMN}] = @BaseId;";
 
     private static void ValidateUpsertRequest(MultipleMappingUpsertViewModel request)
     {
-        if (request == null) throw new ArgumentNullException(nameof(request));
+        if (request == null)
+        {
+            throw new ArgumentNullException(nameof(request));
+        }
+
         if (string.IsNullOrWhiteSpace(request.BaseId))
         {
             throw new InvalidOperationException("BaseId 不可為空");
         }
 
-        if (request.DetailIds == null || request.DetailIds.Count == 0)
+        if (request.Items == null || request.Items.Count == 0)
         {
-            throw new InvalidOperationException("DetailIds 不可為空");
+            throw new InvalidOperationException("Items 不可為空");
+        }
+
+        var detailIds = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+
+        foreach (var item in request.Items)
+        {
+            if (item == null)
+            {
+                throw new InvalidOperationException("Items 不可包含 null");
+            }
+
+            if (string.IsNullOrWhiteSpace(item.DetailId))
+            {
+                throw new InvalidOperationException("DetailId 不可為空");
+            }
+
+            if (!detailIds.Add(item.DetailId.Trim()))
+            {
+                throw new InvalidOperationException($"DetailId 不可重複：{item.DetailId}");
+            }
         }
     }
 

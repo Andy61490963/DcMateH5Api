@@ -327,9 +327,9 @@ public class FormMultipleMappingController : ControllerBase
             return BadRequest("BaseId 不可為空");
         }
 
-        if (request.DetailIds.Count == 0)
+        if (request.Items.Count == 0)
         {
-            return BadRequest("DetailIds 不可為空");
+            return BadRequest("Items 不可為空");
         }
 
         return null;
