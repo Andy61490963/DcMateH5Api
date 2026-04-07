@@ -4,6 +4,7 @@ using DbExtensions;
 using DcMateClassLibrary.Enums.Form;
 using DcMateClassLibrary.Helper.Enums;
 using DcMateClassLibrary.Helper.FormHelper;
+using DcMateH5.Abstractions.CurrentUser;
 using DcMateH5.Abstractions.Form.Form;
 using DcMateH5.Abstractions.Form.FormLogic;
 using DcMateH5.Abstractions.Form.Models;
@@ -25,6 +26,7 @@ public class FormMultipleMappingService : IFormMultipleMappingService
     private readonly ITransactionService _txService;
     private readonly IFormService _formService;
     private readonly SQLGenerateHelper _sqlHelper;
+    private readonly ICurrentUserAccessor _currentUser;
     
     public FormMultipleMappingService(
         SqlConnection connection,
@@ -33,7 +35,8 @@ public class FormMultipleMappingService : IFormMultipleMappingService
         ISchemaService schemaService,
         ITransactionService txService,
         IFormService formService,
-        SQLGenerateHelper sqlHelper)
+        SQLGenerateHelper sqlHelper,
+        ICurrentUserAccessor currentUser)
     {
         _con = connection;
         _formFieldMasterService = formFieldMasterService;
@@ -42,6 +45,7 @@ public class FormMultipleMappingService : IFormMultipleMappingService
         _txService = txService;
         _formService = formService;
         _sqlHelper = sqlHelper;
+        _currentUser = currentUser;
     }
 
     /// <inheritdoc />
@@ -267,6 +271,7 @@ SELECT ID AS Id,
                 : throw new InvalidOperationException($"無法取得 Mapping PK 欄位型別：{mappingPkColumn}");
 
             var isIdentityPk = _schemaService.IsIdentityColumn(header.MAPPING_TABLE_NAME!, mappingPkColumn, tx);
+            var currentAccount = GetCurrentAccount();
 
             var seq = 0;
             if (isSeq)
@@ -328,8 +333,6 @@ SELECT ID AS Id,
                 }
 
                 var now = DateTime.Now;
-                var createUser = Guid.NewGuid();
-                var editUser = Guid.NewGuid();
 
                 insertColumns.Add("[CREATE_TIME]");
                 insertValues.Add("@CreateTime");
@@ -341,11 +344,11 @@ SELECT ID AS Id,
 
                 insertColumns.Add("[CREATE_USER]");
                 insertValues.Add("@CreateUser");
-                parameters.Add("CreateUser", createUser);
+                parameters.Add("CreateUser", currentAccount);
 
                 insertColumns.Add("[EDIT_USER]");
                 insertValues.Add("@EditUser");
-                parameters.Add("EditUser", editUser);
+                parameters.Add("EditUser", currentAccount);
 
                 var sql = $@"/**/
     IF NOT EXISTS (
@@ -368,6 +371,18 @@ SELECT ID AS Id,
                 _con.Execute(sql, parameters, transaction: tx);
             }
         });
+    }
+
+    private string GetCurrentAccount()
+    {
+        var account = _currentUser.Get().Account;
+
+        if (string.IsNullOrWhiteSpace(account))
+        {
+            throw new InvalidOperationException("無法取得目前登入者帳號名稱");
+        }
+
+        return account;
     }
     
     /// <inheritdoc />
