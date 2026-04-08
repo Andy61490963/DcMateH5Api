@@ -33,6 +33,8 @@ public class KaosuQcHeaderCreateRequest
     public int? Cavity { get; set; }
     
     public string? MoldNo { get; set; }
+
+    public string? MoldTolNo { get; set; }
     
     public string? EqpNo { get; set; }
     
