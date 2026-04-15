@@ -27,8 +27,7 @@ ORDER BY SEQ, SID;";
             public const string ExistsKeyword = @"
 SELECT COUNT(1)
 FROM dbo.CFG_LANG_KEYWORDS
-WHERE TYPE = @Type
-  AND KEYWORDS = @Keywords;";
+WHERE KEYWORDS = @Keywords;";
 
             public const string InsertKeyword = @"
 INSERT INTO dbo.CFG_LANG_KEYWORDS
@@ -234,7 +233,9 @@ ORDER BY k.SID;";
             }
             catch (SqlException ex) when (ex.Number == 2627)
             {
-                throw new InvalidOperationException($"Keyword '{request.Keywords?.Trim()}' already exists.");
+                return Result<CreateLanguageKeywordResponse>.Fail(
+                    LanguageKeywordsErrorCode.KeyWordExisted,
+                    $"Keyword '{request.Keywords?.Trim()}' already exists.");
             }
         }
 
