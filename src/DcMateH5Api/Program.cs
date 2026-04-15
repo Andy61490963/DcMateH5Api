@@ -67,7 +67,7 @@ builder.Services.AddCors(options =>
             .AllowAnyOrigin()
             .AllowAnyHeader()
             .AllowAnyMethod()
-            .WithExposedHeaders("Authorization"); 
+            .WithExposedHeaders("Authorization", "X-Token-Expire");
     });
 });
 

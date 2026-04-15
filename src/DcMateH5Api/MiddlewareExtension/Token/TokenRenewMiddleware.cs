@@ -53,6 +53,11 @@ public class TokenRenewMiddleware
             return;
         }
 
+        if (context.Response.Headers.ContainsKey(HeaderNames.Authorization))
+        {
+            return;
+        }
+
         TokenValidationResult validationResult = _tokenService.ValidateToken(currentToken);
 
         if (!validationResult.IsValid)
@@ -84,10 +89,8 @@ public class TokenRenewMiddleware
         context.Response.Headers[HeaderNames.Authorization] =
             $"{HeaderNames.BearerPrefix}{newToken.TokenKey}";
         
-        DateTime expireTime = new DateTime(validationResult.ExpireTicks, DateTimeKind.Local);
-
         context.Response.Headers[HeaderNames.TokenExpire] =
-            expireTime.ToString("o"); // ISO 8601
+            newToken.Expiration.ToString("o"); // ISO 8601
     }
 
     private static bool ShouldRenew(TokenValidationResult validationResult)
