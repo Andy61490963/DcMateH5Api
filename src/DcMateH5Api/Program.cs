@@ -33,12 +33,17 @@ using DcMateH5.Infrastructure.Wip;
 using DcMateH5Api.BackgroundService;
 using DcMateH5Api.MiddlewareExtension;
 using DcMateH5Api.MiddlewareExtension.Token;
+using DcMateH5Api.Areas.Security.Options;
 using DcMateH5Api.Services.Cache.Redis.Interfaces;
 using DcMateH5Api.Services.Cache.Redis.Services;
 using DcMateH5Api.Services.CurrentUser;
 using Microsoft.AspNetCore.Authentication;
+using IEmailSender = DcMateH5Api.Areas.Security.Interfaces.IEmailSender;
+using AccountService = DcMateH5Api.Areas.Security.Services.AccountService;
+using IAccountService = DcMateH5Api.Areas.Security.Interfaces.IAccountService;
 using AuthenticationService = DcMateH5Api.Areas.Security.Services.AuthenticationService;
 using IAuthenticationService = DcMateH5Api.Areas.Security.Interfaces.IAuthenticationService;
+using SmtpEmailSender = DcMateH5Api.Areas.Security.Services.SmtpEmailSender;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -82,6 +87,8 @@ builder.Services.Configure<CacheOptions>(config.GetSection("Cache"));
 builder.Services.Configure<DbOptions>(config.GetSection("ConnectionStrings"));
 builder.Services.Configure<FormSettings>(config.GetSection("FormSettings"));
 builder.Services.Configure<TokenOptions>(config.GetSection("TokenOptions"));
+builder.Services.Configure<EmailSettingOptions>(config.GetSection(EmailSettingOptions.SectionName));
+builder.Services.Configure<PasswordResetOptions>(config.GetSection(PasswordResetOptions.SectionName));
 
 // -------------------- 分散式快取（Redis） --------------------
 builder.Services.AddStackExchangeRedisCache(opt =>
@@ -114,6 +121,8 @@ builder.Services.AddScoped<ILanguageKeywordService, LanguageKeywordService>();
 builder.Services.AddHostedService<FormOrphanCleanupHostedService>();
 builder.Services.AddScoped<IFormOrphanCleanupService, FormOrphanCleanupService>();
 builder.Services.AddScoped<IFormDesignerService, FormDesignerService>();
+builder.Services.AddScoped<IAccountService, AccountService>();
+builder.Services.AddScoped<IEmailSender, SmtpEmailSender>();
 builder.Services.AddScoped<IAuthenticationService, AuthenticationService>();
 builder.Services.AddScoped<IRegistrationLicenseService, RegistrationLicenseService>();
 builder.Services.AddScoped<ITokenService, TokenService>();

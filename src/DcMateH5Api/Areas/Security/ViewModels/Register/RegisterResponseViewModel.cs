@@ -1,33 +1,32 @@
-using System.ComponentModel.DataAnnotations;
-
 namespace DcMateH5Api.Areas.Security.ViewModels.Register;
 
 /// <summary>
-/// Register request.
+/// Register response.
 /// </summary>
-public sealed record RegisterRequestViewModel
+public sealed record RegisterResponseViewModel
 {
+    /// <summary>
+    /// User id.
+    /// </summary>
+    public Guid UserId { get; init; }
+
     /// <summary>
     /// Account.
     /// </summary>
-    [Required]
-    public required string Account { get; init; }
+    public string Account { get; init; } = string.Empty;
 
     /// <summary>
-    /// Password.
+    /// User name.
     /// </summary>
-    [Required]
-    public required string Password { get; init; }
+    public string Name { get; init; } = string.Empty;
 
     /// <summary>
-    /// Optional email address.
+    /// Email address.
     /// </summary>
-    [EmailAddress]
     public string? Email { get; init; }
 
     /// <summary>
     /// User level.
     /// </summary>
-    [Range(1, int.MaxValue)]
     public int Lv { get; init; }
 }

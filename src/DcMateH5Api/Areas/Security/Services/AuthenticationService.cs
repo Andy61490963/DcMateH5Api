@@ -290,7 +290,17 @@ FROM ADM_USER_HIST
 WHERE ACCOUNT_NO = @Account
 AND ACTION_CODE = @ActionCode
 AND ACTION_RESULT = 0
-AND REPORT_TIME >= DATEADD(MINUTE, -@LockoutMinutes, GETDATE())";
+AND REPORT_TIME >= DATEADD(MINUTE, -@LockoutMinutes, GETDATE())
+AND REPORT_TIME > ISNULL(
+    (
+        SELECT MAX(t.USED_TIME)
+        FROM ADM_PASSWORD_RESET_TOKEN t
+        JOIN ADM_USER u ON u.USER_SID = t.USER_SID
+        WHERE u.ACCOUNT_NO = @Account
+          AND t.USED_TIME IS NOT NULL
+    ),
+    CONVERT(datetime2(3), '1900-01-01')
+);";
 
         var maxFailedAttempts = _config.GetValue<int>("LoginOptions:MaxFailedAttempts");
         var lockoutMinutes = _config.GetValue<int>("LoginOptions:LockoutMinutes");
