@@ -1,4 +1,5 @@
 ﻿using System.Data.SqlClient;
+using System.Globalization;
 using System.Security.Cryptography;
 using System.Text;
 using DcMateH5.Abstractions.RegistrationLicense;
@@ -35,11 +36,13 @@ public sealed class RegistrationLicenseService : IRegistrationLicenseService
         public const string EmptyLicenseMessage = "LicenseKey is required.";
         public const string EmptyConnectionStringMessage = "Connection string is required.";
         public const string InvalidConnectionStringMessage = "Connection string is invalid.";
+        public const string EmptyDataSourceMessage = "ConnectionString is required.";
         public const string DatabaseSourceMismatchMessage = "License database source does not match current application database source.";
 
         public const string ConnectionStringKey = "ConnectionStrings:Connection";
         public const string TcpPrefix = "tcp:";
         public const string DefaultSqlInstance = "MSSQLSERVER";
+        public const int RandomPrefixByteCount = 4;
     }
 
     private readonly IConfiguration _configuration;
@@ -47,6 +50,55 @@ public sealed class RegistrationLicenseService : IRegistrationLicenseService
     public RegistrationLicenseService(IConfiguration configuration)
     {
         _configuration = configuration ?? throw new ArgumentNullException(nameof(configuration));
+    }
+
+    /// <summary>
+    /// 產生註冊碼
+    /// </summary>
+    /// <param name="request">註冊碼產生請求</param>
+    /// <returns>註冊碼產生結果</returns>
+    /// <exception cref="ArgumentNullException"></exception>
+    /// <exception cref="ArgumentException"></exception>
+    public LicenseGenerateResponse Generate(LicenseGenerateRequest request)
+    {
+        if (request is null)
+        {
+            throw new ArgumentNullException(nameof(request));
+        }
+
+        string createTime = DateTime.Now
+            .ToString("yyyy-MM-dd HH:mm.fff", CultureInfo.InvariantCulture);
+        string dbDataSource = ResolveGenerateDataSource(request);
+        string expiredDate = ValidateAndFormatExpiredDate(request.ExpiredDate);
+        string numOfReg = ValidateAndFormatNumOfReg(request.NumOfReg);
+        string customerName = ValidateRequiredText(request.CustomerName, nameof(request.CustomerName));
+
+        EnsureNoSplitChar(createTime, nameof(createTime));
+        EnsureNoSplitChar(dbDataSource, nameof(request.ConnectionString));
+        EnsureNoSplitChar(expiredDate, nameof(request.ExpiredDate));
+        EnsureNoSplitChar(numOfReg, nameof(request.NumOfReg));
+        EnsureNoSplitChar(customerName, nameof(request.CustomerName));
+
+        string raw = string.Join(
+            LicenseConstants.SplitChar,
+            createTime,
+            dbDataSource,
+            expiredDate,
+            numOfReg,
+            customerName);
+
+        string licenseKey = GenerateHexPrefix() + Encrypt(raw);
+
+        return new LicenseGenerateResponse
+        {
+            LicenseKey = licenseKey,
+            CheckCode = GenerateCheckCode(),
+            CreateTime = createTime,
+            DbDataSource = dbDataSource,
+            ExpiredDate = expiredDate,
+            NumOfReg = numOfReg,
+            CustomerName = customerName
+        };
     }
 
     /// <summary>
@@ -145,6 +197,116 @@ public sealed class RegistrationLicenseService : IRegistrationLicenseService
         }
 
         return builder.DataSource;
+    }
+
+    private static string ResolveGenerateDataSource(LicenseGenerateRequest request)
+    {
+        if (string.IsNullOrWhiteSpace(request.ConnectionString))
+        {
+            throw new ArgumentException(LicenseConstants.EmptyDataSourceMessage, nameof(request.ConnectionString));
+        }
+
+        string dataSource;
+        try
+        {
+                dataSource = FormatLicenseDataSource(GetApplicationDataSource(request.ConnectionString));
+        }
+        catch (Exception ex)
+        {
+            throw new ArgumentException(
+                LicenseConstants.InvalidConnectionStringMessage,
+                nameof(request.ConnectionString),
+                ex);
+        }
+
+        if (string.IsNullOrWhiteSpace(dataSource))
+        {
+            throw new ArgumentException(LicenseConstants.EmptyDataSourceMessage, nameof(request.ConnectionString));
+        }
+
+        return dataSource;
+    }
+
+    private static string ValidateAndFormatExpiredDate(DateTime expiredDate)
+    {
+        if (expiredDate == default)
+        {
+            throw new ArgumentException("ExpiredDate is required.", nameof(expiredDate));
+        }
+
+        return expiredDate.ToString("yyyyMMdd", CultureInfo.InvariantCulture);
+    }
+
+    private static string ValidateAndFormatNumOfReg(int numOfReg)
+    {
+        if (numOfReg <= 0)
+        {
+            throw new ArgumentException("NumOfReg must be greater than 0.", nameof(numOfReg));
+        }
+
+        return numOfReg.ToString(CultureInfo.InvariantCulture);
+    }
+
+    private static string ValidateRequiredText(string? value, string parameterName)
+    {
+        if (string.IsNullOrWhiteSpace(value))
+        {
+            throw new ArgumentException($"{parameterName} is required.", parameterName);
+        }
+
+        return value.Trim();
+    }
+
+    private static void EnsureNoSplitChar(string value, string parameterName)
+    {
+        if (value.Contains(LicenseConstants.SplitChar))
+        {
+            throw new ArgumentException(
+                $"{parameterName} cannot contain '{LicenseConstants.SplitChar}'.",
+                parameterName);
+        }
+    }
+
+    private static string FormatLicenseDataSource(string appDataSource)
+    {
+        string normalized = NormalizeApplicationDataSource(appDataSource);
+
+        string hostPart = normalized;
+        string? instancePart = null;
+        string? portPart = null;
+
+        int slashIndex = normalized.IndexOf('\\');
+        if (slashIndex >= 0)
+        {
+            hostPart = normalized.Substring(0, slashIndex);
+
+            string instanceAndPort = normalized[(slashIndex + 1)..];
+            int commaIndex = instanceAndPort.IndexOf(',');
+            if (commaIndex >= 0)
+            {
+                instancePart = instanceAndPort.Substring(0, commaIndex);
+                portPart = instanceAndPort[(commaIndex + 1)..];
+            }
+            else
+            {
+                instancePart = instanceAndPort;
+            }
+        }
+        else
+        {
+            int commaIndex = normalized.IndexOf(',');
+            if (commaIndex >= 0)
+            {
+                hostPart = normalized.Substring(0, commaIndex);
+                portPart = normalized[(commaIndex + 1)..];
+            }
+        }
+
+        instancePart = string.IsNullOrWhiteSpace(instancePart)
+            ? LicenseConstants.DefaultSqlInstance
+            : instancePart.Trim();
+
+        return $"{LicenseConstants.TcpPrefix}{BuildNormalizedDataSource(hostPart.Trim(), instancePart, portPart?.Trim())}";
     }
 
     /// <summary>
@@ -329,6 +491,36 @@ public sealed class RegistrationLicenseService : IRegistrationLicenseService
         cryptoStream.FlushFinalBlock();
 
         return Encoding.UTF8.GetString(memoryStream.ToArray());
+    }
+
+    private static string Encrypt(string raw)
+    {
+        byte[] buffer = Encoding.UTF8.GetBytes(raw);
+
+        using MemoryStream memoryStream = new MemoryStream();
+        using DES des = DES.Create();
+        using CryptoStream cryptoStream = new CryptoStream(
+            memoryStream,
+            des.CreateEncryptor(
+                Encoding.UTF8.GetBytes(LicenseConstants.DesKey),
+                Encoding.UTF8.GetBytes(LicenseConstants.DesIv)),
+            CryptoStreamMode.Write);
+
+        cryptoStream.Write(buffer, 0, buffer.Length);
+        cryptoStream.FlushFinalBlock();
+
+        return Convert.ToBase64String(memoryStream.ToArray());
+    }
+
+    private static string GenerateCheckCode()
+    {
+        return GenerateHexPrefix() + Encrypt(GenerateHexPrefix());
+    }
+
+    private static string GenerateHexPrefix()
+    {
+        byte[] buffer = RandomNumberGenerator.GetBytes(LicenseConstants.RandomPrefixByteCount);
+        return Convert.ToHexString(buffer).ToLowerInvariant();
     }
 
     private static string RemovePrefix(string licenseKey)
