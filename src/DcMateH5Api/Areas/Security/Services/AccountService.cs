@@ -468,8 +468,7 @@ WHERE USER_SID = @UserId;";
         string verifyUrl = BuildVerifyUrl(token);
         return $"""
                 <p>帳號：{System.Net.WebUtility.HtmlEncode(account)}</p>
-                <p>請使用下方連結驗證密碼重設 token：</p>
-                <p><a href="{System.Net.WebUtility.HtmlEncode(verifyUrl)}">{System.Net.WebUtility.HtmlEncode(verifyUrl)}</a></p>
+                <p>請使用下方Token重設密碼：</p>
                 <p>Token：{System.Net.WebUtility.HtmlEncode(token)}</p>
                 <p>此 token 將於 {expiredTime:yyyy-MM-dd HH:mm:ss} 失效。</p>
                 """;
