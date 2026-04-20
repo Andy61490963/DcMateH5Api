@@ -13,6 +13,7 @@ using DcMateH5.Abstractions.Form.Form;
 using DcMateH5.Abstractions.Form.FormLogic;
 using DcMateH5.Abstractions.Form.Options;
 using DcMateH5.Abstractions.Form.Transaction;
+using DcMateH5.Abstractions.KaosuQc;
 using DcMateH5.Abstractions.LanguageKeywords;
 using DcMateH5.Abstractions.Log;
 using DcMateH5.Abstractions.Menu;
@@ -24,6 +25,7 @@ using DcMateH5.Infrastructure;
 using DcMateH5.Infrastructure.Form.Form;
 using DcMateH5.Infrastructure.Form.FormLogic;
 using DcMateH5.Infrastructure.Form.Transaction;
+using DcMateH5.Infrastructure.KaosuQc;
 using DcMateH5.Infrastructure.LanguageKeywords;
 using DcMateH5.Infrastructure.Log;
 using DcMateH5.Infrastructure.Menu;
@@ -117,6 +119,7 @@ builder.Services.AddScoped<IDbExecutor, DbExecutor>();
 builder.Services.AddScoped<SQLGenerateHelper>();
 
 // 核心功能註冊
+builder.Services.AddScoped<IKaosuQcService, KaosuQcService>();
 builder.Services.AddScoped<ILanguageKeywordService, LanguageKeywordService>();
 builder.Services.AddHostedService<FormOrphanCleanupHostedService>();
 builder.Services.AddScoped<IFormOrphanCleanupService, FormOrphanCleanupService>();
