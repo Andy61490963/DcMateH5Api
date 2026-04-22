@@ -35,7 +35,7 @@ public class WipBaseSettingService : IWipBaseSettingService
     {
         await _sqlHelper.TxAsync(
             async (conn, tx, innerCt) =>
-            {
+                {
                 await CreateCheckInInTxAsync(conn, tx, input, innerCt);
             },
             isolation: IsolationLevel.ReadCommitted,

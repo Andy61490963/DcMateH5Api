@@ -9,6 +9,8 @@ public class UmmUserDto
     [Key]
     public decimal USER_SID { get; set; }
     public string ACCOUNT_NO { get; set; } = null!;
+    public decimal? SHIFT_SID { get; set; }
+    public decimal? WORKGROUP_SID { get; set; }
 }
 
 [Table("EQM_MASTER")]
@@ -17,6 +19,7 @@ public class EqmMasterDto
     [Key]
     public decimal EQM_MASTER_SID { get; set; }
     public string EQM_MASTER_NO { get; set; } = null!;
+    public string? EQM_MASTER_NAME { get; set; }
 }
 
 [Table("WIP_WO")]
@@ -25,6 +28,10 @@ public class WipWoDto
     [Key]
     public decimal WO_SID { get; set; }
     public string WO { get; set; } = null!;
+    public string? PART_NO { get; set; }
+    public string? ROUTE_NO { get; set; }
+    public decimal? FACTORY_SID { get; set; }
+    public decimal? RELEASE_QTY { get; set; }
 }
 
 [Table("WIP_OPERATION")]
@@ -33,6 +40,8 @@ public class WipOperationDto
     [Key]
     public decimal WIP_OPERATION_SID { get; set; }
     public string WIP_OPERATION_NO { get; set; } = null!;
+    public string? WIP_OPERATION_NAME { get; set; }
+    public int? SEQ { get; set; }
 }
 
 [Table("WIP_DEPARTMENT")]

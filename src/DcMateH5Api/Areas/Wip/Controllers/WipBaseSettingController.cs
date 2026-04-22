@@ -10,7 +10,7 @@ namespace DcMateH5Api.Areas.Wip.Controllers
     [Route("api/[area]/[controller]")]
     [ApiExplorerSettings(GroupName = SwaggerGroups.Wip)]
     [ApiController]
-    public class WipBaseSettingController : ControllerBase
+    public class WipWoSettingController : ControllerBase
     {
         private static class Routes
         {
@@ -25,7 +25,7 @@ namespace DcMateH5Api.Areas.Wip.Controllers
 
         private readonly IWipBaseSettingService _wipBaseSettingService;
 
-        public WipBaseSettingController(IWipBaseSettingService wipBaseSettingService)
+        public WipWoSettingController(IWipBaseSettingService wipBaseSettingService)
         {
             _wipBaseSettingService = wipBaseSettingService;
         }

@@ -147,6 +147,7 @@ builder.Services.AddScoped<IMenuService, MenuService>();
 builder.Services.AddScoped<ISelectDtoService, SelectDtoService>();
 builder.Services.AddScoped<IBaseInfoCheckExistService, BaseInfoCheckExistService>();
 builder.Services.AddScoped<IWipBaseSettingService, WipBaseSettingService>();
+builder.Services.AddScoped<ILotBaseSettingService, LotBaseSettingService>();
 
 // 工作站與交易
 builder.Services.AddScoped<ITransactionService, TransactionService>();
