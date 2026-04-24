@@ -121,6 +121,7 @@ builder.Services.AddScoped<ILanguageKeywordService, LanguageKeywordService>();
 builder.Services.AddHostedService<FormOrphanCleanupHostedService>();
 builder.Services.AddScoped<IFormOrphanCleanupService, FormOrphanCleanupService>();
 builder.Services.AddScoped<IFormDesignerService, FormDesignerService>();
+builder.Services.AddScoped<IFormViewDesignerService, FormViewDesignerService>();
 builder.Services.AddScoped<IAccountService, AccountService>();
 builder.Services.AddScoped<IEmailSender, SmtpEmailSender>();
 builder.Services.AddScoped<IAuthenticationService, AuthenticationService>();
@@ -138,6 +139,7 @@ builder.Services.AddScoped<IFormMultipleMappingService, FormMultipleMappingServi
 builder.Services.AddScoped<IFormDesignerTableValueFunctionService, FormDesignerTableValueFunctionService>();
 builder.Services.AddScoped<IDropdownSqlSyncService, DropdownSqlSyncService>();
 builder.Services.AddScoped<IFormTableValueFunctionService, FormTableValueFunctionService>();
+builder.Services.AddScoped<IFormViewService, FormViewService>();
 builder.Services.AddScoped<ILogService, LogService>();
 
 // Menu Tree
@@ -186,7 +188,7 @@ var swaggerGroups = new[]
     SwaggerGroups.ApiStatus, SwaggerGroups.Enum, SwaggerGroups.Log,
     SwaggerGroups.Security, SwaggerGroups.Menu, SwaggerGroups.LanguageKeywords,
     SwaggerGroups.Form, SwaggerGroups.FormWithMasterDetail, SwaggerGroups.FormWithMultipleMapping,
-    SwaggerGroups.FormTableValueFunction, SwaggerGroups.Wip
+    SwaggerGroups.FormTableValueFunction, SwaggerGroups.FormView, SwaggerGroups.Wip
 };
 
 builder.Services.AddEndpointsApiExplorer();

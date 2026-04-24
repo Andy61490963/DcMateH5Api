@@ -42,5 +42,16 @@ public enum FormFunctionType
     /// TVF
     /// </summary>
     [Display(Name = "TVF 維護", Description = "TVF 維護")]
-    TableValueFunctionMaintenance = 3
+    TableValueFunctionMaintenance = 3,
+
+    /// <summary>
+    /// View 查詢維護
+    ///
+    /// 特性：
+    /// - 僅綁定 View
+    /// - 僅供查詢與顯示
+    /// - 不提供寫入
+    /// </summary>
+    [Display(Name = "View 查詢維護", Description = "View 查詢維護")]
+    ViewQueryMaintenance = 4
 }

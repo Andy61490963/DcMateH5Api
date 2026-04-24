@@ -1,7 +1,7 @@
 namespace DcMateClassLibrary.Helper;
 
 /// <summary>
-/// Swagger 文件的分類，避免重複字串與易於維護。
+/// Swagger 分組名稱集中管理，避免字串分散與拼寫錯誤。
 /// </summary>
 public static class SwaggerGroups
 {
@@ -12,15 +12,14 @@ public static class SwaggerGroups
     public const string Form = nameof(Form);
     public const string FormWithMasterDetail = nameof(FormWithMasterDetail);
     public const string FormWithMultipleMapping = nameof(FormWithMultipleMapping);
-
     public const string FormTableValueFunction = nameof(FormTableValueFunction);
+    public const string FormView = nameof(FormView);
 
     public const string Security = nameof(Security);
     public const string LanguageKeywords = nameof(LanguageKeywords);
     public const string Menu = nameof(Menu);
 
     public const string Wip = nameof(Wip);
-
     public const string Test = nameof(Test);
 
     public static readonly Dictionary<string, string> DisplayNames = new()
@@ -29,17 +28,17 @@ public static class SwaggerGroups
         { Enum, "列舉" },
         { Log, "系統紀錄" },
 
-        { Form, "主檔維護" },
-        { FormWithMasterDetail, "主明細維護" },
-        { FormWithMultipleMapping, "多對多維護" },
+        { Form, "表單主檔維護" },
+        { FormWithMasterDetail, "表單一對多維護" },
+        { FormWithMultipleMapping, "表單多對多維護" },
+        { FormTableValueFunction, "TVF 維護" },
+        { FormView, "View 查詢維護" },
 
-        { FormTableValueFunction, "TVP 維護" },
+        { Security, "安全性 API" },
+        { LanguageKeywords, "語系關鍵字" },
+        { Menu, "選單功能" },
 
-        { Security, "登入、測試 API 權限" },
-        { LanguageKeywords, "多語系" },
-        { Menu, "群組、功能、權限設定" },
-
-        { Wip, "報工" },
+        { Wip, "在製" },
         { Test, "測試" }
     };
 }
