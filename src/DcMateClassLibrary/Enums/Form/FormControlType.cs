@@ -53,5 +53,12 @@ public enum FormControlType
     /// 可設定靜態選項或透過 SQL 匯入選項。
     /// </summary>
     [Display(Name = "下拉選單", Description = "input type=select")]
-    Dropdown
+    Dropdown,
+
+    /// <summary>
+    /// 日期時間選擇欄位（對應 input type="datetime-local"）。
+    /// 適用於同時需要日期與時間的輸入。
+    /// </summary>
+    [Display(Name = "日期時間", Description = "input type=datetime-local")]
+    DateTime
 }
