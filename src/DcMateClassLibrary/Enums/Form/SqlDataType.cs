@@ -34,5 +34,8 @@ public enum SqlDataType
     Char,
     
     /// <summary>Guid</summary>
-    Uniqueidentifier
+    Uniqueidentifier,
+
+    /// <summary>日期（不含時間）</summary>
+    Date
 }

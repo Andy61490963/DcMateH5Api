@@ -42,6 +42,7 @@ public static class FormFieldHelper
     private static readonly Dictionary<SqlDataType, List<FormControlType>> ControlTypeWhitelistMap = new()
     {
         { SqlDataType.DateTime, new() { FormControlType.Date, FormControlType.Dropdown } },
+        { SqlDataType.Date,     new() { FormControlType.Date, FormControlType.Dropdown } },
         { SqlDataType.Bit,      new() { FormControlType.Checkbox, FormControlType.Dropdown } },
 
         // 數值型欄位，允許數字輸入、文字輸入、下拉選單（如代碼表）
@@ -79,6 +80,7 @@ public static class FormFieldHelper
     private static readonly Dictionary<SqlDataType, List<QueryComponentType>> QueryConditionTypeWhitelistMap = new()
     {
         { SqlDataType.DateTime, new() { QueryComponentType.Date, QueryComponentType.Dropdown } },
+        { SqlDataType.Date,     new() { QueryComponentType.Date, QueryComponentType.Dropdown } },
         { SqlDataType.Bit,      new() { QueryComponentType.Dropdown } },
 
         { SqlDataType.Int,      new() { QueryComponentType.Number, QueryComponentType.Text, QueryComponentType.Dropdown } },
@@ -163,6 +165,8 @@ public static class FormFieldHelper
             "varchar" => SqlDataType.VarChar,
             "char" => SqlDataType.Char,
             "datetime" => SqlDataType.DateTime,
+            "smalldatetime" => SqlDataType.DateTime,
+            "date" => SqlDataType.Date,
             "text" => SqlDataType.Text,
             "uniqueidentifier" => SqlDataType.Uniqueidentifier,
             _ => SqlDataType.Unknown
