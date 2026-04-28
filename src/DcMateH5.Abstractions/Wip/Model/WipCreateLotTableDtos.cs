@@ -217,6 +217,22 @@ public class WipLotHoldHistDto
     public string RELEASE_FLAG { get; set; } = null!;
 }
 
+[Table("WIP_LOT_REASON_HIST")]
+public class WipLotReasonHistDto
+{
+    [Key]
+    public decimal WIP_LOT_REASON_HIST_SID { get; set; }
+    public decimal WIP_LOT_HIST_SID { get; set; }
+    public string? REASON_TYPE { get; set; }
+    public decimal? REASON_SID { get; set; }
+    public string REASON_CODE { get; set; } = null!;
+    public string? REASON_NAME { get; set; }
+    public string? REASON_COMMENT { get; set; }
+    public decimal REASON_QTY { get; set; }
+    public decimal? REASON_QTY1 { get; set; }
+    public decimal? REASON_QTY2 { get; set; }
+}
+
 [Table("QMM_DC_ITEM")]
 public class QmmDcItemDto
 {

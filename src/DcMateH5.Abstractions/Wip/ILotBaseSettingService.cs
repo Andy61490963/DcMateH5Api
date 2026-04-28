@@ -14,4 +14,6 @@ public interface ILotBaseSettingService
     Task<Result<bool>> LotRecordDcAsync(WipLotRecordDcInputDto input, CancellationToken ct = default);
     Task<Result<bool>> LotHoldAsync(WipLotHoldInputDto input, CancellationToken ct = default);
     Task<Result<bool>> LotHoldReleaseAsync(WipLotHoldReleaseInputDto input, CancellationToken ct = default);
+    Task<Result<bool>> LotBonusAsync(WipLotBonusInputDto input, CancellationToken ct = default);
+    Task<Result<bool>> LotScrapAsync(WipLotScrapInputDto input, CancellationToken ct = default);
 }

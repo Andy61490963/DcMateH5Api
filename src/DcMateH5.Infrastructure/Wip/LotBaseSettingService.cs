@@ -73,6 +73,14 @@ public class LotBaseSettingService : ILotBaseSettingService
         public const string DefaultActionCode = "LOT_RECORD_DC";
     }
 
+    private static class LotQuantityAdjustCodes
+    {
+        public const string BonusAction = "LOT_BONUS";
+        public const string ScrapAction = "LOT_NG";
+        public const string BonusReasonType = "BONUS";
+        public const string ScrapReasonType = "NG";
+    }
+
     private readonly SQLGenerateHelper _sqlHelper;
     private readonly ISelectDtoService _selectDtoService;
 
@@ -203,6 +211,32 @@ public class LotBaseSettingService : ILotBaseSettingService
             async (conn, tx, innerCt) =>
             {
                 await LotHoldReleaseInTxAsync(conn, tx, input, innerCt);
+            },
+            isolation: IsolationLevel.ReadCommitted,
+            ct: ct);
+
+        return Result<bool>.Ok(true);
+    }
+
+    public async Task<Result<bool>> LotBonusAsync(WipLotBonusInputDto input, CancellationToken ct = default)
+    {
+        await _sqlHelper.TxAsync(
+            async (conn, tx, innerCt) =>
+            {
+                await LotBonusInTxAsync(conn, tx, input, innerCt);
+            },
+            isolation: IsolationLevel.ReadCommitted,
+            ct: ct);
+
+        return Result<bool>.Ok(true);
+    }
+
+    public async Task<Result<bool>> LotScrapAsync(WipLotScrapInputDto input, CancellationToken ct = default)
+    {
+        await _sqlHelper.TxAsync(
+            async (conn, tx, innerCt) =>
+            {
+                await LotScrapInTxAsync(conn, tx, input, innerCt);
             },
             isolation: IsolationLevel.ReadCommitted,
             ct: ct);
@@ -1394,6 +1428,231 @@ public class LotBaseSettingService : ILotBaseSettingService
         await UpdateLotStatusInTxAsync(conn, tx, lot, restoredStatus, input.ACCOUNT_NO, createTime, reportTime, ct);
     }
 
+    /// <summary>
+    /// 追加 LOT 數量。
+    /// 舊案以 LOT_BONUS 表示數量追加；新版保留同一個交易語意：
+    /// 寫入 WIP_LOT_HIST、WIP_LOT_REASON_HIST，並在同一個交易中增加 WIP_LOT.LOT_QTY。
+    /// </summary>
+    private async Task LotBonusInTxAsync(
+        SqlConnection conn,
+        SqlTransaction tx,
+        WipLotBonusInputDto input,
+        CancellationToken ct)
+    {
+        ct.ThrowIfCancellationRequested();
+        ValidateLotBonusInput(input);
+
+        var lot = await GetLotByCodeInTxAsync(conn, tx, input.LOT, ct);
+        var user = await GetUserByAccountAsync(input.ACCOUNT_NO, ct);
+        var operation = await GetOperationBySidAsync(lot.OPERATION_SID, ct);
+        var currentStatus = new WipLotStatusDto { LOT_STATUS_SID = lot.LOT_STATUS_SID, LOT_STATUS_CODE = lot.LOT_STATUS_CODE };
+        var reason = await GetReasonBySidAsync(input.REASON_SID, ct);
+        var reportTime = input.REPORT_TIME ?? await GetDbNowInTxAsync(conn, tx, ct);
+        var createTime = await GetDbNowInTxAsync(conn, tx, ct);
+        var operationLinkSid = ParseOperationLinkSid(lot.CUR_OPERATION_LINK_SID, lot.LOT);
+        var histSid = RandomHelper.GenerateRandomDecimal();
+
+        var hist = BuildLotHistoryRecord(
+            histSid: histSid,
+            seq: await GetNextLotHistorySequenceInTxAsync(conn, tx, lot.LOT_SID, ct),
+            dataLinkSid: input.DATA_LINK_SID,
+            lot: lot,
+            currentStatus: currentStatus,
+            previousStatus: currentStatus,
+            operationLinkSid: operationLinkSid,
+            operationSid: lot.OPERATION_SID,
+            operationCode: operation.WIP_OPERATION_NO,
+            operationName: operation.WIP_OPERATION_NAME ?? operation.WIP_OPERATION_NO,
+            operationSeq: lot.OPERATION_SEQ,
+            operationFinish: Flags.OperationFinishNo,
+            totalOkQty: input.BONUS_QTY,
+            totalNgQty: 0,
+            totalDefectQty: 0,
+            totalUserCount: 1,
+            routeSid: lot.ROUTE_SID,
+            factorySid: lot.FACTORY_SID,
+            actionCode: LotQuantityAdjustCodes.BonusAction,
+            controlMode: string.Empty,
+            inputFormName: input.INPUT_FORM_NAME,
+            createUser: input.ACCOUNT_NO,
+            createTime: createTime,
+            reportTime: reportTime,
+            preReportTime: lot.LAST_TRANS_TIME ?? lot.LAST_STATUS_CHANGE_TIME,
+            preStatusChangeTime: lot.LAST_STATUS_CHANGE_TIME,
+            lotQty1: lot.LOT_QTY1,
+            lotQty2: lot.LOT_QTY2,
+            location: lot.LOCATION,
+            operFirstCheckInTime: null,
+            shiftSid: user.SHIFT_SID ?? 0,
+            workgroupSid: user.WORKGROUP_SID ?? 0,
+            lotSubStatusCode: lot.LOT_SUB_STATUS_CODE,
+            comment: input.COMMENT ?? string.Empty);
+
+        var reasonHist = BuildLotReasonHistoryRecord(
+            histSid,
+            LotQuantityAdjustCodes.BonusReasonType,
+            reason,
+            input.BONUS_QTY,
+            input.COMMENT);
+
+        var originalEnableAuditColumns = _sqlHelper.EnableAuditColumns;
+        _sqlHelper.EnableAuditColumns = false;
+        try
+        {
+            await _sqlHelper.InsertInTxAsync(conn, tx, hist, ct: ct);
+            await _sqlHelper.InsertInTxAsync(conn, tx, reasonHist, ct: ct);
+        }
+        finally
+        {
+            _sqlHelper.EnableAuditColumns = originalEnableAuditColumns;
+        }
+
+        await UpdateLotBonusQuantityInTxAsync(conn, tx, lot, input.BONUS_QTY, input.ACCOUNT_NO, createTime, ct);
+    }
+
+    /// <summary>
+    /// 報廢 LOT 數量。
+    /// 舊案以 LOT_NG 表示 Scrap/NG；新版不改變 LOT 狀態，只在同一個交易中扣減 LOT_QTY、
+    /// 累加 NG_QTY，並寫入 WIP_LOT_HIST 與 WIP_LOT_REASON_HIST 保留原因與數量。
+    /// </summary>
+    private async Task LotScrapInTxAsync(
+        SqlConnection conn,
+        SqlTransaction tx,
+        WipLotScrapInputDto input,
+        CancellationToken ct)
+    {
+        ct.ThrowIfCancellationRequested();
+        ValidateLotScrapInput(input);
+
+        var lot = await GetLotByCodeInTxAsync(conn, tx, input.LOT, ct);
+        if (lot.LOT_QTY - input.SCRAP_QTY < 0)
+            throw new HttpStatusCodeException(System.Net.HttpStatusCode.BadRequest, $"SCRAP_QTY cannot be greater than current LOT_QTY. LOT={input.LOT}, LOT_QTY={lot.LOT_QTY}, SCRAP_QTY={input.SCRAP_QTY}");
+
+        var user = await GetUserByAccountAsync(input.ACCOUNT_NO, ct);
+        var operation = await GetOperationBySidAsync(lot.OPERATION_SID, ct);
+        var currentStatus = new WipLotStatusDto { LOT_STATUS_SID = lot.LOT_STATUS_SID, LOT_STATUS_CODE = lot.LOT_STATUS_CODE };
+        var reason = await GetReasonBySidAsync(input.REASON_SID, ct);
+        var reportTime = input.REPORT_TIME ?? await GetDbNowInTxAsync(conn, tx, ct);
+        var createTime = await GetDbNowInTxAsync(conn, tx, ct);
+        var operationLinkSid = ParseOperationLinkSid(lot.CUR_OPERATION_LINK_SID, lot.LOT);
+        var histSid = RandomHelper.GenerateRandomDecimal();
+
+        var hist = BuildLotHistoryRecord(
+            histSid: histSid,
+            seq: await GetNextLotHistorySequenceInTxAsync(conn, tx, lot.LOT_SID, ct),
+            dataLinkSid: input.DATA_LINK_SID,
+            lot: lot,
+            currentStatus: currentStatus,
+            previousStatus: currentStatus,
+            operationLinkSid: operationLinkSid,
+            operationSid: lot.OPERATION_SID,
+            operationCode: operation.WIP_OPERATION_NO,
+            operationName: operation.WIP_OPERATION_NAME ?? operation.WIP_OPERATION_NO,
+            operationSeq: lot.OPERATION_SEQ,
+            operationFinish: Flags.OperationFinishNo,
+            totalOkQty: 0,
+            totalNgQty: input.SCRAP_QTY,
+            totalDefectQty: 0,
+            totalUserCount: 1,
+            routeSid: lot.ROUTE_SID,
+            factorySid: lot.FACTORY_SID,
+            actionCode: LotQuantityAdjustCodes.ScrapAction,
+            controlMode: string.Empty,
+            inputFormName: input.INPUT_FORM_NAME,
+            createUser: input.ACCOUNT_NO,
+            createTime: createTime,
+            reportTime: reportTime,
+            preReportTime: lot.LAST_TRANS_TIME ?? lot.LAST_STATUS_CHANGE_TIME,
+            preStatusChangeTime: lot.LAST_STATUS_CHANGE_TIME,
+            lotQty1: lot.LOT_QTY1,
+            lotQty2: lot.LOT_QTY2,
+            location: lot.LOCATION,
+            operFirstCheckInTime: null,
+            shiftSid: user.SHIFT_SID ?? 0,
+            workgroupSid: user.WORKGROUP_SID ?? 0,
+            lotSubStatusCode: lot.LOT_SUB_STATUS_CODE,
+            comment: input.COMMENT ?? string.Empty);
+
+        var reasonHist = BuildLotReasonHistoryRecord(
+            histSid,
+            LotQuantityAdjustCodes.ScrapReasonType,
+            reason,
+            input.SCRAP_QTY,
+            input.COMMENT);
+
+        var originalEnableAuditColumns = _sqlHelper.EnableAuditColumns;
+        _sqlHelper.EnableAuditColumns = false;
+        try
+        {
+            await _sqlHelper.InsertInTxAsync(conn, tx, hist, ct: ct);
+            await _sqlHelper.InsertInTxAsync(conn, tx, reasonHist, ct: ct);
+        }
+        finally
+        {
+            _sqlHelper.EnableAuditColumns = originalEnableAuditColumns;
+        }
+
+        await UpdateLotScrapQuantityInTxAsync(conn, tx, lot, input.SCRAP_QTY, input.ACCOUNT_NO, createTime, ct);
+    }
+
+    private static void ValidateLotBonusInput(WipLotBonusInputDto input)
+    {
+        if (string.IsNullOrWhiteSpace(input.LOT))
+            throw new HttpStatusCodeException(System.Net.HttpStatusCode.BadRequest, "LOT is required.");
+
+        if (string.IsNullOrWhiteSpace(input.ACCOUNT_NO))
+            throw new HttpStatusCodeException(System.Net.HttpStatusCode.BadRequest, "ACCOUNT_NO is required.");
+
+        if (input.BONUS_QTY <= 0)
+            throw new HttpStatusCodeException(System.Net.HttpStatusCode.BadRequest, "BONUS_QTY must be greater than 0.");
+
+        if (input.REASON_SID <= 0)
+            throw new HttpStatusCodeException(System.Net.HttpStatusCode.BadRequest, "REASON_SID must be greater than 0.");
+
+        if (input.DATA_LINK_SID <= 0)
+            throw new HttpStatusCodeException(System.Net.HttpStatusCode.BadRequest, "DATA_LINK_SID must be greater than 0.");
+    }
+
+    private static void ValidateLotScrapInput(WipLotScrapInputDto input)
+    {
+        if (string.IsNullOrWhiteSpace(input.LOT))
+            throw new HttpStatusCodeException(System.Net.HttpStatusCode.BadRequest, "LOT is required.");
+
+        if (string.IsNullOrWhiteSpace(input.ACCOUNT_NO))
+            throw new HttpStatusCodeException(System.Net.HttpStatusCode.BadRequest, "ACCOUNT_NO is required.");
+
+        if (input.SCRAP_QTY <= 0)
+            throw new HttpStatusCodeException(System.Net.HttpStatusCode.BadRequest, "SCRAP_QTY must be greater than 0.");
+
+        if (input.REASON_SID <= 0)
+            throw new HttpStatusCodeException(System.Net.HttpStatusCode.BadRequest, "REASON_SID must be greater than 0.");
+
+        if (input.DATA_LINK_SID <= 0)
+            throw new HttpStatusCodeException(System.Net.HttpStatusCode.BadRequest, "DATA_LINK_SID must be greater than 0.");
+    }
+
+    private static WipLotReasonHistDto BuildLotReasonHistoryRecord(
+        decimal wipLotHistSid,
+        string reasonType,
+        AdmReasonDto reason,
+        decimal reasonQty,
+        string? comment)
+    {
+        return new WipLotReasonHistDto
+        {
+            WIP_LOT_REASON_HIST_SID = RandomHelper.GenerateRandomDecimal(),
+            WIP_LOT_HIST_SID = wipLotHistSid,
+            REASON_TYPE = reasonType,
+            REASON_SID = reason.ADM_REASON_SID,
+            REASON_CODE = reason.REASON_NO,
+            REASON_NAME = reason.REASON_NAME,
+            REASON_COMMENT = comment,
+            REASON_QTY = reasonQty,
+            REASON_QTY1 = null,
+            REASON_QTY2 = null
+        };
+    }
+
     private WipLotHistDto BuildCreateLotHistory(
         decimal histSid,
         int seq,
@@ -1834,6 +2093,70 @@ public class LotBaseSettingService : ILotBaseSettingService
         var affectedRows = await cmd.ExecuteNonQueryAsync(ct);
         if (affectedRows != 1)
             throw new HttpStatusCodeException(System.Net.HttpStatusCode.Conflict, $"LOT touch update failed because the data was modified concurrently: {lot.LOT}");
+    }
+
+    private static async Task UpdateLotBonusQuantityInTxAsync(
+        SqlConnection conn,
+        SqlTransaction tx,
+        WipLotDto lot,
+        decimal bonusQty,
+        string editUser,
+        DateTime editTime,
+        CancellationToken ct)
+    {
+        using var cmd = conn.CreateCommand();
+        cmd.Transaction = tx;
+        cmd.CommandText = """
+                          UPDATE [WIP_LOT]
+                          SET [LOT_QTY] = [LOT_QTY] + @BonusQty,
+                              [LAST_TRANS_TIME] = @EditTime,
+                              [EDIT_USER] = @EditUser,
+                              [EDIT_TIME] = @EditTime
+                          WHERE [LOT_SID] = @LotSid
+                            AND [EDIT_TIME] = @OriginalEditTime;
+                          """;
+        cmd.Parameters.Add(new SqlParameter("@BonusQty", SqlDbType.Decimal) { Value = bonusQty });
+        cmd.Parameters.Add(new SqlParameter("@EditUser", SqlDbType.NVarChar, 50) { Value = editUser });
+        cmd.Parameters.Add(new SqlParameter("@EditTime", SqlDbType.DateTime) { Value = editTime });
+        cmd.Parameters.Add(new SqlParameter("@LotSid", SqlDbType.Decimal) { Value = lot.LOT_SID });
+        cmd.Parameters.Add(new SqlParameter("@OriginalEditTime", SqlDbType.DateTime) { Value = lot.EDIT_TIME ?? lot.CREATE_TIME ?? editTime });
+
+        var affectedRows = await cmd.ExecuteNonQueryAsync(ct);
+        if (affectedRows != 1)
+            throw new HttpStatusCodeException(System.Net.HttpStatusCode.Conflict, $"LOT bonus update failed because the data was modified concurrently: {lot.LOT}");
+    }
+
+    private static async Task UpdateLotScrapQuantityInTxAsync(
+        SqlConnection conn,
+        SqlTransaction tx,
+        WipLotDto lot,
+        decimal scrapQty,
+        string editUser,
+        DateTime editTime,
+        CancellationToken ct)
+    {
+        using var cmd = conn.CreateCommand();
+        cmd.Transaction = tx;
+        cmd.CommandText = """
+                          UPDATE [WIP_LOT]
+                          SET [LOT_QTY] = [LOT_QTY] - @ScrapQty,
+                              [NG_QTY] = [NG_QTY] + @ScrapQty,
+                              [LAST_TRANS_TIME] = @EditTime,
+                              [EDIT_USER] = @EditUser,
+                              [EDIT_TIME] = @EditTime
+                          WHERE [LOT_SID] = @LotSid
+                            AND [EDIT_TIME] = @OriginalEditTime
+                            AND [LOT_QTY] >= @ScrapQty;
+                          """;
+        cmd.Parameters.Add(new SqlParameter("@ScrapQty", SqlDbType.Decimal) { Value = scrapQty });
+        cmd.Parameters.Add(new SqlParameter("@EditUser", SqlDbType.NVarChar, 50) { Value = editUser });
+        cmd.Parameters.Add(new SqlParameter("@EditTime", SqlDbType.DateTime) { Value = editTime });
+        cmd.Parameters.Add(new SqlParameter("@LotSid", SqlDbType.Decimal) { Value = lot.LOT_SID });
+        cmd.Parameters.Add(new SqlParameter("@OriginalEditTime", SqlDbType.DateTime) { Value = lot.EDIT_TIME ?? lot.CREATE_TIME ?? editTime });
+
+        var affectedRows = await cmd.ExecuteNonQueryAsync(ct);
+        if (affectedRows != 1)
+            throw new HttpStatusCodeException(System.Net.HttpStatusCode.Conflict, $"LOT scrap update failed because the data was modified concurrently or quantity is insufficient: {lot.LOT}");
     }
 
     private async Task UpsertLotDcItemsInTxAsync(

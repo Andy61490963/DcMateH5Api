@@ -25,6 +25,8 @@ public class WipLotSettingController : ControllerBase
         public const string LotRecordDC = "LotRecordDC";
         public const string LotHold = "LotHold";
         public const string LotHoldRelease = "LotHoldRelease";
+        public const string LotBonus = "LotBonus";
+        public const string LotScrap = "LotScrap";
     }
 
     private readonly ILotBaseSettingService _lotBaseSettingService;
@@ -239,6 +241,60 @@ public class WipLotSettingController : ControllerBase
         try
         {
             return Ok(await _lotBaseSettingService.LotHoldReleaseAsync(input, ct));
+        }
+        catch (HttpStatusCodeException ex)
+        {
+            return BuildErrorResult(ex.StatusCode, ex.Message);
+        }
+        catch (Exception ex)
+        {
+            return BuildErrorResult(HttpStatusCode.InternalServerError, ex.Message);
+        }
+    }
+
+    /// <summary>
+    /// 追加 LOT 數量，會寫入 LOT_BONUS 交易紀錄與原因紀錄。
+    /// </summary>
+    /// <param name="input">追加數量與原因資料。</param>
+    /// <param name="ct"></param>
+    /// <returns></returns>
+    [HttpPost(Routes.LotBonus)]
+    [ProducesResponseType(typeof(Result<bool>), StatusCodes.Status200OK)]
+    [ProducesResponseType(typeof(Result<bool>), StatusCodes.Status400BadRequest)]
+    [ProducesResponseType(typeof(Result<bool>), StatusCodes.Status409Conflict)]
+    [ProducesResponseType(typeof(Result<bool>), StatusCodes.Status500InternalServerError)]
+    public async Task<IActionResult> LotBonus([FromBody] WipLotBonusInputDto input, CancellationToken ct)
+    {
+        try
+        {
+            return Ok(await _lotBaseSettingService.LotBonusAsync(input, ct));
+        }
+        catch (HttpStatusCodeException ex)
+        {
+            return BuildErrorResult(ex.StatusCode, ex.Message);
+        }
+        catch (Exception ex)
+        {
+            return BuildErrorResult(HttpStatusCode.InternalServerError, ex.Message);
+        }
+    }
+
+    /// <summary>
+    /// 報廢 LOT 數量，會寫入 LOT_NG 交易紀錄與原因紀錄。
+    /// </summary>
+    /// <param name="input">報廢數量與原因資料。</param>
+    /// <param name="ct"></param>
+    /// <returns></returns>
+    [HttpPost(Routes.LotScrap)]
+    [ProducesResponseType(typeof(Result<bool>), StatusCodes.Status200OK)]
+    [ProducesResponseType(typeof(Result<bool>), StatusCodes.Status400BadRequest)]
+    [ProducesResponseType(typeof(Result<bool>), StatusCodes.Status409Conflict)]
+    [ProducesResponseType(typeof(Result<bool>), StatusCodes.Status500InternalServerError)]
+    public async Task<IActionResult> LotScrap([FromBody] WipLotScrapInputDto input, CancellationToken ct)
+    {
+        try
+        {
+            return Ok(await _lotBaseSettingService.LotScrapAsync(input, ct));
         }
         catch (HttpStatusCodeException ex)
         {

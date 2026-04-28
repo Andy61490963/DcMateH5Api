@@ -117,6 +117,32 @@ public class LotBaseSettingControllerTests
         Assert.True(result.Data);
     }
 
+    [Fact]
+    public async Task LotBonus_ShouldReturnOkResult()
+    {
+        var controller = new WipLotSettingController(new FakeLotBaseSettingService());
+
+        var actionResult = await controller.LotBonus(new WipLotBonusInputDto(), CancellationToken.None);
+
+        var okResult = Assert.IsType<OkObjectResult>(actionResult);
+        var result = Assert.IsType<Result<bool>>(okResult.Value);
+        Assert.True(result.IsSuccess);
+        Assert.True(result.Data);
+    }
+
+    [Fact]
+    public async Task LotScrap_ShouldReturnOkResult()
+    {
+        var controller = new WipLotSettingController(new FakeLotBaseSettingService());
+
+        var actionResult = await controller.LotScrap(new WipLotScrapInputDto(), CancellationToken.None);
+
+        var okResult = Assert.IsType<OkObjectResult>(actionResult);
+        var result = Assert.IsType<Result<bool>>(okResult.Value);
+        Assert.True(result.IsSuccess);
+        Assert.True(result.Data);
+    }
+
     private sealed class FakeLotBaseSettingService : ILotBaseSettingService
     {
         public Task<Result<bool>> CreateLotAsync(WipCreateLotInputDto input, CancellationToken ct = default)
@@ -144,6 +170,12 @@ public class LotBaseSettingControllerTests
             => Task.FromResult(Result<bool>.Ok(true));
 
         public Task<Result<bool>> LotHoldReleaseAsync(WipLotHoldReleaseInputDto input, CancellationToken ct = default)
+            => Task.FromResult(Result<bool>.Ok(true));
+
+        public Task<Result<bool>> LotBonusAsync(WipLotBonusInputDto input, CancellationToken ct = default)
+            => Task.FromResult(Result<bool>.Ok(true));
+
+        public Task<Result<bool>> LotScrapAsync(WipLotScrapInputDto input, CancellationToken ct = default)
             => Task.FromResult(Result<bool>.Ok(true));
     }
 
@@ -174,6 +206,12 @@ public class LotBaseSettingControllerTests
             => throw new HttpStatusCodeException(HttpStatusCode.BadRequest, "bad request");
 
         public Task<Result<bool>> LotHoldReleaseAsync(WipLotHoldReleaseInputDto input, CancellationToken ct = default)
+            => throw new HttpStatusCodeException(HttpStatusCode.BadRequest, "bad request");
+
+        public Task<Result<bool>> LotBonusAsync(WipLotBonusInputDto input, CancellationToken ct = default)
+            => throw new HttpStatusCodeException(HttpStatusCode.BadRequest, "bad request");
+
+        public Task<Result<bool>> LotScrapAsync(WipLotScrapInputDto input, CancellationToken ct = default)
             => throw new HttpStatusCodeException(HttpStatusCode.BadRequest, "bad request");
     }
 }
