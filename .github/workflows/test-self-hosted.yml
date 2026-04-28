@@ -32,7 +32,7 @@ jobs:
           SHA: ${{ github.sha }}
           ACTOR: ${{ github.actor }}
           COMMIT_MESSAGE: ${{ github.event.head_commit.message || 'Manual workflow dispatch' }}
-          COMMIT_URL: ${{ github.event.head_commit.url || github.server_url }}/${{ github.repository }}/commit/${{ github.sha }}
+          COMMIT_URL: ${{ github.server_url }}/${{ github.repository }}/commit/${{ github.sha }}
         run: |
           $ErrorActionPreference = 'Stop'
 
@@ -48,7 +48,7 @@ jobs:
           }
 
           $payload = @{
-            content = "Commit: $env:REPOSITORY@$env:BRANCH ($shortSha)`nAuthor: $env:ACTOR`n$message`n$env:COMMIT_URL"
+            content = "[Commit] $env:REPOSITORY@$env:BRANCH ($shortSha)`nAuthor: $env:ACTOR`nMessage: $message`nCommit: $env:COMMIT_URL"
           } | ConvertTo-Json -Depth 4
 
           Invoke-RestMethod `
@@ -84,7 +84,6 @@ jobs:
           REPOSITORY: ${{ github.repository }}
           BRANCH: ${{ github.ref_name }}
           SHA: ${{ github.sha }}
-          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
         run: |
           $ErrorActionPreference = 'Stop'
 
@@ -96,7 +95,7 @@ jobs:
           $shortSha = if ($env:SHA.Length -gt 7) { $env:SHA.Substring(0, 7) } else { $env:SHA }
 
           $payload = @{
-            content = "部署中: $env:REPOSITORY@$env:BRANCH ($shortSha)`n$env:RUN_URL"
+            content = "[Deploy Started] $env:REPOSITORY@$env:BRANCH ($shortSha)"
           } | ConvertTo-Json -Depth 4
 
           Invoke-RestMethod `
@@ -268,7 +267,6 @@ jobs:
           REPOSITORY: ${{ github.repository }}
           BRANCH: ${{ github.ref_name }}
           SHA: ${{ github.sha }}
-          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
         run: |
           $ErrorActionPreference = 'Stop'
 
@@ -279,14 +277,14 @@ jobs:
 
           $shortSha = if ($env:SHA.Length -gt 7) { $env:SHA.Substring(0, 7) } else { $env:SHA }
           $statusText = switch ($env:JOB_STATUS) {
-            "success" { "部署成功" }
-            "failure" { "部署錯誤" }
-            "cancelled" { "部署取消" }
-            default { "部署結果: $env:JOB_STATUS" }
+            "success" { "Deploy Succeeded" }
+            "failure" { "Deploy Failed" }
+            "cancelled" { "Deploy Cancelled" }
+            default { "Deploy Result: $env:JOB_STATUS" }
           }
 
           $payload = @{
-            content = "${statusText}: $env:REPOSITORY@$env:BRANCH ($shortSha)`n$env:RUN_URL"
+            content = "[$statusText] $env:REPOSITORY@$env:BRANCH ($shortSha)"
           } | ConvertTo-Json -Depth 4
 
           Invoke-RestMethod `
