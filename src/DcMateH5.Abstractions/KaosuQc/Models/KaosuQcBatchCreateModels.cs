@@ -58,6 +58,9 @@ public class KaosuQcHeaderCreateRequest
     /// <summary>檢驗員。</summary>
     public string? Inspector { get; set; }
 
+    /// <summary>核准者。</summary>
+    public string? ApproveUser { get; set; }
+
     public string? Comment { get; set; }
 
     /// <summary>建立者（可不帶；將由 CurrentUserAccessor 補值）。</summary>
