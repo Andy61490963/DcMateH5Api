@@ -23,6 +23,40 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
+      - name: Notify Discord commit
+        shell: powershell
+        env:
+          DISCORD_COMMIT_WEBHOOK_URL: ${{ secrets.DISCORD_COMMIT_WEBHOOK_URL }}
+          REPOSITORY: ${{ github.repository }}
+          BRANCH: ${{ github.ref_name }}
+          SHA: ${{ github.sha }}
+          ACTOR: ${{ github.actor }}
+          COMMIT_MESSAGE: ${{ github.event.head_commit.message || 'Manual workflow dispatch' }}
+          COMMIT_URL: ${{ github.event.head_commit.url || github.server_url }}/${{ github.repository }}/commit/${{ github.sha }}
+        run: |
+          $ErrorActionPreference = 'Stop'
+
+          if ([string]::IsNullOrWhiteSpace($env:DISCORD_COMMIT_WEBHOOK_URL)) {
+            Write-Host "DISCORD_COMMIT_WEBHOOK_URL is not configured. Skip commit notification."
+            return
+          }
+
+          $shortSha = if ($env:SHA.Length -gt 7) { $env:SHA.Substring(0, 7) } else { $env:SHA }
+          $message = $env:COMMIT_MESSAGE.Trim()
+          if ($message.Length -gt 1500) {
+            $message = $message.Substring(0, 1500) + "..."
+          }
+
+          $payload = @{
+            content = "Commit: $env:REPOSITORY@$env:BRANCH ($shortSha)`nAuthor: $env:ACTOR`n$message`n$env:COMMIT_URL"
+          } | ConvertTo-Json -Depth 4
+
+          Invoke-RestMethod `
+            -Uri $env:DISCORD_COMMIT_WEBHOOK_URL `
+            -Method Post `
+            -ContentType "application/json" `
+            -Body $payload | Out-Null
+
       - name: Setup .NET SDK
         uses: actions/setup-dotnet@v4
         with:
@@ -42,6 +76,34 @@ jobs:
           Write-Host "IIS_PATH     : $env:IIS_PHYSICAL_PATH"
           Write-Host "IIS_APP_POOL : $env:IIS_APP_POOL"
           Write-Host "IIS_DLL_NAME : $env:IIS_DLL_NAME"
+
+      - name: Notify Discord deploy started
+        shell: powershell
+        env:
+          DISCORD_WEBHOOK_URL: ${{ secrets.DISCORD_WEBHOOK_URL }}
+          REPOSITORY: ${{ github.repository }}
+          BRANCH: ${{ github.ref_name }}
+          SHA: ${{ github.sha }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          $ErrorActionPreference = 'Stop'
+
+          if ([string]::IsNullOrWhiteSpace($env:DISCORD_WEBHOOK_URL)) {
+            Write-Host "DISCORD_WEBHOOK_URL is not configured. Skip Discord notification."
+            return
+          }
+
+          $shortSha = if ($env:SHA.Length -gt 7) { $env:SHA.Substring(0, 7) } else { $env:SHA }
+
+          $payload = @{
+            content = "部署中: $env:REPOSITORY@$env:BRANCH ($shortSha)`n$env:RUN_URL"
+          } | ConvertTo-Json -Depth 4
+
+          Invoke-RestMethod `
+            -Uri $env:DISCORD_WEBHOOK_URL `
+            -Method Post `
+            -ContentType "application/json" `
+            -Body $payload | Out-Null
 
       - name: Publish (Release)
         shell: powershell
@@ -196,3 +258,39 @@ jobs:
               Write-Host "Cleanup: removed app_offline."
             }
           }
+
+      - name: Notify Discord deploy result
+        if: always()
+        shell: powershell
+        env:
+          DISCORD_WEBHOOK_URL: ${{ secrets.DISCORD_WEBHOOK_URL }}
+          JOB_STATUS: ${{ job.status }}
+          REPOSITORY: ${{ github.repository }}
+          BRANCH: ${{ github.ref_name }}
+          SHA: ${{ github.sha }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          $ErrorActionPreference = 'Stop'
+
+          if ([string]::IsNullOrWhiteSpace($env:DISCORD_WEBHOOK_URL)) {
+            Write-Host "DISCORD_WEBHOOK_URL is not configured. Skip Discord notification."
+            return
+          }
+
+          $shortSha = if ($env:SHA.Length -gt 7) { $env:SHA.Substring(0, 7) } else { $env:SHA }
+          $statusText = switch ($env:JOB_STATUS) {
+            "success" { "部署成功" }
+            "failure" { "部署錯誤" }
+            "cancelled" { "部署取消" }
+            default { "部署結果: $env:JOB_STATUS" }
+          }
+
+          $payload = @{
+            content = "${statusText}: $env:REPOSITORY@$env:BRANCH ($shortSha)`n$env:RUN_URL"
+          } | ConvertTo-Json -Depth 4
+
+          Invoke-RestMethod `
+            -Uri $env:DISCORD_WEBHOOK_URL `
+            -Method Post `
+            -ContentType "application/json" `
+            -Body $payload | Out-Null
