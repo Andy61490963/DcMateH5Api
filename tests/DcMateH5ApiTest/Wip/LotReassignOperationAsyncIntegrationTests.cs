@@ -141,8 +141,9 @@ public class LotReassignOperationAsyncIntegrationTests
             FROM RouteChoice rc
             CROSS JOIN (
                 SELECT TOP (1) ACCOUNT_NO
-                FROM UMM_USER
+                FROM ADM_USER
                 WHERE ACCOUNT_NO IS NOT NULL
+                  AND [TYPE] = 'UMM_USER'
                 ORDER BY USER_SID DESC
             ) u
             """);

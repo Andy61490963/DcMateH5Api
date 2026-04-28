@@ -43,6 +43,7 @@ INSERT INTO ADM_USER
     CREATE_TIME,
     EDIT_USER,
     EDIT_TIME,
+    [TYPE],
     LV
 )
 VALUES
@@ -63,6 +64,7 @@ VALUES
     SYSDATETIME(),
     @Actor,
     SYSDATETIME(),
+    @Type,
     @Lv
 );";
 
@@ -177,6 +179,7 @@ WHERE USER_SID = @UserId;";
         string account = request.Account.Trim();
         string password = request.Password.Trim();
         string? email = NormalizeOptional(request.Email);
+        string? type = NormalizeOptional(request.Type);
         int lv = request.Lv;
 
         if (lv <= 0)
@@ -213,6 +216,7 @@ WHERE USER_SID = @UserId;";
                 EnableFlag = DefaultValues.EnableFlag,
                 Email = email,
                 Actor = account,
+                Type = type,
                 Lv = lv
             },
             ct: ct);
@@ -224,6 +228,7 @@ WHERE USER_SID = @UserId;";
                 Account = account,
                 Name = account,
                 Email = email,
+                Type = type,
                 Lv = lv
             });
     }

@@ -3,7 +3,7 @@ namespace DcMateH5Api.Areas.Wip.Model;
 public class WipCheckInInputDto
 {
     /// <summary>
-    /// UMM_USER 的 ACCOUNT_NO (複數個，可為 NULL)
+    /// ADM_USER TYPE=UMM_USER 的 ACCOUNT_NO (複數個，可為 NULL)
     /// </summary>
     public List<string>? Account { get; set; }
 

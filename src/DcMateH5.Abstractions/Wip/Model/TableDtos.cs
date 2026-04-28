@@ -3,13 +3,20 @@ using System.ComponentModel.DataAnnotations.Schema;
 
 namespace DcMateH5Api.Areas.Wip.Model;
 
-[Table("UMM_USER")]
-public class UmmUserDto
+[Table("ADM_USER")]
+public class AdmUserDto
 {
+    public const string WipUserType = "UMM_USER";
+
     [Key]
-    public decimal USER_SID { get; set; }
+    public Guid USER_SID { get; set; }
     public string ACCOUNT_NO { get; set; } = null!;
+    public string? TYPE { get; set; }
+
+    [NotMapped]
     public decimal? SHIFT_SID { get; set; }
+
+    [NotMapped]
     public decimal? WORKGROUP_SID { get; set; }
 }
 

@@ -26,6 +26,11 @@ public sealed record RegisterRequestViewModel
     public string? Email { get; init; }
 
     /// <summary>
+    /// User type.
+    /// </summary>
+    public string? Type { get; init; }
+
+    /// <summary>
     /// User level.
     /// </summary>
     [Range(1, int.MaxValue)]

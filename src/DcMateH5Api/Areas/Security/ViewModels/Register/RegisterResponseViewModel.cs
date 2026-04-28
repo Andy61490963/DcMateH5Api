@@ -26,6 +26,11 @@ public sealed record RegisterResponseViewModel
     public string? Email { get; init; }
 
     /// <summary>
+    /// User type.
+    /// </summary>
+    public string? Type { get; init; }
+
+    /// <summary>
     /// User level.
     /// </summary>
     public int Lv { get; init; }

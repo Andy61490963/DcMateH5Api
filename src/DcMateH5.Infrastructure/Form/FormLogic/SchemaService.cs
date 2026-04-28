@@ -129,7 +129,7 @@ WHERE TC.CONSTRAINT_TYPE = 'PRIMARY KEY'
     /// </summary>
     /// <param name="tableId">資料表 ID（Guid）</param>
     /// <param name="tx">交易</param>
-    /// <returns>資料表名稱（不含 schema，例如：WOR_MASTER）</returns>
+    /// <returns>資料表名稱（不含 schema，例如：WIP_WO）</returns>
     public string GetTableNameByTableId(Guid tableId, SqlTransaction? tx = null)
     {
         if (tableId == Guid.Empty)

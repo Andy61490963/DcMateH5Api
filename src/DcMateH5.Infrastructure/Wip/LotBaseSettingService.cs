@@ -1405,7 +1405,7 @@ public class LotBaseSettingService : ILotBaseSettingService
         WipOperationDto operation,
         WipRouteOperationDto routeOperation,
         WipWoDto workOrder,
-        UmmUserDto user,
+        AdmUserDto user,
         DateTime now)
     {
         return new WipLotHistDto
@@ -2126,7 +2126,7 @@ public class LotBaseSettingService : ILotBaseSettingService
         return lot;
     }
 
-    private async Task<UmmUserDto> GetUserByAccountAsync(string accountNo, CancellationToken ct)
+    private async Task<AdmUserDto> GetUserByAccountAsync(string accountNo, CancellationToken ct)
     {
         var user = await _selectDtoService.SelectUserAsync(accountNo, ct);
         if (user == null)

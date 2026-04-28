@@ -14,10 +14,11 @@ public class BaseInfoCheckExistService : IBaseInfoCheckExistService
         _sqlHelper = sqlHelper;
     }
 
-    public Task<UmmUserDto?> CheckUserExistAsync(string accountNo, CancellationToken ct = default)
+    public Task<AdmUserDto?> CheckUserExistAsync(string accountNo, CancellationToken ct = default)
     {
-        var where = new WhereBuilder<UmmUserDto>()
-            .AndEq(x => x.ACCOUNT_NO, accountNo);
+        var where = new WhereBuilder<AdmUserDto>()
+            .AndEq(x => x.ACCOUNT_NO, accountNo)
+            .AndEq(x => x.TYPE, AdmUserDto.WipUserType);
         
         return _sqlHelper.SelectFirstOrDefaultAsync(where, ct);
     }

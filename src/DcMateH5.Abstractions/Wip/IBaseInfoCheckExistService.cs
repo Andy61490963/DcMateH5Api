@@ -7,7 +7,7 @@ namespace DcMateH5.Abstractions.Wip;
 /// </summary>
 public interface IBaseInfoCheckExistService
 {
-    Task<UmmUserDto?> CheckUserExistAsync(string accountNo, CancellationToken ct = default);
+    Task<AdmUserDto?> CheckUserExistAsync(string accountNo, CancellationToken ct = default);
     Task<EqmMasterDto?> CheckEquipmentExistAsync(string eqmMasterNo, CancellationToken ct = default);
     Task<WipWoDto?> CheckWorkOrderExistAsync(string wo, CancellationToken ct = default);
     Task<WipOperationDto?> CheckOperationExistAsync(string operationNo, CancellationToken ct = default);

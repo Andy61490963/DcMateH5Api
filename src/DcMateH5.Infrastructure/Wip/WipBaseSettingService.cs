@@ -217,7 +217,7 @@ public class WipBaseSettingService : IWipBaseSettingService
         SqlTransaction tx,
         decimal histSid,
         IReadOnlyList<string>? accounts,
-        IReadOnlyList<decimal> userSids,
+        IReadOnlyList<decimal?> userSids,
         CancellationToken ct)
     {
         if (accounts == null || accounts.Count == 0)
@@ -431,9 +431,9 @@ public class WipBaseSettingService : IWipBaseSettingService
     /// <param name="ct"></param>
     /// <returns></returns>
     /// <exception cref="HttpStatusCodeException"></exception>
-    private async Task<List<decimal>> ValidateAndGetUserSidsAsync(WipCheckInInputDto input, CancellationToken ct)
+    private async Task<List<decimal?>> ValidateAndGetUserSidsAsync(WipCheckInInputDto input, CancellationToken ct)
     {
-        var userSids = new List<decimal>();
+        var userSids = new List<decimal?>();
 
         if (input.Account == null || input.Account.Count == 0)
         {
@@ -448,7 +448,7 @@ public class WipBaseSettingService : IWipBaseSettingService
                 throw new HttpStatusCodeException(System.Net.HttpStatusCode.BadRequest, $"Account {accountNo} does not exist.");
             }
 
-            userSids.Add(user.USER_SID);
+            userSids.Add(null);
         }
 
         return userSids;

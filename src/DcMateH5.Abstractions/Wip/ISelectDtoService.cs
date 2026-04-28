@@ -7,7 +7,7 @@ namespace DcMateH5.Abstractions.Wip;
 /// </summary>
 public interface ISelectDtoService
 {
-    Task<UmmUserDto?> SelectUserAsync(string accountNo, CancellationToken ct = default);
+    Task<AdmUserDto?> SelectUserAsync(string accountNo, CancellationToken ct = default);
     Task<EqmMasterDto?> SelectEquipmentAsync(string eqmMasterNo, CancellationToken ct = default);
     Task<WipWoDto?> SelectWorkOrderAsync(string wo, CancellationToken ct = default);
     Task<WipOperationDto?> SelectOperationAsync(string operationNo, CancellationToken ct = default);
