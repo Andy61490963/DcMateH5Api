@@ -49,12 +49,13 @@ jobs:
           $payload = @{
             content = "[Commit] $env:REPOSITORY@$env:BRANCH ($shortSha)`nAuthor: $env:ACTOR`nMessage: $message"
           } | ConvertTo-Json -Depth 4
+          $payloadBytes = [System.Text.Encoding]::UTF8.GetBytes($payload)
 
           Invoke-RestMethod `
             -Uri $env:DISCORD_COMMIT_WEBHOOK_URL `
             -Method Post `
-            -ContentType "application/json" `
-            -Body $payload | Out-Null
+            -ContentType "application/json; charset=utf-8" `
+            -Body $payloadBytes | Out-Null
 
       - name: Setup .NET SDK
         uses: actions/setup-dotnet@v4
@@ -96,12 +97,13 @@ jobs:
           $payload = @{
             content = "[Deploy Started] $env:REPOSITORY@$env:BRANCH ($shortSha)"
           } | ConvertTo-Json -Depth 4
+          $payloadBytes = [System.Text.Encoding]::UTF8.GetBytes($payload)
 
           Invoke-RestMethod `
             -Uri $env:DISCORD_WEBHOOK_URL `
             -Method Post `
-            -ContentType "application/json" `
-            -Body $payload | Out-Null
+            -ContentType "application/json; charset=utf-8" `
+            -Body $payloadBytes | Out-Null
 
       - name: Publish (Release)
         shell: powershell
@@ -285,9 +287,10 @@ jobs:
           $payload = @{
             content = "[$statusText] $env:REPOSITORY@$env:BRANCH ($shortSha)"
           } | ConvertTo-Json -Depth 4
+          $payloadBytes = [System.Text.Encoding]::UTF8.GetBytes($payload)
 
           Invoke-RestMethod `
             -Uri $env:DISCORD_WEBHOOK_URL `
             -Method Post `
-            -ContentType "application/json" `
-            -Body $payload | Out-Null
+            -ContentType "application/json; charset=utf-8" `
+            -Body $payloadBytes | Out-Null
