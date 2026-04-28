@@ -32,7 +32,6 @@ jobs:
           SHA: ${{ github.sha }}
           ACTOR: ${{ github.actor }}
           COMMIT_MESSAGE: ${{ github.event.head_commit.message || 'Manual workflow dispatch' }}
-          COMMIT_URL: ${{ github.server_url }}/${{ github.repository }}/commit/${{ github.sha }}
         run: |
           $ErrorActionPreference = 'Stop'
 
@@ -48,7 +47,7 @@ jobs:
           }
 
           $payload = @{
-            content = "[Commit] $env:REPOSITORY@$env:BRANCH ($shortSha)`nAuthor: $env:ACTOR`nMessage: $message`nCommit: $env:COMMIT_URL"
+            content = "[Commit] $env:REPOSITORY@$env:BRANCH ($shortSha)`nAuthor: $env:ACTOR`nMessage: $message"
           } | ConvertTo-Json -Depth 4
 
           Invoke-RestMethod `
