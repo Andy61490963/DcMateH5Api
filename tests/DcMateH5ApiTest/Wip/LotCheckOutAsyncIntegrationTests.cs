@@ -192,7 +192,7 @@ public class LotCheckOutAsyncIntegrationTests
             INNER JOIN WIP_ROUTE r ON r.WIP_ROUTE_NO = w.ROUTE_NO OR r.WIP_ROUTE_NAME = w.ROUTE_NO
             INNER JOIN RouteOps ro ON ro.WIP_ROUTE_SID = r.WIP_ROUTE_SID AND ro.OperationCount >= 2
             CROSS JOIN (
-                SELECT TOP (1) ACCOUNT_NO, CAST(NULL AS decimal(18, 0)) AS SHIFT_SID
+                SELECT TOP (1) ACCOUNT_NO, SHIFT_SID
                 FROM ADM_USER
                 WHERE ACCOUNT_NO IS NOT NULL
                   AND [TYPE] = 'UMM_USER'

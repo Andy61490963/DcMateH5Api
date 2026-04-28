@@ -12,11 +12,7 @@ public class AdmUserDto
     public Guid USER_SID { get; set; }
     public string ACCOUNT_NO { get; set; } = null!;
     public string? TYPE { get; set; }
-
-    [NotMapped]
     public decimal? SHIFT_SID { get; set; }
-
-    [NotMapped]
     public decimal? WORKGROUP_SID { get; set; }
 }
 
@@ -82,7 +78,7 @@ public class WipOpiWdoeacicoHistUserDto
     [Key]
     public decimal WIP_OPI_WDOEACICO_HIST_USER_SID { get; set; }
     public decimal WIP_OPI_WDOEACICO_HIST_SID { get; set; }
-    public decimal? UMM_USER_SID { get; set; }
+    public Guid? ADM_USER_SID { get; set; }
     public string? ACCOUNT_NO { get; set; }
 }
 

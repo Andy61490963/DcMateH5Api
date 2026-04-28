@@ -159,7 +159,7 @@ public class LotCheckInAsyncIntegrationTests
             INNER JOIN WIP_PARTNO p ON p.WIP_PARTNO_NO = w.PART_NO
             INNER JOIN WIP_ROUTE r ON r.WIP_ROUTE_NO = w.ROUTE_NO OR r.WIP_ROUTE_NAME = w.ROUTE_NO
             CROSS JOIN (
-                SELECT TOP (1) ACCOUNT_NO, CAST(NULL AS decimal(18, 0)) AS SHIFT_SID
+                SELECT TOP (1) ACCOUNT_NO, SHIFT_SID
                 FROM ADM_USER
                 WHERE ACCOUNT_NO IS NOT NULL
                   AND [TYPE] = 'UMM_USER'
