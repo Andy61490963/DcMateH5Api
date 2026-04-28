@@ -41,7 +41,7 @@ public static class FormFieldHelper
     /// </summary>
     private static readonly Dictionary<SqlDataType, List<FormControlType>> ControlTypeWhitelistMap = new()
     {
-        { SqlDataType.DateTime, new() { FormControlType.DateTime, FormControlType.Dropdown } },
+        { SqlDataType.DateTime, new() { FormControlType.DateTime, FormControlType.Dropdown, FormControlType.Date } },
         { SqlDataType.Date,     new() { FormControlType.Date, FormControlType.Dropdown } },
         { SqlDataType.Bit,      new() { FormControlType.Checkbox, FormControlType.Dropdown } },
 
