@@ -2,6 +2,7 @@ using DcMateClassLibrary.Helper;
 using DcMateClassLibrary.Helper.HttpHelper;
 using DcMateH5.Abstractions.Wip;
 using DcMateH5Api.Areas.Wip.Model;
+using DcMateH5Api.Models;
 using Microsoft.AspNetCore.Mvc;
 
 namespace DcMateH5Api.Areas.Wip.Controllers
@@ -31,14 +32,17 @@ namespace DcMateH5Api.Areas.Wip.Controllers
         }
 
         [HttpPost(Routes.CheckInWip)]
-        [ProducesResponseType(StatusCodes.Status200OK)]
+        [ProducesResponseType(typeof(Result<WipCheckInResponseDto>), StatusCodes.Status200OK)]
         [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status400BadRequest)]
         public async Task<IActionResult> CheckIn([FromBody] WipCheckInInputDto input, CancellationToken ct)
         {
             try
             {
-                await _wipBaseSettingService.CheckInAsync(input, ct);
-                return Ok();
+                var histSid = await _wipBaseSettingService.CheckInAsync(input, ct);
+                return Ok(Result<WipCheckInResponseDto>.Ok(new WipCheckInResponseDto
+                {
+                    HistSid = histSid
+                }));
             }
             catch (HttpStatusCodeException ex)
             {

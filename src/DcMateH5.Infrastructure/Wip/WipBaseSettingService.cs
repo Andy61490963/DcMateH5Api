@@ -31,12 +31,12 @@ public class WipBaseSettingService : IWipBaseSettingService
         _selectDtoService = selectDtoService;
     }
 
-    public async Task CheckInAsync(WipCheckInInputDto input, CancellationToken ct = default)
+    public async Task<decimal> CheckInAsync(WipCheckInInputDto input, CancellationToken ct = default)
     {
-        await _sqlHelper.TxAsync(
+        return await _sqlHelper.TxAsync(
             async (conn, tx, innerCt) =>
-                {
-                await CreateCheckInInTxAsync(conn, tx, input, innerCt);
+            {
+                return await CreateCheckInInTxAsync(conn, tx, input, innerCt);
             },
             isolation: IsolationLevel.ReadCommitted,
             ct: ct);

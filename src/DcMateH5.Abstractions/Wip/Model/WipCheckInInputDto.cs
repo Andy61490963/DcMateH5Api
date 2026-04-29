@@ -1,3 +1,5 @@
+using System.Text.Json.Serialization;
+
 namespace DcMateH5Api.Areas.Wip.Model;
 
 public class WipCheckInInputDto
@@ -41,4 +43,10 @@ public class WipCheckInInputDto
 public class WipCheckInCancelInputDto
 {
     public decimal WIP_OPI_WDOEACICO_HIST_SID { get; set; }
+}
+
+public class WipCheckInResponseDto
+{
+    [JsonPropertyName("histSid")]
+    public decimal HistSid { get; set; }
 }

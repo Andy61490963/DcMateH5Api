@@ -4,7 +4,7 @@ namespace DcMateH5.Abstractions.Wip;
 
 public interface IWipBaseSettingService
 {
-    Task CheckInAsync(WipCheckInInputDto input, CancellationToken ct = default);
+    Task<decimal> CheckInAsync(WipCheckInInputDto input, CancellationToken ct = default);
     Task CheckInCancelAsync(WipCheckInCancelInputDto input, CancellationToken ct = default);
     Task AddDetailsAsync(WipAddDetailInputDto input, CancellationToken ct = default);
     Task EditDetailsAsync(WipEditDetailInputDto input, CancellationToken ct = default);
