@@ -76,6 +76,17 @@ public class WipBaseSettingService : IWipBaseSettingService
             ct: ct);
     }
 
+    public async Task DeleteDetailsAsync(WipDeleteDetailInputDto input, CancellationToken ct = default)
+    {
+        await _sqlHelper.TxAsync(
+            async (conn, tx, innerCt) =>
+            {
+                await DeleteDetailsInTxAsync(conn, tx, input.WIP_OPI_WDOEACICO_HIST_DETAIL_SID, innerCt);
+            },
+            isolation: IsolationLevel.ReadCommitted,
+            ct: ct);
+    }
+
     public async Task CheckOutAsync(WipCheckOutInputDto input, CancellationToken ct = default)
     {
         await _sqlHelper.TxAsync(
@@ -307,6 +318,27 @@ public class WipBaseSettingService : IWipBaseSettingService
         await UpsertNgReasonDetailsInTxAsync(conn, tx, detailSid, input.NgDetails, ct);
 
         await RecalculateAndUpdateHistTotalQtyInTxAsync(conn, tx, input.WIP_OPI_WDOEACICO_HIST_SID, ct);
+    }
+
+    private async Task DeleteDetailsInTxAsync(SqlConnection conn, SqlTransaction tx, decimal detailSid, CancellationToken ct)
+    {
+        ct.ThrowIfCancellationRequested();
+
+        var detailWhere = new WhereBuilder<WipOpiWdoeacicoHistDetailDto>()
+            .AndEq(x => x.WIP_OPI_WDOEACICO_HIST_DETAIL_SID!, detailSid);
+
+        var detail = await _sqlHelper.SelectFirstOrDefaultInTxAsync(conn, tx, detailWhere, ct: ct);
+        if (detail == null)
+        {
+            throw new HttpStatusCodeException(
+                System.Net.HttpStatusCode.BadRequest,
+                $"Hist detail SID {detailSid} does not exist.");
+        }
+
+        await DeleteNgReasonDetailsByDetailSidInTxAsync(conn, tx, detailSid, ct);
+        await _sqlHelper.DeleteWhereInTxAsync(conn, tx, detailWhere, ct: ct);
+
+        await RecalculateAndUpdateHistTotalQtyInTxAsync(conn, tx, detail.WIP_OPI_WDOEACICO_HIST_SID, ct);
     }
 
     private async Task CheckOutInTxAsync(SqlConnection conn, SqlTransaction tx, decimal histSid, DateTime checkOutTime, CancellationToken ct)

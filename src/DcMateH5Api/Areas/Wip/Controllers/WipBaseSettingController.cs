@@ -4,6 +4,7 @@ using DcMateH5.Abstractions.Wip;
 using DcMateH5Api.Areas.Wip.Model;
 using DcMateH5Api.Models;
 using Microsoft.AspNetCore.Mvc;
+using WipDeleteDetailInputDto = DcMateH5Api.Areas.Wip.Model.WipDeleteDetailInputDto;
 
 namespace DcMateH5Api.Areas.Wip.Controllers
 {
@@ -19,6 +20,7 @@ namespace DcMateH5Api.Areas.Wip.Controllers
             public const string CheckInCancel = "CheckInCancel";
             public const string AddWipDetails = "AddWipDetails";
             public const string EditWipDetails = "EditWipDetails";
+            public const string DeleteWipDetails = "DeleteWipDetails";
             public const string CheckOut = "CheckOut";
 
             public const string CheckInAddDetailsCheckOut = "CheckInAddDetailsCheckOut";
@@ -90,6 +92,22 @@ namespace DcMateH5Api.Areas.Wip.Controllers
             try
             {
                 await _wipBaseSettingService.EditDetailsAsync(input, ct);
+                return Ok();
+            }
+            catch (HttpStatusCodeException ex)
+            {
+                return StatusCode((int)ex.StatusCode, ex.Message);
+            }
+        }
+
+        [HttpPost(Routes.DeleteWipDetails)]
+        [ProducesResponseType(StatusCodes.Status200OK)]
+        [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status400BadRequest)]
+        public async Task<IActionResult> DeleteDetails([FromBody] WipDeleteDetailInputDto input, CancellationToken ct)
+        {
+            try
+            {
+                await _wipBaseSettingService.DeleteDetailsAsync(input, ct);
                 return Ok();
             }
             catch (HttpStatusCodeException ex)

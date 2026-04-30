@@ -31,3 +31,8 @@ public class WipEditDetailInputDto
     public string? COMMENT { get; set; }
     public List<NgDetailItem>? NgDetails { get; set; } = new();
 }
+
+public class WipDeleteDetailInputDto
+{
+    public decimal WIP_OPI_WDOEACICO_HIST_DETAIL_SID { get; set; }
+}
