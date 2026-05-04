@@ -98,6 +98,23 @@ public class WipBaseSettingService : IWipBaseSettingService
             ct: ct);
     }
 
+    public async Task AddHistDcAsync(WipOpiWdoeacicoHistDcInputDto input, CancellationToken ct = default)
+    {
+        if (input == null)
+        {
+            throw new HttpStatusCodeException(System.Net.HttpStatusCode.BadRequest, "DC input is required.");
+        }
+
+        await _sqlHelper.TxAsync(
+            async (conn, tx, innerCt) =>
+            {
+                await EnsureHistExistsInTxAsync(conn, tx, input.WIP_OPI_WDOEACICO_HIST_SID, innerCt);
+                await InsertHistDcInTxAsync(conn, tx, input.WIP_OPI_WDOEACICO_HIST_SID, ToCombineDcInput(input), true, innerCt);
+            },
+            isolation: IsolationLevel.ReadCommitted,
+            ct: ct);
+    }
+
     /// <summary>
     /// 一次做完 Check in、 Add WIP_OPI_WDOEACICO_HIST_DETAIL、Check out
     /// </summary>
@@ -116,6 +133,8 @@ public class WipBaseSettingService : IWipBaseSettingService
                     histSid,
                     input.AddDetails,
                     innerCt);
+
+                await InsertHistDcInTxAsync(conn, tx, histSid, input.Dc, false, innerCt);
 
                 await CheckOutInTxAsync(conn, tx, histSid, input.CHECK_OUT_TIME, innerCt);
             },
@@ -349,6 +368,23 @@ public class WipBaseSettingService : IWipBaseSettingService
             .ExecuteInTxAsync(conn, tx, ct: ct);
     }
 
+    private async Task EnsureHistExistsInTxAsync(SqlConnection conn, SqlTransaction tx, decimal histSid, CancellationToken ct)
+    {
+        if (histSid <= 0)
+        {
+            throw new HttpStatusCodeException(System.Net.HttpStatusCode.BadRequest, "WIP_OPI_WDOEACICO_HIST_SID must be greater than 0.");
+        }
+
+        var where = new WhereBuilder<WipOpiWdoeacicoHistDto>()
+            .AndEq(x => x.WIP_OPI_WDOEACICO_HIST_SID!, histSid);
+
+        var hist = await _sqlHelper.SelectFirstOrDefaultInTxAsync(conn, tx, where, ct: ct);
+        if (hist == null)
+        {
+            throw new HttpStatusCodeException(System.Net.HttpStatusCode.BadRequest, $"Hist SID {histSid} does not exist.");
+        }
+    }
+
     private async Task RecalculateAndUpdateHistTotalQtyInTxAsync(SqlConnection conn, SqlTransaction tx, decimal histSid, CancellationToken ct)
     {
         var (totalOkQty, totalNgQty) = await CalculateTotalQtyInTxAsync(conn, tx, histSid, ct);
@@ -401,6 +437,219 @@ public class WipBaseSettingService : IWipBaseSettingService
             };
 
             await _sqlHelper.InsertInTxAsync(conn, tx, entity, ct: ct);
+        }
+    }
+
+    private async Task InsertHistDcInTxAsync(
+        SqlConnection conn,
+        SqlTransaction tx,
+        decimal histSid,
+        WipCheckInAddDetailsCheckOutDcInputDto? dc,
+        bool required,
+        CancellationToken ct)
+    {
+        var items = GetHistDcItems(dc, required);
+        if (items.Count == 0)
+        {
+            return;
+        }
+
+        await EnsureNoDuplicateHistDcInTxAsync(conn, tx, histSid, items, ct);
+
+        var rows = items.Select(x => BuildHistDcRow(histSid, x)).ToList();
+        if (rows.Count == 0)
+        {
+            return;
+        }
+
+        foreach (var row in rows)
+        {
+            await _sqlHelper.InsertInTxAsync(conn, tx, row, ct: ct);
+        }
+    }
+
+    private async Task EnsureNoDuplicateHistDcInTxAsync(
+        SqlConnection conn,
+        SqlTransaction tx,
+        decimal histSid,
+        IReadOnlyList<WipOpiWdoeacicoHistDcItemInputDto> items,
+        CancellationToken ct)
+    {
+        var where = new WhereBuilder<WipOpiWdoeacicoHistDcDto>()
+            .AndEq(x => x.WIP_OPI_WDOEACICO_HIST_SID, histSid);
+
+        var existingRows = await _sqlHelper.SelectWhereInTxAsync(conn, tx, where, ct: ct);
+        if (existingRows.Count == 0)
+        {
+            return;
+        }
+
+        var existingSids = existingRows
+            .Select(x => x.DC_ITEM_SID)
+            .ToHashSet();
+        var duplicatedSids = items
+            .Where(x => existingSids.Contains(x.DC_ITEM_SID))
+            .Select(x => x.DC_ITEM_SID)
+            .Distinct()
+            .ToList();
+        if (duplicatedSids.Count > 0)
+        {
+            throw new HttpStatusCodeException(
+                System.Net.HttpStatusCode.BadRequest,
+                $"Duplicate DC_ITEM_SID found: {string.Join(", ", duplicatedSids)}");
+        }
+
+        var existingCodes = existingRows
+            .Select(x => x.DC_ITEM_CODE)
+            .Where(x => !string.IsNullOrWhiteSpace(x))
+            .ToHashSet(StringComparer.OrdinalIgnoreCase);
+        var duplicatedCodes = items
+            .Where(x => existingCodes.Contains(x.DC_ITEM_CODE))
+            .Select(x => x.DC_ITEM_CODE)
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToList();
+        if (duplicatedCodes.Count > 0)
+        {
+            throw new HttpStatusCodeException(
+                System.Net.HttpStatusCode.BadRequest,
+                $"Duplicate DC_ITEM_CODE found: {string.Join(", ", duplicatedCodes)}");
+        }
+    }
+
+    private static WipOpiWdoeacicoHistDcDto BuildHistDcRow(decimal histSid, WipOpiWdoeacicoHistDcItemInputDto item)
+    {
+        ValidateHistDcItem(item);
+
+        return new WipOpiWdoeacicoHistDcDto
+        {
+            WIP_OPI_WDOEACICO_HIST_DC_SID = RandomHelper.GenerateRandomDecimal(),
+            WIP_OPI_WDOEACICO_HIST_SID = histSid,
+            DATA_TYPE = item.DATA_TYPE,
+            DC_TYPE = item.DC_TYPE,
+            DC_ITEM_SID = item.DC_ITEM_SID,
+            DC_ITEM_CODE = item.DC_ITEM_CODE,
+            DC_ITEM_NAME = item.DC_ITEM_NAME,
+            DC_ITEM_SEQ = item.DC_ITEM_SEQ,
+            DC_ITEM_VALUE = item.DC_ITEM_VALUE,
+            DC_ITEM_COMMENT = item.DC_ITEM_COMMENT,
+            USL = item.USL,
+            UCL = item.UCL,
+            TARGET = item.TARGET,
+            LCL = item.LCL,
+            LSL = item.LSL,
+            THROW_SPC = item.THROW_SPC,
+            THROW_SPC_RESULT = item.THROW_SPC_RESULT,
+            SPC_RESULT_LINK_SID = item.SPC_RESULT_LINK_SID,
+            RESULT = item.RESULT,
+            RESULT_COMMENT = item.RESULT_COMMENT,
+            QC_NO = item.QC_NO
+        };
+    }
+
+    private static void ValidateHistDcItem(WipOpiWdoeacicoHistDcItemInputDto item)
+    {
+        if (item == null)
+        {
+            throw new HttpStatusCodeException(System.Net.HttpStatusCode.BadRequest, "DC item is required.");
+        }
+
+        if (item.DC_ITEM_SID <= 0)
+        {
+            throw new HttpStatusCodeException(System.Net.HttpStatusCode.BadRequest, "DC_ITEM_SID must be greater than 0.");
+        }
+
+        if (string.IsNullOrWhiteSpace(item.DC_ITEM_CODE))
+        {
+            throw new HttpStatusCodeException(System.Net.HttpStatusCode.BadRequest, "DC_ITEM_CODE is required.");
+        }
+
+        if (string.IsNullOrWhiteSpace(item.DC_ITEM_NAME))
+        {
+            throw new HttpStatusCodeException(System.Net.HttpStatusCode.BadRequest, "DC_ITEM_NAME is required.");
+        }
+
+        if (item.DC_ITEM_SEQ <= 0)
+        {
+            throw new HttpStatusCodeException(System.Net.HttpStatusCode.BadRequest, "DC_ITEM_SEQ must be greater than 0.");
+        }
+    }
+
+    private static WipCheckInAddDetailsCheckOutDcInputDto ToCombineDcInput(WipOpiWdoeacicoHistDcInputDto input)
+    {
+        if (input == null)
+        {
+            throw new HttpStatusCodeException(System.Net.HttpStatusCode.BadRequest, "DC input is required.");
+        }
+
+        if (input.WIP_OPI_WDOEACICO_HIST_SID <= 0)
+        {
+            throw new HttpStatusCodeException(System.Net.HttpStatusCode.BadRequest, "WIP_OPI_WDOEACICO_HIST_SID must be greater than 0.");
+        }
+
+        return new WipCheckInAddDetailsCheckOutDcInputDto
+        {
+            Item = input.Item,
+            Items = input.Items
+        };
+    }
+
+    private static List<WipOpiWdoeacicoHistDcItemInputDto> GetHistDcItems(WipCheckInAddDetailsCheckOutDcInputDto? dc, bool required)
+    {
+        var items = new List<WipOpiWdoeacicoHistDcItemInputDto>();
+
+        if (dc?.Item != null)
+        {
+            items.Add(dc.Item);
+        }
+
+        if (dc?.Items != null && dc.Items.Count > 0)
+        {
+            items.AddRange(dc.Items);
+        }
+
+        if (items.Count == 0)
+        {
+            if (required)
+            {
+                throw new HttpStatusCodeException(System.Net.HttpStatusCode.BadRequest, "DC item is required.");
+            }
+
+            return items;
+        }
+
+        foreach (var item in items)
+        {
+            ValidateHistDcItem(item);
+        }
+
+        EnsureNoDuplicateHistDcItems(items);
+        return items;
+    }
+
+    private static void EnsureNoDuplicateHistDcItems(IReadOnlyList<WipOpiWdoeacicoHistDcItemInputDto> items)
+    {
+        var duplicatedSids = items
+            .GroupBy(x => x.DC_ITEM_SID)
+            .Where(x => x.Count() > 1)
+            .Select(x => x.Key)
+            .ToList();
+        if (duplicatedSids.Count > 0)
+        {
+            throw new HttpStatusCodeException(
+                System.Net.HttpStatusCode.BadRequest,
+                $"Duplicate DC_ITEM_SID found: {string.Join(", ", duplicatedSids)}");
+        }
+
+        var duplicatedCodes = items
+            .GroupBy(x => x.DC_ITEM_CODE, StringComparer.OrdinalIgnoreCase)
+            .Where(x => x.Count() > 1)
+            .Select(x => x.Key)
+            .ToList();
+        if (duplicatedCodes.Count > 0)
+        {
+            throw new HttpStatusCodeException(
+                System.Net.HttpStatusCode.BadRequest,
+                $"Duplicate DC_ITEM_CODE found: {string.Join(", ", duplicatedCodes)}");
         }
     }
 

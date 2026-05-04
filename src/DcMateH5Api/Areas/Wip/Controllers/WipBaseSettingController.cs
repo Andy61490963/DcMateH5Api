@@ -22,6 +22,7 @@ namespace DcMateH5Api.Areas.Wip.Controllers
             public const string EditWipDetails = "EditWipDetails";
             public const string DeleteWipDetails = "DeleteWipDetails";
             public const string CheckOut = "CheckOut";
+            public const string AddHistDc = "AddHistDc";
 
             public const string CheckInAddDetailsCheckOut = "CheckInAddDetailsCheckOut";
         }
@@ -124,6 +125,22 @@ namespace DcMateH5Api.Areas.Wip.Controllers
             try
             {
                 await _wipBaseSettingService.CheckOutAsync(input, ct);
+                return Ok();
+            }
+            catch (HttpStatusCodeException ex)
+            {
+                return StatusCode((int)ex.StatusCode, ex.Message);
+            }
+        }
+
+        [HttpPost(Routes.AddHistDc)]
+        [ProducesResponseType(StatusCodes.Status200OK)]
+        [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status400BadRequest)]
+        public async Task<IActionResult> AddHistDc([FromBody] WipOpiWdoeacicoHistDcInputDto input, CancellationToken ct)
+        {
+            try
+            {
+                await _wipBaseSettingService.AddHistDcAsync(input, ct);
                 return Ok();
             }
             catch (HttpStatusCodeException ex)
