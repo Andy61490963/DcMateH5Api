@@ -82,6 +82,7 @@ INSERT INTO ZZ_KAOSU_INSPECTION_HEADER
     INSPECTION_RESULT,
     INSPECTOR,
     APPROVE_USER,
+    PRODUCTION_STATUS,
     COMMENT,
     CREATE_USER,
     EDIT_TIME,
@@ -106,6 +107,7 @@ VALUES
     @INSPECTION_RESULT,
     @INSPECTOR,
     @APPROVE_USER,
+    @PRODUCTION_STATUS,
     @COMMENT,
     @CREATE_USER,
     SYSDATETIME(),
@@ -130,6 +132,7 @@ VALUES
                         INSPECTION_RESULT = header.InspectionResult,
                         INSPECTOR = header.Inspector,
                         APPROVE_USER = header.ApproveUser,
+                        PRODUCTION_STATUS = header.ProductionStatus,
                         COMMENT = header.Comment,
                         CREATE_USER = headerCreatedUser,
                         EDIT_USER = headerEditUser

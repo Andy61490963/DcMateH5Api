@@ -60,6 +60,9 @@ public class KaosuQcHeaderCreateRequest
 
     /// <summary>核准者。</summary>
     public string? ApproveUser { get; set; }
+    
+    /// <summary>區分是否為試作品。</summary>
+    public string? ProductionStatus { get; set; }
 
     public string? Comment { get; set; }
 
