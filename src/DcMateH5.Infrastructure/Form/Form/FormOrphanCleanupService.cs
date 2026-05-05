@@ -43,7 +43,8 @@ DECLARE @Affected INT = 0;
         (m.BASE_TABLE_ID),
         (m.DETAIL_TABLE_ID),
         (m.VIEW_TABLE_ID),
-        (m.MAPPING_TABLE_ID)
+        (m.MAPPING_TABLE_ID),
+        (m.TVF_TABLE_ID)
     ) v(UsedId)
     WHERE ISNULL(m.IS_DELETE, 0) = 0
       AND m.SCHEMA_TYPE = 5

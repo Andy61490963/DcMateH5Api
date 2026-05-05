@@ -169,7 +169,7 @@ public class FormViewDesignerService : IFormViewDesignerService
                 VIEW_TABLE_ID = model.VIEW_TABLE_ID,
                 VIEW_TABLE_NAME = viewMaster.VIEW_TABLE_NAME,
                 STATUS = (int)TableStatusType.Active,
-                SCHEMA_TYPE = (int)SchemaType,
+                SCHEMA_TYPE = (int)TableSchemaQueryType.All,
                 FUNCTION_TYPE = (int)FunctionType,
                 CREATE_USER = currentUserId,
                 CREATE_TIME = now,
