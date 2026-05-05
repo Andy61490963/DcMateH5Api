@@ -3,6 +3,7 @@ using Microsoft.AspNetCore.DataProtection;
 using Microsoft.AspNetCore.HttpOverrides;
 using Microsoft.Extensions.Diagnostics.HealthChecks;
 using Microsoft.OpenApi.Models;
+using Microsoft.Data.SqlClient;
 using System.Reflection;
 using DbExtensions;
 using DbExtensions.DbExecutor.Interface;
@@ -21,7 +22,6 @@ using DcMateH5.Abstractions.RegistrationLicense;
 using DcMateH5.Abstractions.Token;
 using DcMateH5.Abstractions.Token.Model;
 using DcMateH5.Abstractions.Wip;
-using DcMateH5.Infrastructure;
 using DcMateH5.Infrastructure.Eqm;
 using DcMateH5.Infrastructure.Form.Form;
 using DcMateH5.Infrastructure.Form.FormLogic;
@@ -100,13 +100,16 @@ builder.Services.AddStackExchangeRedisCache(opt =>
 });
 
 // -------------------- 連線字串 --------------------
-// builder.Services.AddScoped<SqlConnection, SqlConnection>(_ =>
-// {
-//     var conn = new SqlConnection();
-//     conn.ConnectionString = builder.Configuration.GetConnectionString("Connection");
-//     return conn;
-// });
-builder.Services.AddDcMateH5Infrastructure(builder.Configuration);
+builder.Services.AddScoped<SqlConnection>(_ =>
+{
+    var connectionString = builder.Configuration.GetConnectionString("Connection");
+    if (string.IsNullOrWhiteSpace(connectionString))
+    {
+        throw new InvalidOperationException("ConnectionStrings:Connection 不可為空");
+    }
+
+    return new SqlConnection(connectionString);
+});
 
 // -------------------- 基礎服務 --------------------
 builder.Services.AddHttpContextAccessor(); // 僅保留這一次註冊
