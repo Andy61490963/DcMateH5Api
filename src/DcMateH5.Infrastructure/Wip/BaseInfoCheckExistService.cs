@@ -17,8 +17,7 @@ public class BaseInfoCheckExistService : IBaseInfoCheckExistService
     public Task<AdmUserDto?> CheckUserExistAsync(string accountNo, CancellationToken ct = default)
     {
         var where = new WhereBuilder<AdmUserDto>()
-            .AndEq(x => x.ACCOUNT_NO, accountNo)
-            .AndEq(x => x.TYPE, AdmUserDto.WipUserType);
+            .AndEq(x => x.ACCOUNT_NO, accountNo);
         
         return _sqlHelper.SelectFirstOrDefaultAsync(where, ct);
     }

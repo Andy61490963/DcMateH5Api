@@ -193,9 +193,8 @@ public class LotCheckOutAsyncIntegrationTests
             INNER JOIN RouteOps ro ON ro.WIP_ROUTE_SID = r.WIP_ROUTE_SID AND ro.OperationCount >= 2
             CROSS JOIN (
                 SELECT TOP (1) ACCOUNT_NO, SHIFT_SID
-                FROM ADM_USER
+                FROM ADM_OPI_USER
                 WHERE ACCOUNT_NO IS NOT NULL
-                  AND [TYPE] = 'UMM_USER'
                 ORDER BY USER_SID DESC
             ) u
             CROSS JOIN (

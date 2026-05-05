@@ -3,8 +3,8 @@ using System.Text.Json;
 using Dapper;
 using DbExtensions;
 using DbExtensions.DbExecutor.Service;
-using DcMateClassLibrary.Models;
 using DcMateClassLibrary.Helper.HttpHelper;
+using DcMateClassLibrary.Models;
 using DcMateH5.Abstractions.CurrentUser;
 using DcMateH5.Abstractions.Log;
 using DcMateH5.Abstractions.Log.Models;
@@ -18,44 +18,30 @@ using Xunit;
 namespace DcMateH5ApiTest.Wip;
 
 [Collection(DatabaseIntegrationCollection.Name)]
-public class LotHoldAsyncIntegrationTests
+public class LotQuantityAdjustAsyncIntegrationTests
 {
     [Fact]
     [Trait("Category", "Integration")]
-    public async Task LotHoldAsync_ShouldSetLotStatusToHoldAndInsertHoldHistory()
+    public async Task LotBonusAsync_ShouldIncreaseLotQtyAndWriteReasonHistory()
     {
         var connectionString = TestConfiguration.LoadConnectionString();
         var arrangement = await LoadArrangementAsync(connectionString);
-        var lotCode = $"ITEST-HOLD-{DateTime.UtcNow:yyyyMMddHHmmssfff}";
+        var lotCode = $"ITEST-BONUS-{DateTime.UtcNow:yyyyMMddHHmmssfff}";
         var service = CreateService(connectionString, arrangement.AccountNo);
 
         try
         {
-            var createLotResult = await service.CreateLotAsync(
-                new WipCreateLotInputDto
-                {
-                    DATA_LINK_SID = 900000000801m,
-                    LOT = lotCode,
-                    ALIAS_LOT1 = $"{lotCode}-A1",
-                    ALIAS_LOT2 = $"{lotCode}-A2",
-                    WO = arrangement.WorkOrder,
-                    ROUTE_SID = arrangement.RouteSid,
-                    LOT_QTY = 2,
-                    REPORT_TIME = DateTime.Now,
-                    ACCOUNT_NO = arrangement.AccountNo,
-                    INPUT_FORM_NAME = "DcMateH5ApiTest",
-                    COMMENT = "LotHoldAsync integration test"
-                });
-            Assert.True(createLotResult.IsSuccess);
+            await CreateTestLotAsync(service, arrangement, lotCode, 5, 900000001001m);
 
-            var result = await service.LotHoldAsync(
-                new WipLotHoldInputDto
+            var result = await service.LotBonusAsync(
+                new WipLotBonusInputDto
                 {
                     LOT = lotCode,
+                    BONUS_QTY = 3,
                     REASON_SID = arrangement.ReasonSid,
-                    DATA_LINK_SID = 900000000802m,
+                    DATA_LINK_SID = 900000001002m,
                     ACCOUNT_NO = arrangement.AccountNo,
-                    COMMENT = "LotHoldAsync integration test",
+                    COMMENT = "LotBonusAsync integration test",
                     INPUT_FORM_NAME = "DcMateH5ApiTest"
                 });
 
@@ -65,36 +51,38 @@ public class LotHoldAsyncIntegrationTests
             await using var conn = new SqlConnection(connectionString);
             await conn.OpenAsync();
 
-            var lotStatus = await conn.ExecuteScalarAsync<string>(
-                "SELECT LOT_STATUS_CODE FROM WIP_LOT WHERE LOT = @Lot",
+            var lotQty = await conn.QuerySingleAsync<LotQuantityRow>(
+                "SELECT LOT_QTY, NG_QTY, LAST_TRANS_TIME FROM WIP_LOT WHERE LOT = @Lot",
                 new { Lot = lotCode });
-            Assert.Equal("Hold", lotStatus);
+            Assert.Equal(8, lotQty.LOT_QTY);
+            Assert.Equal(0, lotQty.NG_QTY);
+            Assert.NotNull(lotQty.LAST_TRANS_TIME);
 
-            var lotTimes = await conn.QuerySingleAsync<LotTimeRow>(
-                "SELECT LAST_TRANS_TIME, LAST_STATUS_CHANGE_TIME FROM WIP_LOT WHERE LOT = @Lot",
-                new { Lot = lotCode });
-            Assert.NotNull(lotTimes.LAST_TRANS_TIME);
-            Assert.NotNull(lotTimes.LAST_STATUS_CHANGE_TIME);
-
-            var holdHist = await conn.QuerySingleOrDefaultAsync<LotHoldRow>(
+            var hist = await conn.QuerySingleOrDefaultAsync<ReasonHistoryRow>(
                 """
-                SELECT TOP (1) HOLD_REASON_SID, HOLD_REASON_CODE, HOLD_REASON_NAME, RELEASE_FLAG, PRE_LOT_STATUS_SID
-                FROM WIP_LOT_HOLD_HIST
-                WHERE LOT = @Lot
-                ORDER BY WIP_LOT_HOLD_HIST_SID DESC
+                SELECT TOP (1)
+                    h.ACTION_CODE,
+                    h.TOTAL_OK_QTY,
+                    h.TOTAL_NG_QTY,
+                    r.REASON_TYPE,
+                    r.REASON_SID,
+                    r.REASON_CODE,
+                    r.REASON_QTY
+                FROM WIP_LOT_HIST h
+                INNER JOIN WIP_LOT_REASON_HIST r ON r.WIP_LOT_HIST_SID = h.WIP_LOT_HIST_SID
+                WHERE h.LOT = @Lot
+                ORDER BY h.SEQ DESC
                 """,
                 new { Lot = lotCode });
 
-            Assert.NotNull(holdHist);
-            Assert.Equal(arrangement.ReasonSid, holdHist!.HOLD_REASON_SID);
-            Assert.Equal(arrangement.ReasonNo, holdHist.HOLD_REASON_CODE);
-            Assert.Equal(arrangement.ReasonName, holdHist.HOLD_REASON_NAME);
-            Assert.Equal("N", holdHist.RELEASE_FLAG);
-
-            var action = await conn.ExecuteScalarAsync<string>(
-                "SELECT TOP (1) ACTION_CODE FROM WIP_LOT_HIST WHERE LOT = @Lot ORDER BY SEQ DESC",
-                new { Lot = lotCode });
-            Assert.Equal("LOT_HOLD", action);
+            Assert.NotNull(hist);
+            Assert.Equal("LOT_BONUS", hist!.ACTION_CODE);
+            Assert.Equal(3, hist.TOTAL_OK_QTY);
+            Assert.Equal(0, hist.TOTAL_NG_QTY);
+            Assert.Equal("BONUS", hist.REASON_TYPE.Trim());
+            Assert.Equal(arrangement.ReasonSid, hist.REASON_SID);
+            Assert.Equal(arrangement.ReasonNo, hist.REASON_CODE);
+            Assert.Equal(3, hist.REASON_QTY);
         }
         finally
         {
@@ -104,65 +92,67 @@ public class LotHoldAsyncIntegrationTests
 
     [Fact]
     [Trait("Category", "Integration")]
-    public async Task LotHoldAsync_ShouldRejectSecondHoldWhenLotIsAlreadyHold()
+    public async Task LotScrapAsync_ShouldDecreaseLotQtyIncreaseNgQtyAndWriteReasonHistory()
     {
         var connectionString = TestConfiguration.LoadConnectionString();
         var arrangement = await LoadArrangementAsync(connectionString);
-        var lotCode = $"ITEST-HOLD2-{DateTime.UtcNow:yyyyMMddHHmmssfff}";
+        var lotCode = $"ITEST-SCRAP-{DateTime.UtcNow:yyyyMMddHHmmssfff}";
         var service = CreateService(connectionString, arrangement.AccountNo);
 
         try
         {
-            var createLotResult = await service.CreateLotAsync(
-                new WipCreateLotInputDto
-                {
-                    DATA_LINK_SID = 900000000821m,
-                    LOT = lotCode,
-                    ALIAS_LOT1 = $"{lotCode}-A1",
-                    ALIAS_LOT2 = $"{lotCode}-A2",
-                    WO = arrangement.WorkOrder,
-                    ROUTE_SID = arrangement.RouteSid,
-                    LOT_QTY = 2,
-                    REPORT_TIME = DateTime.Now,
-                    ACCOUNT_NO = arrangement.AccountNo,
-                    INPUT_FORM_NAME = "DcMateH5ApiTest",
-                    COMMENT = "LotHoldAsync duplicate hold test"
-                });
-            Assert.True(createLotResult.IsSuccess);
+            await CreateTestLotAsync(service, arrangement, lotCode, 5, 900000001011m);
 
-            var firstHoldResult = await service.LotHoldAsync(
-                new WipLotHoldInputDto
+            var result = await service.LotScrapAsync(
+                new WipLotScrapInputDto
                 {
                     LOT = lotCode,
+                    SCRAP_QTY = 2,
                     REASON_SID = arrangement.ReasonSid,
-                    DATA_LINK_SID = 900000000822m,
+                    DATA_LINK_SID = 900000001012m,
                     ACCOUNT_NO = arrangement.AccountNo,
-                    COMMENT = "First hold",
+                    COMMENT = "LotScrapAsync integration test",
                     INPUT_FORM_NAME = "DcMateH5ApiTest"
                 });
-            Assert.True(firstHoldResult.IsSuccess);
 
-            var exception = await Assert.ThrowsAsync<HttpStatusCodeException>(() => service.LotHoldAsync(
-                new WipLotHoldInputDto
-                {
-                    LOT = lotCode,
-                    REASON_SID = arrangement.ReasonSid,
-                    DATA_LINK_SID = 900000000823m,
-                    ACCOUNT_NO = arrangement.AccountNo,
-                    COMMENT = "Second hold",
-                    INPUT_FORM_NAME = "DcMateH5ApiTest"
-                }));
-
-            Assert.Equal(System.Net.HttpStatusCode.BadRequest, exception.StatusCode);
-            Assert.Contains("already on hold", exception.Message, StringComparison.OrdinalIgnoreCase);
+            Assert.True(result.IsSuccess);
+            Assert.True(result.Data);
 
             await using var conn = new SqlConnection(connectionString);
             await conn.OpenAsync();
 
-            var openHoldCount = await conn.ExecuteScalarAsync<int>(
-                "SELECT COUNT(1) FROM WIP_LOT_HOLD_HIST WHERE LOT = @Lot AND RELEASE_FLAG = 'N'",
+            var lotQty = await conn.QuerySingleAsync<LotQuantityRow>(
+                "SELECT LOT_QTY, NG_QTY, LAST_TRANS_TIME FROM WIP_LOT WHERE LOT = @Lot",
                 new { Lot = lotCode });
-            Assert.Equal(1, openHoldCount);
+            Assert.Equal(3, lotQty.LOT_QTY);
+            Assert.Equal(2, lotQty.NG_QTY);
+            Assert.NotNull(lotQty.LAST_TRANS_TIME);
+
+            var hist = await conn.QuerySingleOrDefaultAsync<ReasonHistoryRow>(
+                """
+                SELECT TOP (1)
+                    h.ACTION_CODE,
+                    h.TOTAL_OK_QTY,
+                    h.TOTAL_NG_QTY,
+                    r.REASON_TYPE,
+                    r.REASON_SID,
+                    r.REASON_CODE,
+                    r.REASON_QTY
+                FROM WIP_LOT_HIST h
+                INNER JOIN WIP_LOT_REASON_HIST r ON r.WIP_LOT_HIST_SID = h.WIP_LOT_HIST_SID
+                WHERE h.LOT = @Lot
+                ORDER BY h.SEQ DESC
+                """,
+                new { Lot = lotCode });
+
+            Assert.NotNull(hist);
+            Assert.Equal("LOT_NG", hist!.ACTION_CODE);
+            Assert.Equal(0, hist.TOTAL_OK_QTY);
+            Assert.Equal(2, hist.TOTAL_NG_QTY);
+            Assert.Equal("NG", hist.REASON_TYPE.Trim());
+            Assert.Equal(arrangement.ReasonSid, hist.REASON_SID);
+            Assert.Equal(arrangement.ReasonNo, hist.REASON_CODE);
+            Assert.Equal(2, hist.REASON_QTY);
         }
         finally
         {
@@ -172,50 +162,69 @@ public class LotHoldAsyncIntegrationTests
 
     [Fact]
     [Trait("Category", "Integration")]
-    public async Task LotHoldAsync_ShouldRejectDisabledOrMissingReason()
+    public async Task LotScrapAsync_ShouldRejectScrapQtyGreaterThanCurrentLotQty()
     {
         var connectionString = TestConfiguration.LoadConnectionString();
         var arrangement = await LoadArrangementAsync(connectionString);
-        var lotCode = $"ITEST-HOLD3-{DateTime.UtcNow:yyyyMMddHHmmssfff}";
+        var lotCode = $"ITEST-SCRAP2-{DateTime.UtcNow:yyyyMMddHHmmssfff}";
         var service = CreateService(connectionString, arrangement.AccountNo);
 
         try
         {
-            var createLotResult = await service.CreateLotAsync(
-                new WipCreateLotInputDto
-                {
-                    DATA_LINK_SID = 900000000831m,
-                    LOT = lotCode,
-                    ALIAS_LOT1 = $"{lotCode}-A1",
-                    ALIAS_LOT2 = $"{lotCode}-A2",
-                    WO = arrangement.WorkOrder,
-                    ROUTE_SID = arrangement.RouteSid,
-                    LOT_QTY = 2,
-                    REPORT_TIME = DateTime.Now,
-                    ACCOUNT_NO = arrangement.AccountNo,
-                    INPUT_FORM_NAME = "DcMateH5ApiTest",
-                    COMMENT = "LotHoldAsync invalid reason test"
-                });
-            Assert.True(createLotResult.IsSuccess);
+            await CreateTestLotAsync(service, arrangement, lotCode, 1, 900000001021m);
 
-            var exception = await Assert.ThrowsAsync<HttpStatusCodeException>(() => service.LotHoldAsync(
-                new WipLotHoldInputDto
+            var exception = await Assert.ThrowsAsync<HttpStatusCodeException>(() => service.LotScrapAsync(
+                new WipLotScrapInputDto
                 {
                     LOT = lotCode,
-                    REASON_SID = arrangement.InvalidReasonSid,
-                    DATA_LINK_SID = 900000000832m,
+                    SCRAP_QTY = 2,
+                    REASON_SID = arrangement.ReasonSid,
+                    DATA_LINK_SID = 900000001022m,
                     ACCOUNT_NO = arrangement.AccountNo,
-                    COMMENT = "Invalid reason",
+                    COMMENT = "LotScrapAsync insufficient quantity test",
                     INPUT_FORM_NAME = "DcMateH5ApiTest"
                 }));
 
             Assert.Equal(System.Net.HttpStatusCode.BadRequest, exception.StatusCode);
-            Assert.Contains("Reason not found or disabled", exception.Message, StringComparison.OrdinalIgnoreCase);
+
+            await using var conn = new SqlConnection(connectionString);
+            await conn.OpenAsync();
+            var lotQty = await conn.QuerySingleAsync<LotQuantityRow>(
+                "SELECT LOT_QTY, NG_QTY, LAST_TRANS_TIME FROM WIP_LOT WHERE LOT = @Lot",
+                new { Lot = lotCode });
+            Assert.Equal(1, lotQty.LOT_QTY);
+            Assert.Equal(0, lotQty.NG_QTY);
         }
         finally
         {
             await CleanupAsync(connectionString, arrangement.WorkOrder, arrangement.PreviousReleaseQty, lotCode);
         }
+    }
+
+    private static async Task CreateTestLotAsync(
+        LotBaseSettingService service,
+        TestArrangement arrangement,
+        string lotCode,
+        decimal lotQty,
+        decimal dataLinkSid)
+    {
+        var result = await service.CreateLotAsync(
+            new WipCreateLotInputDto
+            {
+                DATA_LINK_SID = dataLinkSid,
+                LOT = lotCode,
+                ALIAS_LOT1 = $"{lotCode}-A1",
+                ALIAS_LOT2 = $"{lotCode}-A2",
+                WO = arrangement.WorkOrder,
+                ROUTE_SID = arrangement.RouteSid,
+                LOT_QTY = lotQty,
+                REPORT_TIME = DateTime.Now,
+                ACCOUNT_NO = arrangement.AccountNo,
+                INPUT_FORM_NAME = "DcMateH5ApiTest",
+                COMMENT = "Lot quantity adjustment integration test"
+            });
+
+        Assert.True(result.IsSuccess);
     }
 
     private static LotBaseSettingService CreateService(string connectionString, string accountNo)
@@ -241,12 +250,7 @@ public class LotHoldAsyncIntegrationTests
                 CAST(r.WIP_ROUTE_SID AS decimal(18, 0)) AS RouteSid,
                 w.RELEASE_QTY AS PreviousReleaseQty,
                 CAST(ar.ADM_REASON_SID AS decimal(18, 0)) AS ReasonSid,
-                ar.REASON_NO AS ReasonNo,
-                ar.REASON_NAME AS ReasonName,
-                CAST(ISNULL(
-                    (SELECT TOP (1) ADM_REASON_SID FROM ADM_REASON WHERE ENABLE_FLAG <> 'Y' ORDER BY ADM_REASON_SID DESC),
-                    (SELECT ISNULL(MAX(ADM_REASON_SID), 0) + 999999 FROM ADM_REASON)
-                ) AS decimal(18, 0)) AS InvalidReasonSid
+                ar.REASON_NO AS ReasonNo
             FROM WIP_WO w
             INNER JOIN WIP_ROUTE r ON r.WIP_ROUTE_NO = w.ROUTE_NO OR r.WIP_ROUTE_NAME = w.ROUTE_NO
             CROSS JOIN (
@@ -256,7 +260,7 @@ public class LotHoldAsyncIntegrationTests
                 ORDER BY USER_SID DESC
             ) u
             CROSS JOIN (
-                SELECT TOP (1) ADM_REASON_SID, REASON_NO, REASON_NAME
+                SELECT TOP (1) ADM_REASON_SID, REASON_NO
                 FROM ADM_REASON
                 WHERE ENABLE_FLAG = 'Y'
                 ORDER BY ADM_REASON_SID
@@ -274,7 +278,15 @@ public class LotHoldAsyncIntegrationTests
         await conn.OpenAsync();
         await using var tx = await conn.BeginTransactionAsync();
 
-        await conn.ExecuteAsync("DELETE FROM WIP_LOT_HOLD_HIST WHERE LOT = @Lot", new { Lot = lotCode }, tx);
+        await conn.ExecuteAsync(
+            """
+            DELETE r
+            FROM WIP_LOT_REASON_HIST r
+            INNER JOIN WIP_LOT_HIST h ON h.WIP_LOT_HIST_SID = r.WIP_LOT_HIST_SID
+            WHERE h.LOT = @Lot
+            """,
+            new { Lot = lotCode },
+            tx);
         await conn.ExecuteAsync("DELETE FROM WIP_LOT_HIST WHERE LOT = @Lot", new { Lot = lotCode }, tx);
         await conn.ExecuteAsync("DELETE FROM WIP_LOT WHERE LOT = @Lot", new { Lot = lotCode }, tx);
         await conn.ExecuteAsync(
@@ -293,23 +305,24 @@ public class LotHoldAsyncIntegrationTests
         public decimal? PreviousReleaseQty { get; init; }
         public decimal ReasonSid { get; init; }
         public string ReasonNo { get; init; } = null!;
-        public string ReasonName { get; init; } = null!;
-        public decimal InvalidReasonSid { get; init; }
     }
 
-    private sealed class LotHoldRow
+    private sealed class LotQuantityRow
     {
-        public decimal HOLD_REASON_SID { get; init; }
-        public string HOLD_REASON_CODE { get; init; } = null!;
-        public string HOLD_REASON_NAME { get; init; } = null!;
-        public string RELEASE_FLAG { get; init; } = null!;
-        public decimal PRE_LOT_STATUS_SID { get; init; }
-    }
-
-    private sealed class LotTimeRow
-    {
+        public decimal LOT_QTY { get; init; }
+        public decimal NG_QTY { get; init; }
         public DateTime? LAST_TRANS_TIME { get; init; }
-        public DateTime? LAST_STATUS_CHANGE_TIME { get; init; }
+    }
+
+    private sealed class ReasonHistoryRow
+    {
+        public string ACTION_CODE { get; init; } = null!;
+        public decimal TOTAL_OK_QTY { get; init; }
+        public decimal TOTAL_NG_QTY { get; init; }
+        public string REASON_TYPE { get; init; } = null!;
+        public decimal REASON_SID { get; init; }
+        public string REASON_CODE { get; init; } = null!;
+        public decimal REASON_QTY { get; init; }
     }
 
     private sealed class FakeCurrentUserAccessor(string accountNo) : ICurrentUserAccessor
@@ -318,9 +331,9 @@ public class LotHoldAsyncIntegrationTests
         {
             var claims = new[]
             {
-                new Claim(DcMateClassLibrary.Models.AppClaimTypes.Account, accountNo),
-                new Claim(DcMateClassLibrary.Models.AppClaimTypes.UserId, Guid.NewGuid().ToString()),
-                new Claim(DcMateClassLibrary.Models.AppClaimTypes.UserLv, "1")
+                new Claim(AppClaimTypes.Account, accountNo),
+                new Claim(AppClaimTypes.UserId, Guid.NewGuid().ToString()),
+                new Claim(AppClaimTypes.UserLv, "1")
             };
 
             return CurrentUserSnapshot.From(new ClaimsPrincipal(new ClaimsIdentity(claims, "Test")));
@@ -344,9 +357,9 @@ public class LotHoldAsyncIntegrationTests
             using var doc = JsonDocument.Parse(json);
 
             return doc.RootElement
-                .GetProperty("ConnectionStrings")
-                .GetProperty("Connection")
-                .GetString()
+                       .GetProperty("ConnectionStrings")
+                       .GetProperty("Connection")
+                       .GetString()
                    ?? throw new InvalidOperationException("Connection string not found.");
         }
 
