@@ -719,7 +719,6 @@ ORDER BY FIELD_ORDER;";
         return fieldConfigs
             .Where(c => !string.IsNullOrWhiteSpace(c.COLUMN_NAME))
             .Where(c => returnSet.Contains(c.COLUMN_NAME))
-            .Where(c => !_excludeColumns.Contains(c.COLUMN_NAME, StringComparer.OrdinalIgnoreCase))
             .Select(c =>
             {
                 var col = returnColumns.First(x => string.Equals(x.COLUMN_NAME, c.COLUMN_NAME, StringComparison.OrdinalIgnoreCase));
