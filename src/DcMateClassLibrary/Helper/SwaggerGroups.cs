@@ -20,6 +20,7 @@ public static class SwaggerGroups
     public const string Menu = nameof(Menu);
 
     public const string Wip = nameof(Wip);
+    public const string Eqm = nameof(Eqm);
     public const string Test = nameof(Test);
 
     public static readonly Dictionary<string, string> DisplayNames = new()
@@ -39,6 +40,7 @@ public static class SwaggerGroups
         { Menu, "選單功能" },
 
         { Wip, "在製" },
+        { Eqm, "機台" },
         { Test, "測試" }
     };
 }

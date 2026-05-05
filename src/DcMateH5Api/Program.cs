@@ -9,6 +9,7 @@ using DbExtensions.DbExecutor.Interface;
 using DbExtensions.DbExecutor.Service;
 using DcMateClassLibrary.Helper;
 using DcMateH5.Abstractions.CurrentUser;
+using DcMateH5.Abstractions.Eqm;
 using DcMateH5.Abstractions.Form.Form;
 using DcMateH5.Abstractions.Form.FormLogic;
 using DcMateH5.Abstractions.Form.Options;
@@ -21,6 +22,7 @@ using DcMateH5.Abstractions.Token;
 using DcMateH5.Abstractions.Token.Model;
 using DcMateH5.Abstractions.Wip;
 using DcMateH5.Infrastructure;
+using DcMateH5.Infrastructure.Eqm;
 using DcMateH5.Infrastructure.Form.Form;
 using DcMateH5.Infrastructure.Form.FormLogic;
 using DcMateH5.Infrastructure.Form.Transaction;
@@ -149,6 +151,9 @@ builder.Services.AddScoped<IMenuService, MenuService>();
 builder.Services.AddScoped<ISelectDtoService, SelectDtoService>();
 builder.Services.AddScoped<IBaseInfoCheckExistService, BaseInfoCheckExistService>();
 builder.Services.AddScoped<IWipBaseSettingService, WipBaseSettingService>();
+
+// Eqm
+builder.Services.AddScoped<IEqmStatusService, EqmStatusService>();
 builder.Services.AddScoped<ILotBaseSettingService, LotBaseSettingService>();
 
 // 工作站與交易
@@ -188,7 +193,8 @@ var swaggerGroups = new[]
     SwaggerGroups.ApiStatus, SwaggerGroups.Enum, SwaggerGroups.Log,
     SwaggerGroups.Security, SwaggerGroups.Menu, SwaggerGroups.LanguageKeywords,
     SwaggerGroups.Form, SwaggerGroups.FormWithMasterDetail, SwaggerGroups.FormWithMultipleMapping,
-    SwaggerGroups.FormTableValueFunction, SwaggerGroups.FormView, SwaggerGroups.Wip
+    SwaggerGroups.FormTableValueFunction, SwaggerGroups.FormView, SwaggerGroups.Wip,
+    SwaggerGroups.Eqm
 };
 
 builder.Services.AddEndpointsApiExplorer();
@@ -197,7 +203,8 @@ builder.Services.AddSwaggerGen(options =>
     options.SwaggerDoc("v1", new OpenApiInfo { Title = "API (All)", Version = "v1" });
     foreach (var g in swaggerGroups)
     {
-        options.SwaggerDoc(g, new OpenApiInfo { Title = $"{SwaggerGroups.DisplayNames[g]} API", Version = "v1" });
+        var displayName = SwaggerGroups.DisplayNames.TryGetValue(g, out var name) ? name : g;
+        options.SwaggerDoc(g, new OpenApiInfo { Title = $"{displayName} API", Version = "v1" });
     }
 
     var xml = $"{Assembly.GetExecutingAssembly().GetName().Name}.xml";
