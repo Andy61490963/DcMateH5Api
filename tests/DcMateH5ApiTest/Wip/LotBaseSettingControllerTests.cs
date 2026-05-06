@@ -143,6 +143,71 @@ public class LotBaseSettingControllerTests
         Assert.True(result.Data);
     }
 
+    [Fact]
+    public async Task LotStateChange_ShouldReturnOkResult()
+    {
+        var controller = new WipLotSettingController(new FakeLotBaseSettingService());
+
+        var actionResult = await controller.LotStateChange(new WipLotStateChangeInputDto(), CancellationToken.None);
+
+        var okResult = Assert.IsType<OkObjectResult>(actionResult);
+        var result = Assert.IsType<Result<bool>>(okResult.Value);
+        Assert.True(result.IsSuccess);
+        Assert.True(result.Data);
+    }
+
+    [Fact]
+    public async Task LotTerminated_ShouldReturnOkResult()
+    {
+        var controller = new WipLotSettingController(new FakeLotBaseSettingService());
+
+        var actionResult = await controller.LotTerminated(new WipLotStatusActionInputDto(), CancellationToken.None);
+
+        var okResult = Assert.IsType<OkObjectResult>(actionResult);
+        var result = Assert.IsType<Result<bool>>(okResult.Value);
+        Assert.True(result.IsSuccess);
+        Assert.True(result.Data);
+    }
+
+    [Fact]
+    public async Task LotUnTerminated_ShouldReturnOkResult()
+    {
+        var controller = new WipLotSettingController(new FakeLotBaseSettingService());
+
+        var actionResult = await controller.LotUnTerminated(new WipLotStatusActionInputDto(), CancellationToken.None);
+
+        var okResult = Assert.IsType<OkObjectResult>(actionResult);
+        var result = Assert.IsType<Result<bool>>(okResult.Value);
+        Assert.True(result.IsSuccess);
+        Assert.True(result.Data);
+    }
+
+    [Fact]
+    public async Task LotFinished_ShouldReturnOkResult()
+    {
+        var controller = new WipLotSettingController(new FakeLotBaseSettingService());
+
+        var actionResult = await controller.LotFinished(new WipLotStatusActionInputDto(), CancellationToken.None);
+
+        var okResult = Assert.IsType<OkObjectResult>(actionResult);
+        var result = Assert.IsType<Result<bool>>(okResult.Value);
+        Assert.True(result.IsSuccess);
+        Assert.True(result.Data);
+    }
+
+    [Fact]
+    public async Task LotUnFinished_ShouldReturnOkResult()
+    {
+        var controller = new WipLotSettingController(new FakeLotBaseSettingService());
+
+        var actionResult = await controller.LotUnFinished(new WipLotStatusActionInputDto(), CancellationToken.None);
+
+        var okResult = Assert.IsType<OkObjectResult>(actionResult);
+        var result = Assert.IsType<Result<bool>>(okResult.Value);
+        Assert.True(result.IsSuccess);
+        Assert.True(result.Data);
+    }
+
     private sealed class FakeLotBaseSettingService : ILotBaseSettingService
     {
         public Task<Result<bool>> CreateLotAsync(WipCreateLotInputDto input, CancellationToken ct = default)
@@ -176,6 +241,21 @@ public class LotBaseSettingControllerTests
             => Task.FromResult(Result<bool>.Ok(true));
 
         public Task<Result<bool>> LotScrapAsync(WipLotScrapInputDto input, CancellationToken ct = default)
+            => Task.FromResult(Result<bool>.Ok(true));
+
+        public Task<Result<bool>> LotStateChangeAsync(WipLotStateChangeInputDto input, CancellationToken ct = default)
+            => Task.FromResult(Result<bool>.Ok(true));
+
+        public Task<Result<bool>> LotTerminatedAsync(WipLotStatusActionInputDto input, CancellationToken ct = default)
+            => Task.FromResult(Result<bool>.Ok(true));
+
+        public Task<Result<bool>> LotUnTerminatedAsync(WipLotStatusActionInputDto input, CancellationToken ct = default)
+            => Task.FromResult(Result<bool>.Ok(true));
+
+        public Task<Result<bool>> LotFinishedAsync(WipLotStatusActionInputDto input, CancellationToken ct = default)
+            => Task.FromResult(Result<bool>.Ok(true));
+
+        public Task<Result<bool>> LotUnFinishedAsync(WipLotStatusActionInputDto input, CancellationToken ct = default)
             => Task.FromResult(Result<bool>.Ok(true));
     }
 
@@ -212,6 +292,21 @@ public class LotBaseSettingControllerTests
             => throw new HttpStatusCodeException(HttpStatusCode.BadRequest, "bad request");
 
         public Task<Result<bool>> LotScrapAsync(WipLotScrapInputDto input, CancellationToken ct = default)
+            => throw new HttpStatusCodeException(HttpStatusCode.BadRequest, "bad request");
+
+        public Task<Result<bool>> LotStateChangeAsync(WipLotStateChangeInputDto input, CancellationToken ct = default)
+            => throw new HttpStatusCodeException(HttpStatusCode.BadRequest, "bad request");
+
+        public Task<Result<bool>> LotTerminatedAsync(WipLotStatusActionInputDto input, CancellationToken ct = default)
+            => throw new HttpStatusCodeException(HttpStatusCode.BadRequest, "bad request");
+
+        public Task<Result<bool>> LotUnTerminatedAsync(WipLotStatusActionInputDto input, CancellationToken ct = default)
+            => throw new HttpStatusCodeException(HttpStatusCode.BadRequest, "bad request");
+
+        public Task<Result<bool>> LotFinishedAsync(WipLotStatusActionInputDto input, CancellationToken ct = default)
+            => throw new HttpStatusCodeException(HttpStatusCode.BadRequest, "bad request");
+
+        public Task<Result<bool>> LotUnFinishedAsync(WipLotStatusActionInputDto input, CancellationToken ct = default)
             => throw new HttpStatusCodeException(HttpStatusCode.BadRequest, "bad request");
     }
 }

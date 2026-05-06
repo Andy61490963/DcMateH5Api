@@ -27,6 +27,11 @@ public class WipLotSettingController : ControllerBase
         public const string LotHoldRelease = "LotHoldRelease";
         public const string LotBonus = "LotBonus";
         public const string LotScrap = "LotScrap";
+        public const string LotStateChange = "LotStateChange";
+        public const string LotTerminated = "LotTerminated";
+        public const string LotUnTerminated = "LotUnTerminated";
+        public const string LotFinished = "LotFinished";
+        public const string LotUnFinished = "LotUnFinished";
     }
 
     private readonly ILotBaseSettingService _lotBaseSettingService;
@@ -295,6 +300,141 @@ public class WipLotSettingController : ControllerBase
         try
         {
             return Ok(await _lotBaseSettingService.LotScrapAsync(input, ct));
+        }
+        catch (HttpStatusCodeException ex)
+        {
+            return BuildErrorResult(ex.StatusCode, ex.Message);
+        }
+        catch (Exception ex)
+        {
+            return BuildErrorResult(HttpStatusCode.InternalServerError, ex.Message);
+        }
+    }
+
+    /// <summary>
+    /// 變更 LOT 狀態，會寫入狀態異動履歷與原因履歷。
+    /// </summary>
+    /// <param name="input">LOT 狀態變更資料。</param>
+    /// <param name="ct"></param>
+    /// <returns></returns>
+    [HttpPost(Routes.LotStateChange)]
+    [ProducesResponseType(typeof(Result<bool>), StatusCodes.Status200OK)]
+    [ProducesResponseType(typeof(Result<bool>), StatusCodes.Status400BadRequest)]
+    [ProducesResponseType(typeof(Result<bool>), StatusCodes.Status409Conflict)]
+    [ProducesResponseType(typeof(Result<bool>), StatusCodes.Status500InternalServerError)]
+    public async Task<IActionResult> LotStateChange([FromBody] WipLotStateChangeInputDto input, CancellationToken ct)
+    {
+        try
+        {
+            return Ok(await _lotBaseSettingService.LotStateChangeAsync(input, ct));
+        }
+        catch (HttpStatusCodeException ex)
+        {
+            return BuildErrorResult(ex.StatusCode, ex.Message);
+        }
+        catch (Exception ex)
+        {
+            return BuildErrorResult(HttpStatusCode.InternalServerError, ex.Message);
+        }
+    }
+
+    /// <summary>
+    /// 將 Wait 狀態 LOT 結束為 Terminated。
+    /// </summary>
+    /// <param name="input">LOT 狀態動作資料。</param>
+    /// <param name="ct"></param>
+    /// <returns></returns>
+    [HttpPost(Routes.LotTerminated)]
+    [ProducesResponseType(typeof(Result<bool>), StatusCodes.Status200OK)]
+    [ProducesResponseType(typeof(Result<bool>), StatusCodes.Status400BadRequest)]
+    [ProducesResponseType(typeof(Result<bool>), StatusCodes.Status409Conflict)]
+    [ProducesResponseType(typeof(Result<bool>), StatusCodes.Status500InternalServerError)]
+    public async Task<IActionResult> LotTerminated([FromBody] WipLotStatusActionInputDto input, CancellationToken ct)
+    {
+        try
+        {
+            return Ok(await _lotBaseSettingService.LotTerminatedAsync(input, ct));
+        }
+        catch (HttpStatusCodeException ex)
+        {
+            return BuildErrorResult(ex.StatusCode, ex.Message);
+        }
+        catch (Exception ex)
+        {
+            return BuildErrorResult(HttpStatusCode.InternalServerError, ex.Message);
+        }
+    }
+
+    /// <summary>
+    /// 將 Terminated 狀態 LOT 還原為 Wait。
+    /// </summary>
+    /// <param name="input">LOT 狀態動作資料。</param>
+    /// <param name="ct"></param>
+    /// <returns></returns>
+    [HttpPost(Routes.LotUnTerminated)]
+    [ProducesResponseType(typeof(Result<bool>), StatusCodes.Status200OK)]
+    [ProducesResponseType(typeof(Result<bool>), StatusCodes.Status400BadRequest)]
+    [ProducesResponseType(typeof(Result<bool>), StatusCodes.Status409Conflict)]
+    [ProducesResponseType(typeof(Result<bool>), StatusCodes.Status500InternalServerError)]
+    public async Task<IActionResult> LotUnTerminated([FromBody] WipLotStatusActionInputDto input, CancellationToken ct)
+    {
+        try
+        {
+            return Ok(await _lotBaseSettingService.LotUnTerminatedAsync(input, ct));
+        }
+        catch (HttpStatusCodeException ex)
+        {
+            return BuildErrorResult(ex.StatusCode, ex.Message);
+        }
+        catch (Exception ex)
+        {
+            return BuildErrorResult(HttpStatusCode.InternalServerError, ex.Message);
+        }
+    }
+
+    /// <summary>
+    /// 將 Wait 狀態 LOT 完工為 Finished。
+    /// </summary>
+    /// <param name="input">LOT 狀態動作資料。</param>
+    /// <param name="ct"></param>
+    /// <returns></returns>
+    [HttpPost(Routes.LotFinished)]
+    [ProducesResponseType(typeof(Result<bool>), StatusCodes.Status200OK)]
+    [ProducesResponseType(typeof(Result<bool>), StatusCodes.Status400BadRequest)]
+    [ProducesResponseType(typeof(Result<bool>), StatusCodes.Status409Conflict)]
+    [ProducesResponseType(typeof(Result<bool>), StatusCodes.Status500InternalServerError)]
+    public async Task<IActionResult> LotFinished([FromBody] WipLotStatusActionInputDto input, CancellationToken ct)
+    {
+        try
+        {
+            return Ok(await _lotBaseSettingService.LotFinishedAsync(input, ct));
+        }
+        catch (HttpStatusCodeException ex)
+        {
+            return BuildErrorResult(ex.StatusCode, ex.Message);
+        }
+        catch (Exception ex)
+        {
+            return BuildErrorResult(HttpStatusCode.InternalServerError, ex.Message);
+        }
+    }
+
+    /// <summary>
+    /// 將 Finished 狀態 LOT 還原為 Wait。
+    /// </summary>
+    /// <param name="input">LOT 狀態動作資料。</param>
+    /// <param name="ct"></param>
+    /// <returns></returns>
+    [HttpPost(Routes.LotUnFinished)]
+    [ProducesResponseType(typeof(Result<bool>), StatusCodes.Status200OK)]
+    [ProducesResponseType(typeof(Result<bool>), StatusCodes.Status400BadRequest)]
+    [ProducesResponseType(typeof(Result<bool>), StatusCodes.Status409Conflict)]
+    [ProducesResponseType(typeof(Result<bool>), StatusCodes.Status500InternalServerError)]
+    public async Task<IActionResult> LotUnFinished([FromBody] WipLotStatusActionInputDto input, CancellationToken ct)
+    {
+        try
+        {
+            return Ok(await _lotBaseSettingService.LotUnFinishedAsync(input, ct));
         }
         catch (HttpStatusCodeException ex)
         {

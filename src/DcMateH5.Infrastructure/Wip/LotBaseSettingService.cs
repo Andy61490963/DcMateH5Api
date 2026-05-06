@@ -81,6 +81,19 @@ public class LotBaseSettingService : ILotBaseSettingService
         public const string ScrapReasonType = "NG";
     }
 
+    private static class LotStateChangeCodes
+    {
+        public const string StateChangeAction = "LOT_STATE_CHANGE";
+        public const string TerminatedAction = "LOT_TERMINATED";
+        public const string UnTerminatedAction = "LOT_UNTERMINATED";
+        public const string FinishedAction = "LOT_FINISHED";
+        public const string UnFinishedAction = "LOT_UNFINISHED";
+        public const string NormalReasonType = "NORMAL";
+        public const string WaitStatus = "Wait";
+        public const string TerminatedStatus = "Terminated";
+        public const string FinishedStatus = "Finished";
+    }
+
     private readonly SQLGenerateHelper _sqlHelper;
     private readonly ISelectDtoService _selectDtoService;
 
@@ -242,6 +255,109 @@ public class LotBaseSettingService : ILotBaseSettingService
             ct: ct);
 
         return Result<bool>.Ok(true);
+    }
+
+    public async Task<Result<bool>> LotStateChangeAsync(WipLotStateChangeInputDto input, CancellationToken ct = default)
+    {
+        await _sqlHelper.TxAsync(
+            async (conn, tx, innerCt) =>
+            {
+                await LotStateChangeInTxAsync(
+                    conn,
+                    tx,
+                    input,
+                    LotStateChangeCodes.StateChangeAction,
+                    input.NEW_STATE_CODE,
+                    allowedCurrentStatusCode: null,
+                    innerCt);
+            },
+            isolation: IsolationLevel.ReadCommitted,
+            ct: ct);
+
+        return Result<bool>.Ok(true);
+    }
+
+    public async Task<Result<bool>> LotTerminatedAsync(WipLotStatusActionInputDto input, CancellationToken ct = default)
+    {
+        await ExecuteLotStatusActionAsync(
+            input,
+            LotStateChangeCodes.TerminatedAction,
+            LotStateChangeCodes.TerminatedStatus,
+            LotStateChangeCodes.WaitStatus,
+            ct);
+
+        return Result<bool>.Ok(true);
+    }
+
+    public async Task<Result<bool>> LotUnTerminatedAsync(WipLotStatusActionInputDto input, CancellationToken ct = default)
+    {
+        await ExecuteLotStatusActionAsync(
+            input,
+            LotStateChangeCodes.UnTerminatedAction,
+            LotStateChangeCodes.WaitStatus,
+            LotStateChangeCodes.TerminatedStatus,
+            ct);
+
+        return Result<bool>.Ok(true);
+    }
+
+    public async Task<Result<bool>> LotFinishedAsync(WipLotStatusActionInputDto input, CancellationToken ct = default)
+    {
+        await ExecuteLotStatusActionAsync(
+            input,
+            LotStateChangeCodes.FinishedAction,
+            LotStateChangeCodes.FinishedStatus,
+            LotStateChangeCodes.WaitStatus,
+            ct);
+
+        return Result<bool>.Ok(true);
+    }
+
+    public async Task<Result<bool>> LotUnFinishedAsync(WipLotStatusActionInputDto input, CancellationToken ct = default)
+    {
+        await ExecuteLotStatusActionAsync(
+            input,
+            LotStateChangeCodes.UnFinishedAction,
+            LotStateChangeCodes.WaitStatus,
+            LotStateChangeCodes.FinishedStatus,
+            ct);
+
+        return Result<bool>.Ok(true);
+    }
+
+    private Task ExecuteLotStatusActionAsync(
+        WipLotStatusActionInputDto input,
+        string actionCode,
+        string targetStatusCode,
+        string allowedCurrentStatusCode,
+        CancellationToken ct)
+    {
+        var stateChangeInput = new WipLotStateChangeInputDto
+        {
+            LOT = input.LOT,
+            NEW_STATE_CODE = targetStatusCode,
+            REASON_SID = input.REASON_SID,
+            DATA_LINK_SID = input.DATA_LINK_SID,
+            REPORT_TIME = input.REPORT_TIME,
+            ACCOUNT_NO = input.ACCOUNT_NO,
+            COMMENT = input.COMMENT,
+            INPUT_FORM_NAME = input.INPUT_FORM_NAME
+        };
+
+        return _sqlHelper.TxAsync(
+            async (conn, tx, innerCt) =>
+            {
+                await LotStateChangeInTxAsync(
+                    conn,
+                    tx,
+                    stateChangeInput,
+                    actionCode,
+                    targetStatusCode,
+                    allowedCurrentStatusCode,
+                    innerCt);
+            },
+            isolation: IsolationLevel.ReadCommitted,
+            ct: ct);
     }
 
     /// <summary>
@@ -1595,6 +1711,99 @@ public class LotBaseSettingService : ILotBaseSettingService
         await UpdateLotScrapQuantityInTxAsync(conn, tx, lot, input.SCRAP_QTY, input.ACCOUNT_NO, createTime, ct);
     }
 
+    /// <summary>
+    /// 變更 LOT 狀態的共用核心。
+    /// 舊案 LotStateChange、LotTerminated、LotUnTerminated、LotFinished、LotUnFinished 都是同一組語意：
+    /// 寫入 WIP_LOT_HIST、WIP_LOT_REASON_HIST，並在同一個交易中更新 WIP_LOT 的狀態與交易時間。
+    /// </summary>
+    private async Task LotStateChangeInTxAsync(
+        SqlConnection conn,
+        SqlTransaction tx,
+        WipLotStateChangeInputDto input,
+        string actionCode,
+        string targetStatusCode,
+        string? allowedCurrentStatusCode,
+        CancellationToken ct)
+    {
+        ValidateLotStateChangeInput(input, targetStatusCode);
+
+        var lot = await GetLotByCodeInTxAsync(conn, tx, input.LOT, ct);
+        if (!string.IsNullOrWhiteSpace(allowedCurrentStatusCode)
+            && !string.Equals(lot.LOT_STATUS_CODE, allowedCurrentStatusCode, StringComparison.OrdinalIgnoreCase))
+        {
+            throw new HttpStatusCodeException(
+                System.Net.HttpStatusCode.BadRequest,
+                $"LOT status must be {allowedCurrentStatusCode}: {input.LOT}");
+        }
+
+        var user = await GetUserByAccountAsync(input.ACCOUNT_NO, ct);
+        var operation = await GetOperationBySidAsync(lot.OPERATION_SID, ct);
+        var currentStatus = await GetLotStatusBySidAsync(lot.LOT_STATUS_SID, ct);
+        var targetStatus = await GetLotStatusAsync(targetStatusCode, ct);
+        var reason = await GetReasonBySidAsync(input.REASON_SID, ct);
+        var reportTime = input.REPORT_TIME ?? await GetDbNowInTxAsync(conn, tx, ct);
+        var createTime = await GetDbNowInTxAsync(conn, tx, ct);
+        var operationLinkSid = ParseOperationLinkSid(lot.CUR_OPERATION_LINK_SID, lot.LOT);
+
+        var histSid = RandomHelper.GenerateRandomDecimal();
+        var hist = BuildLotHistoryRecord(
+            histSid,
+            seq: await GetNextLotHistorySequenceInTxAsync(conn, tx, lot.LOT_SID, ct),
+            dataLinkSid: input.DATA_LINK_SID,
+            lot: lot,
+            currentStatus: targetStatus,
+            previousStatus: currentStatus,
+            operationLinkSid: operationLinkSid,
+            operationSid: operation.WIP_OPERATION_SID,
+            operationCode: operation.WIP_OPERATION_NO,
+            operationName: operation.WIP_OPERATION_NAME ?? operation.WIP_OPERATION_NO,
+            operationSeq: lot.OPERATION_SEQ,
+            operationFinish: Flags.OperationFinishNo,
+            totalOkQty: 0,
+            totalNgQty: 0,
+            totalDefectQty: 0,
+            totalUserCount: 0,
+            routeSid: lot.ROUTE_SID,
+            factorySid: lot.FACTORY_SID,
+            actionCode: actionCode,
+            controlMode: string.Empty,
+            inputFormName: input.INPUT_FORM_NAME,
+            createUser: input.ACCOUNT_NO,
+            createTime: createTime,
+            reportTime: reportTime,
+            preReportTime: lot.LAST_TRANS_TIME ?? lot.LAST_STATUS_CHANGE_TIME,
+            preStatusChangeTime: lot.LAST_STATUS_CHANGE_TIME,
+            lotQty1: lot.LOT_QTY1,
+            lotQty2: lot.LOT_QTY2,
+            location: lot.LOCATION,
+            operFirstCheckInTime: lot.CUR_OPER_FIRST_IN_TIME,
+            shiftSid: user.SHIFT_SID ?? 0,
+            workgroupSid: user.WORKGROUP_SID ?? 0,
+            lotSubStatusCode: lot.LOT_SUB_STATUS_CODE,
+            comment: input.COMMENT ?? string.Empty);
+
+        var reasonHist = BuildLotReasonHistoryRecord(
+            histSid,
+            LotStateChangeCodes.NormalReasonType,
+            reason,
+            reasonQty: 0,
+            input.COMMENT);
+
+        var originalEnableAuditColumns = _sqlHelper.EnableAuditColumns;
+        _sqlHelper.EnableAuditColumns = false;
+        try
+        {
+            await _sqlHelper.InsertInTxAsync(conn, tx, hist, ct: ct);
+            await _sqlHelper.InsertInTxAsync(conn, tx, reasonHist, ct: ct);
+        }
+        finally
+        {
+            _sqlHelper.EnableAuditColumns = originalEnableAuditColumns;
+        }
+
+        await UpdateLotStatusInTxAsync(conn, tx, lot, targetStatus, input.ACCOUNT_NO, createTime, reportTime, ct);
+    }
+
     private static void ValidateLotBonusInput(WipLotBonusInputDto input)
     {
         if (string.IsNullOrWhiteSpace(input.LOT))
@@ -1623,6 +1832,24 @@ public class LotBaseSettingService : ILotBaseSettingService
 
         if (input.SCRAP_QTY <= 0)
             throw new HttpStatusCodeException(System.Net.HttpStatusCode.BadRequest, "SCRAP_QTY must be greater than 0.");
+
+        if (input.REASON_SID <= 0)
+            throw new HttpStatusCodeException(System.Net.HttpStatusCode.BadRequest, "REASON_SID must be greater than 0.");
+
+        if (input.DATA_LINK_SID <= 0)
+            throw new HttpStatusCodeException(System.Net.HttpStatusCode.BadRequest, "DATA_LINK_SID must be greater than 0.");
+    }
+
+    private static void ValidateLotStateChangeInput(WipLotStateChangeInputDto input, string targetStatusCode)
+    {
+        if (string.IsNullOrWhiteSpace(input.LOT))
+            throw new HttpStatusCodeException(System.Net.HttpStatusCode.BadRequest, "LOT is required.");
+
+        if (string.IsNullOrWhiteSpace(targetStatusCode))
+            throw new HttpStatusCodeException(System.Net.HttpStatusCode.BadRequest, "NEW_STATE_CODE is required.");
+
+        if (string.IsNullOrWhiteSpace(input.ACCOUNT_NO))
+            throw new HttpStatusCodeException(System.Net.HttpStatusCode.BadRequest, "ACCOUNT_NO is required.");
 
         if (input.REASON_SID <= 0)
             throw new HttpStatusCodeException(System.Net.HttpStatusCode.BadRequest, "REASON_SID must be greater than 0.");
