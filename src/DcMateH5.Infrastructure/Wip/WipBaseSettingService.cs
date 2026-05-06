@@ -335,6 +335,7 @@ public class WipBaseSettingService : IWipBaseSettingService
 
         await DeleteNgReasonDetailsByDetailSidInTxAsync(conn, tx, detailSid, ct);
         await UpsertNgReasonDetailsInTxAsync(conn, tx, detailSid, input.NgDetails, ct);
+        await UpdateHistDetailEditTimeInTxAsync(conn, tx, detailSid, ct);
 
         await RecalculateAndUpdateHistTotalQtyInTxAsync(conn, tx, input.WIP_OPI_WDOEACICO_HIST_SID, ct);
     }
@@ -659,6 +660,26 @@ public class WipBaseSettingService : IWipBaseSettingService
             .AndEq(x => x.WIP_OPI_WDOEACICO_HIST_DETAIL_SID!, detailSid);
 
         await _sqlHelper.DeleteWhereInTxAsync(conn, tx, where, ct: ct);
+    }
+
+    private static async Task UpdateHistDetailEditTimeInTxAsync(SqlConnection conn, SqlTransaction tx, decimal detailSid, CancellationToken ct)
+    {
+        using var cmd = conn.CreateCommand();
+        cmd.Transaction = tx;
+        cmd.CommandText = """
+                          UPDATE [WIP_OPI_WDOEACICO_HIST_DETAIL]
+                          SET [EDIT_TIME] = SYSDATETIME()
+                          WHERE [WIP_OPI_WDOEACICO_HIST_DETAIL_SID] = @DetailSid;
+                          """;
+        cmd.Parameters.Add(new SqlParameter("@DetailSid", SqlDbType.Decimal) { Value = detailSid });
+
+        var affectedRows = await cmd.ExecuteNonQueryAsync(ct);
+        if (affectedRows != 1)
+        {
+            throw new HttpStatusCodeException(
+                System.Net.HttpStatusCode.BadRequest,
+                $"Hist detail SID {detailSid} does not exist.");
+        }
     }
 
     /// <summary>
