@@ -95,6 +95,60 @@ public class CreateLotAsyncIntegrationTests
         }
     }
 
+    [Fact]
+    [Trait("Category", "Integration")]
+    public async Task CreateLotAsync_ShouldUseOperationSidWhenProvided()
+    {
+        var connectionString = TestConfiguration.LoadConnectionString();
+        var arrangement = await LoadArrangementWithSecondOperationAsync(connectionString);
+        var lotCode = $"ITEST-OP-{DateTime.UtcNow:yyyyMMddHHmmssfff}";
+        const decimal lotQty = 2m;
+
+        var service = CreateService(connectionString, arrangement.AccountNo);
+
+        try
+        {
+            var result = await service.CreateLotAsync(
+                new WipCreateLotInputDto
+                {
+                    DATA_LINK_SID = 900000000101m,
+                    LOT = lotCode,
+                    WO = arrangement.WorkOrder,
+                    ROUTE_SID = arrangement.RouteSid,
+                    OPERATION_SID = arrangement.OperationSid,
+                    LOT_QTY = lotQty,
+                    REPORT_TIME = DateTime.Now,
+                    ACCOUNT_NO = arrangement.AccountNo,
+                    INPUT_FORM_NAME = "DcMateH5ApiTest",
+                    COMMENT = "CreateLotAsync operation sid integration test"
+                });
+
+            Assert.True(result.IsSuccess);
+            Assert.True(result.Data);
+
+            await using var conn = new SqlConnection(connectionString);
+            await conn.OpenAsync();
+
+            var lot = await conn.QuerySingleOrDefaultAsync<CreatedLotRow>(
+                """
+                SELECT LOT, WO, PART_NO, LOT_QTY, LOT_STATUS_CODE, CUR_OPER_FIRST_IN_FLAG,
+                       OPERATION_SID, OPERATION_SEQ, ROUTE_OPER_SID
+                FROM WIP_LOT
+                WHERE LOT = @Lot
+                """,
+                new { Lot = lotCode });
+
+            Assert.NotNull(lot);
+            Assert.Equal(arrangement.OperationSid, lot!.OPERATION_SID);
+            Assert.Equal(arrangement.OperationSeq, lot.OPERATION_SEQ);
+            Assert.Equal(arrangement.RouteOperationSid, lot.ROUTE_OPER_SID);
+        }
+        finally
+        {
+            await CleanupAsync(connectionString, arrangement.WorkOrder, arrangement.PreviousReleaseQty, lotCode);
+        }
+    }
+
     private static LotBaseSettingService CreateService(string connectionString, string accountNo)
     {
         var options = Options.Create(new DbOptions { Connection = connectionString });
@@ -151,6 +205,55 @@ public class CreateLotAsyncIntegrationTests
         return row;
     }
 
+    private static async Task<TestArrangement> LoadArrangementWithSecondOperationAsync(string connectionString)
+    {
+        await using var conn = new SqlConnection(connectionString);
+        await conn.OpenAsync();
+
+        var row = await conn.QuerySingleOrDefaultAsync<TestArrangement>(
+            """
+            SELECT TOP (1)
+                u.ACCOUNT_NO AS AccountNo,
+                w.WO AS WorkOrder,
+                w.PART_NO AS PartNo,
+                r.WIP_ROUTE_SID AS RouteSid,
+                second_op.WIP_ROUTE_OPERATION_SID AS RouteOperationSid,
+                second_op.WIP_OPERATION_SID AS OperationSid,
+                second_op.SEQ AS OperationSeq,
+                w.RELEASE_QTY AS PreviousReleaseQty
+            FROM WIP_WO w
+            INNER JOIN WIP_PARTNO p ON p.WIP_PARTNO_NO = w.PART_NO
+            INNER JOIN WIP_ROUTE r ON r.WIP_ROUTE_NO = w.ROUTE_NO OR r.WIP_ROUTE_NAME = w.ROUTE_NO
+            CROSS APPLY (
+                SELECT WIP_ROUTE_OPERATION_SID, WIP_OPERATION_SID, SEQ
+                FROM (
+                    SELECT
+                        ro.WIP_ROUTE_OPERATION_SID,
+                        ro.WIP_OPERATION_SID,
+                        ro.SEQ,
+                        ROW_NUMBER() OVER (ORDER BY ro.SEQ) AS RowNo
+                    FROM WIP_ROUTE_OPERATION ro
+                    WHERE ro.WIP_ROUTE_SID = r.WIP_ROUTE_SID
+                ) ordered_ops
+                WHERE RowNo = 2
+            ) second_op
+            CROSS JOIN (
+                SELECT TOP (1) ACCOUNT_NO
+                FROM ADM_OPI_USER
+                WHERE ACCOUNT_NO IS NOT NULL
+                ORDER BY USER_SID DESC
+            ) u
+            ORDER BY w.WO_SID DESC
+            """);
+
+        if (row == null)
+        {
+            throw new InvalidOperationException("No test arrangement with a second route operation could be resolved from the database.");
+        }
+
+        return row;
+    }
+
     private static async Task CleanupAsync(string connectionString, string workOrder, decimal? previousReleaseQty, string lotCode)
     {
         await using var conn = new SqlConnection(connectionString);
@@ -181,6 +284,9 @@ public class CreateLotAsyncIntegrationTests
         public string WorkOrder { get; init; } = null!;
         public string PartNo { get; init; } = null!;
         public decimal RouteSid { get; init; }
+        public decimal RouteOperationSid { get; init; }
+        public decimal OperationSid { get; init; }
+        public decimal OperationSeq { get; init; }
         public decimal? PreviousReleaseQty { get; init; }
     }
 
@@ -192,6 +298,9 @@ public class CreateLotAsyncIntegrationTests
         public decimal LOT_QTY { get; init; }
         public string LOT_STATUS_CODE { get; init; } = null!;
         public string CUR_OPER_FIRST_IN_FLAG { get; init; } = null!;
+        public decimal OPERATION_SID { get; init; }
+        public decimal OPERATION_SEQ { get; init; }
+        public decimal? ROUTE_OPER_SID { get; init; }
     }
 
     private sealed class FakeCurrentUserAccessor(string accountNo) : ICurrentUserAccessor

@@ -91,3 +91,11 @@ SQL Server
 ### 3. 交易控制 (Transaction)
 -   簡單操作可使用 `DbExecutor` 或 `SQLGenerateHelper` 的 Tx 版本方法。
 -   **複雜交易**：建議在 Service 層開啟 `Using var tx = ...` 並傳遞給 Repositories/Helpers，確保跨操作的原子性。
+
+# API 文件
+
+- LOT API 文件：`src/DcMateH5Api/docs/LOT_API_README.md`
+- CreateLot 支援選填 `OPERATION_SID`，前端可在不是從第一站建批時傳入指定起始站點。
+- 未傳 `OPERATION_SID` 時維持原本行為，從 route 第一站開始。
+
+---

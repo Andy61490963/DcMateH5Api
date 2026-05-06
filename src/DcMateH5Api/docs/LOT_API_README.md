@@ -81,6 +81,37 @@ POST /api/Wip/WipLotSetting/CreateLot
 }
 ```
 
+### CreateLot 起始站點
+
+`CreateLot` 支援選填 `OPERATION_SID`，用來指定建立 LOT 時的起始站點。
+
+前端注意事項：
+
+- `OPERATION_SID` 是選填欄位，既有 CreateLot 呼叫可以不修改。
+- 未傳 `OPERATION_SID` 時，後端維持原行為，從 `ROUTE_SID` 對應 route 的第一站開始。
+- 有傳 `OPERATION_SID` 時，該值必須存在於同一個 route 的 `WIP_ROUTE_OPERATION.WIP_OPERATION_SID`。
+- 不合法時會回傳 BadRequest，訊息格式為 `Operation is not in route: ROUTE_SID=..., OPERATION_SID=...`。
+- 建批成功後，`WIP_LOT.OPERATION_SID`、`WIP_LOT.OPERATION_SEQ`、`WIP_LOT.ROUTE_OPER_SID` 會對應到指定起始站。
+
+指定起始站 payload 範例：
+
+```json
+{
+  "DATA_LINK_SID": 900000000900,
+  "LOT": "SWAGGER-LOT-001",
+  "ALIAS_LOT1": "SWAGGER-LOT-001-A1",
+  "ALIAS_LOT2": "SWAGGER-LOT-001-A2",
+  "WO": "HC260407004",
+  "ROUTE_SID": 158772156102000,
+  "OPERATION_SID": 158772156102002,
+  "LOT_QTY": 2,
+  "REPORT_TIME": "2026-04-22T10:00:00",
+  "ACCOUNT_NO": "TestAc1",
+  "INPUT_FORM_NAME": "Swagger",
+  "COMMENT": "swagger create lot test from selected operation"
+}
+```
+
 ## LotCheckIn
 
 Endpoint:

@@ -417,7 +417,7 @@ public class LotBaseSettingService : ILotBaseSettingService
         var user = await GetUserByAccountAsync(input.ACCOUNT_NO, ct);
         var workOrder = await GetWorkOrderAsync(input.WO, ct);
         var route = await GetRouteAsync(input.ROUTE_SID, ct);
-        var routeOperation = await GetStartRouteOperationAsync(input.ROUTE_SID, ct);
+        var routeOperation = await GetCreateLotRouteOperationAsync(input.ROUTE_SID, input.OPERATION_SID, ct);
         var operation = await GetOperationBySidAsync(routeOperation.WIP_OPERATION_SID, ct);
         var part = await GetPartByPartNoAsync(workOrder.PART_NO!, ct);
         var createdStatus = await GetLotStatusAsync(CreateLotActionCodes.CreatedStatus, ct);
@@ -485,6 +485,7 @@ public class LotBaseSettingService : ILotBaseSettingService
             COMMENT = input.COMMENT ?? string.Empty,
             LAST_STATUS_CHANGE_TIME = now,
             ROUTE_SID = route.WIP_ROUTE_SID,
+            ROUTE_OPER_SID = routeOperation.WIP_ROUTE_OPERATION_SID,
             CUR_OPER_FIRST_IN_FLAG = Flags.No
         };
 
@@ -2709,17 +2710,24 @@ public class LotBaseSettingService : ILotBaseSettingService
         return route;
     }
 
-    private async Task<WipRouteOperationDto> GetStartRouteOperationAsync(decimal routeSid, CancellationToken ct)
+    private async Task<WipRouteOperationDto> GetCreateLotRouteOperationAsync(decimal routeSid, decimal? operationSid, CancellationToken ct)
     {
         var where = new WhereBuilder<WipRouteOperationDto>()
             .AndEq(x => x.WIP_ROUTE_SID, routeSid);
 
         var operations = await _sqlHelper.SelectWhereAsync(where, ct);
-        var startOperation = operations.OrderBy(x => x.SEQ).FirstOrDefault();
-        if (startOperation == null)
+        var orderedOperations = operations.OrderBy(x => x.SEQ).ToList();
+        if (orderedOperations.Count == 0)
             throw new HttpStatusCodeException(System.Net.HttpStatusCode.BadRequest, $"Route has no operations: {routeSid}");
 
-        return startOperation;
+        if (operationSid == null)
+            return orderedOperations[0];
+
+        var routeOperation = orderedOperations.FirstOrDefault(x => x.WIP_OPERATION_SID == operationSid.Value);
+        if (routeOperation == null)
+            throw new HttpStatusCodeException(System.Net.HttpStatusCode.BadRequest, $"Operation is not in route: ROUTE_SID={routeSid}, OPERATION_SID={operationSid}");
+
+        return routeOperation;
     }
 
     private async Task<WipOperationDto> GetOperationBySidAsync(decimal operationSid, CancellationToken ct)
