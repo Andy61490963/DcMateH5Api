@@ -272,6 +272,7 @@ SELECT ID AS Id,
 
             var isIdentityPk = _schemaService.IsIdentityColumn(header.MAPPING_TABLE_NAME!, mappingPkColumn, tx);
             var currentAccount = GetCurrentAccount();
+            var mappingColumns = columnTypes.Keys.ToHashSet(StringComparer.OrdinalIgnoreCase);
 
             var seq = 0;
             if (isSeq)
@@ -332,23 +333,12 @@ SELECT ID AS Id,
                     parameters.Add(extraField.Key, extraField.Value);
                 }
 
-                var now = DateTime.Now;
-
-                insertColumns.Add("[CREATE_TIME]");
-                insertValues.Add("@CreateTime");
-                parameters.Add("CreateTime", now);
-
-                insertColumns.Add("[EDIT_TIME]");
-                insertValues.Add("@EditTime");
-                parameters.Add("EditTime", now);
-
-                insertColumns.Add("[CREATE_USER]");
-                insertValues.Add("@CreateUser");
-                parameters.Add("CreateUser", currentAccount);
-
-                insertColumns.Add("[EDIT_USER]");
-                insertValues.Add("@EditUser");
-                parameters.Add("EditUser", currentAccount);
+                FormAuditColumns.AddInsertColumns(
+                    mappingColumns,
+                    insertColumns,
+                    insertValues,
+                    parameters,
+                    currentAccount);
 
                 var sql = $@"/**/
     IF NOT EXISTS (
@@ -586,6 +576,8 @@ WHERE [{header.MAPPING_PK_COLUMN}] IN @Ids
             parameters.Add(paramName, updatePairs[i].Value);
             setFragments.Add($"[{updatePairs[i].Column}] = @{paramName}");
         }
+
+        FormAuditColumns.AddUpdateColumns(columnSet, setFragments, parameters, GetCurrentAccount());
 
         parameters.Add("Pk", pkValue);
 
@@ -1340,10 +1332,10 @@ WHERE b.[{header.MAPPING_BASE_FK_COLUMN}] = @BaseId;";
             mappingPkColumn,
             header.MAPPING_BASE_FK_COLUMN!,
             header.MAPPING_DETAIL_FK_COLUMN!,
-            "CREATE_TIME",
-            "EDIT_TIME",
-            "CREATE_USER",
-            "EDIT_USER"
+            FormAuditColumns.CreateTime,
+            FormAuditColumns.EditTime,
+            FormAuditColumns.CreateUser,
+            FormAuditColumns.EditUser
         };
 
         if (columnTypes.ContainsKey("SEQ"))

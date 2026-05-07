@@ -1,6 +1,7 @@
 using Dapper;
 using DcMateClassLibrary.Enums.Form;
 using DcMateClassLibrary.Helper.FormHelper;
+using DcMateH5.Abstractions.CurrentUser;
 using DcMateH5.Abstractions.Form.Form;
 using DcMateH5.Abstractions.Form.FormLogic;
 using DcMateH5.Abstractions.Form.Models;
@@ -22,12 +23,23 @@ public class FormService : IFormService
     private readonly IDropdownService _dropdownService;
     private readonly IDropdownSqlSyncService _dropdownSqlSyncService;
     private readonly IFormDeleteGuardService _formDeleteGuardService;
+    private readonly ICurrentUserAccessor _currentUser;
     private readonly IConfiguration _configuration;
     private readonly List<string> _excludeColumns;
     private readonly List<string> _excludeColumnsId;
-    
-    
-    public FormService(SqlConnection connection, ITransactionService txService, IFormFieldMasterService formFieldMasterService, ISchemaService schemaService, IFormFieldConfigService formFieldConfigService, IDropdownService dropdownService, IFormDataService formDataService, IConfiguration configuration, IDropdownSqlSyncService dropdownSqlSyncService, IFormDeleteGuardService formDeleteGuardService)
+
+    public FormService(
+        SqlConnection connection,
+        ITransactionService txService,
+        IFormFieldMasterService formFieldMasterService,
+        ISchemaService schemaService,
+        IFormFieldConfigService formFieldConfigService,
+        IDropdownService dropdownService,
+        IFormDataService formDataService,
+        IConfiguration configuration,
+        IDropdownSqlSyncService dropdownSqlSyncService,
+        IFormDeleteGuardService formDeleteGuardService,
+        ICurrentUserAccessor currentUser)
     {
         _con = connection;
         _txService = txService;
@@ -38,6 +50,7 @@ public class FormService : IFormService
         _dropdownService = dropdownService;
         _dropdownSqlSyncService = dropdownSqlSyncService;
         _formDeleteGuardService = formDeleteGuardService;
+        _currentUser = currentUser;
         _configuration = configuration;
         _excludeColumns = _configuration.GetSection("FormDesignerSettings:RequiredColumns").Get<List<string>>() ?? new();
         _excludeColumnsId = _configuration.GetSection("DropdownSqlSettings:ExcludeColumns").Get<List<string>>() ?? new();
@@ -614,6 +627,9 @@ FROM (
             if (!configs.TryGetValue(field.FieldConfigId, out var cfg))
                 continue;
 
+            if (FormAuditColumns.IsAuditColumn(cfg.COLUMN_NAME))
+                continue;
+
             // 欄位若不可編輯，直接忽略，避免未授權修改
             if (!cfg.IS_EDITABLE)
                 continue;
@@ -665,10 +681,12 @@ FROM (
             paramDict[paramName] = field.Value;
         }
 
+        AddInsertAuditColumns(tableName, columns, values, paramDict, tx);
+
         string sql;
         object? resultId;
 
-        if (isIdentity && !normalFields.Any())
+        if (isIdentity && columns.Count == 0)
         {
             sql = $@"
                 INSERT INTO [{tableName}] DEFAULT VALUES;
@@ -715,9 +733,6 @@ FROM (
         object realRowId,
         SqlTransaction tx)
     {
-        // 若無更新欄位，直接結束，不執行 SQL
-        if (!normalFields.Any()) return;
-
         // 動態產生 SET 子句，並準備對應參數字典
         var setList = new List<string>();
         var paramDict = new Dictionary<string, object> { ["ROWID"] = realRowId! };
@@ -733,12 +748,50 @@ FROM (
         }
 
         // 組合最終 SQL 語句：UPDATE 表 SET 欄位1 = @, 欄位2 = @ ... WHERE 主鍵 = @ROWID
+        AddUpdateAuditColumns(tableName, setList, paramDict, tx);
+
+        // 若無更新欄位，直接結束，不執行 SQL
+        if (!setList.Any()) return;
+
         var sql = $@"
         UPDATE [{tableName}]
         SET {string.Join(", ", setList)}
         WHERE [{pkName}] = @ROWID";
 
         _con.Execute(sql, paramDict, transaction: tx);
+    }
+
+    private void AddInsertAuditColumns(
+        string tableName,
+        List<string> columns,
+        List<string> values,
+        Dictionary<string, object> paramDict,
+        SqlTransaction tx)
+    {
+        var tableColumns = GetTableColumnSet(tableName, tx);
+        FormAuditColumns.AddInsertColumns(tableColumns, columns, values, paramDict, GetCurrentAccount());
+    }
+
+    private void AddUpdateAuditColumns(
+        string tableName,
+        List<string> setList,
+        Dictionary<string, object> paramDict,
+        SqlTransaction tx)
+    {
+        var tableColumns = GetTableColumnSet(tableName, tx);
+        FormAuditColumns.AddUpdateColumns(tableColumns, setList, paramDict, GetCurrentAccount());
+    }
+
+    private HashSet<string> GetTableColumnSet(string tableName, SqlTransaction tx)
+    {
+        return _schemaService.GetFormFieldMaster(tableName, tx)
+            .ToHashSet(StringComparer.OrdinalIgnoreCase);
+    }
+
+    private string GetCurrentAccount()
+    {
+        var account = _currentUser.Get().Account;
+        return string.IsNullOrWhiteSpace(account) ? "SYSTEM" : account;
     }
 
     public async Task<DeleteWithGuardResultViewModel> DeleteWithGuardAsync(
