@@ -71,5 +71,17 @@ public enum ConditionType
     /// 不包含在清單中
     /// </summary>
     [Display(Name = "不包含於")]
-    NotIn = 10
+    NotIn = 10,
+
+    /// <summary>
+    /// NULL
+    /// </summary>
+    [Display(Name = "IS NULL")]
+    IsNull = 11,
+
+    /// <summary>
+    /// NOT NULL
+    /// </summary>
+    [Display(Name = "IS NOT NULL")]
+    IsNotNull = 12
 }

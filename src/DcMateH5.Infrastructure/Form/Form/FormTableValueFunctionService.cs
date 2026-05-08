@@ -543,6 +543,14 @@ ORDER BY FIELD_ORDER;";
                 case ConditionType.NotIn:
                     AppendIn(dp, whereList, colSql, dataType, c.Values, isNotIn: true, ref i);
                     break;
+
+                case ConditionType.IsNull:
+                    whereList.Add($"{colSql} IS NULL");
+                    break;
+
+                case ConditionType.IsNotNull:
+                    whereList.Add($"{colSql} IS NOT NULL");
+                    break;
             }
         }
 

@@ -163,6 +163,14 @@ public class FormDataService : IFormDataService
                 case ConditionType.NotIn:
                     AppendInClause(whereList, param, column, c, ref i, isNotIn: true);
                     break;
+
+                case ConditionType.IsNull:
+                    whereList.Add($"[{column}] IS NULL");
+                    break;
+
+                case ConditionType.IsNotNull:
+                    whereList.Add($"[{column}] IS NOT NULL");
+                    break;
             }
         }
 

@@ -479,6 +479,12 @@ FROM (
                 case ConditionType.NotIn:
                     AppendInClause(whereList, parameters, column, condition, ref index, true);
                     break;
+                case ConditionType.IsNull:
+                    whereList.Add($"[{column}] IS NULL");
+                    break;
+                case ConditionType.IsNotNull:
+                    whereList.Add($"[{column}] IS NOT NULL");
+                    break;
             }
         }
 
