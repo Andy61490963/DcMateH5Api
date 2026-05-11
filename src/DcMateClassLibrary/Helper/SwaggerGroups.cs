@@ -1,7 +1,7 @@
 namespace DcMateClassLibrary.Helper;
 
 /// <summary>
-/// Swagger 分組名稱集中管理，避免字串分散與拼寫錯誤。
+/// Swagger 文件分組名稱集中管理，避免 controller 與 Program.cs 使用不同字串。
 /// </summary>
 public static class SwaggerGroups
 {
@@ -21,26 +21,28 @@ public static class SwaggerGroups
 
     public const string Wip = nameof(Wip);
     public const string Eqm = nameof(Eqm);
+    public const string Mms = nameof(Mms);
     public const string Test = nameof(Test);
 
     public static readonly Dictionary<string, string> DisplayNames = new()
     {
-        { ApiStatus, "Api 狀態" },
+        { ApiStatus, "API 狀態" },
         { Enum, "列舉" },
         { Log, "系統紀錄" },
 
-        { Form, "表單主檔維護" },
-        { FormWithMasterDetail, "表單一對多維護" },
-        { FormWithMultipleMapping, "表單多對多維護" },
-        { FormTableValueFunction, "TVF 維護" },
-        { FormView, "View 查詢維護" },
+        { Form, "表單設計" },
+        { FormWithMasterDetail, "主從表單" },
+        { FormWithMultipleMapping, "多重對應表單" },
+        { FormTableValueFunction, "TVF 表單" },
+        { FormView, "View 表單" },
 
         { Security, "安全性 API" },
-        { LanguageKeywords, "語系關鍵字" },
-        { Menu, "選單功能" },
+        { LanguageKeywords, "多語系關鍵字" },
+        { Menu, "選單" },
 
-        { Wip, "在製" },
-        { Eqm, "機台" },
+        { Wip, "WIP" },
+        { Eqm, "EQM" },
+        { Mms, "MMS" },
         { Test, "測試" }
     };
 }

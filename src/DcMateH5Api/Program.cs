@@ -18,6 +18,7 @@ using DcMateH5.Abstractions.Form.Transaction;
 using DcMateH5.Abstractions.LanguageKeywords;
 using DcMateH5.Abstractions.Log;
 using DcMateH5.Abstractions.Menu;
+using DcMateH5.Abstractions.Mms;
 using DcMateH5.Abstractions.RegistrationLicense;
 using DcMateH5.Abstractions.Token;
 using DcMateH5.Abstractions.Token.Model;
@@ -29,6 +30,7 @@ using DcMateH5.Infrastructure.Form.Transaction;
 using DcMateH5.Infrastructure.LanguageKeywords;
 using DcMateH5.Infrastructure.Log;
 using DcMateH5.Infrastructure.Menu;
+using DcMateH5.Infrastructure.Mms;
 using DcMateH5.Infrastructure.RegistrationLicense;
 using DcMateH5.Infrastructure.Token;
 using DcMateH5.Infrastructure.Wip;
@@ -159,6 +161,9 @@ builder.Services.AddScoped<IWipBaseSettingService, WipBaseSettingService>();
 builder.Services.AddScoped<IEqmStatusService, EqmStatusService>();
 builder.Services.AddScoped<ILotBaseSettingService, LotBaseSettingService>();
 
+// Mms
+builder.Services.AddScoped<IMmsLotService, MmsLotService>();
+
 // 工作站與交易
 builder.Services.AddScoped<ITransactionService, TransactionService>();
 builder.Services.AddScoped<ICacheService, RedisCacheService>();
@@ -197,7 +202,7 @@ var swaggerGroups = new[]
     SwaggerGroups.Security, SwaggerGroups.Menu, SwaggerGroups.LanguageKeywords,
     SwaggerGroups.Form, SwaggerGroups.FormWithMasterDetail, SwaggerGroups.FormWithMultipleMapping,
     SwaggerGroups.FormTableValueFunction, SwaggerGroups.FormView, SwaggerGroups.Wip,
-    SwaggerGroups.Eqm
+    SwaggerGroups.Eqm, SwaggerGroups.Mms
 };
 
 builder.Services.AddEndpointsApiExplorer();
