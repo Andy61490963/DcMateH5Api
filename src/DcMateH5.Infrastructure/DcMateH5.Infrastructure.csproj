@@ -7,6 +7,12 @@
     </PropertyGroup>
 
     <ItemGroup>
+      <PackageReference Include="PDFsharp-MigraDoc-GDI" />
+      <PackageReference Include="QRCoder" />
+      <PackageReference Include="System.Drawing.Common" />
+    </ItemGroup>
+
+    <ItemGroup>
       <ProjectReference Include="..\DbExtensions\DbExtensions.csproj" />
       <ProjectReference Include="..\DcMateH5.Abstractions\DcMateH5.Abstractions.csproj" />
       <ProjectReference Include="..\DbExtensions\DbExtensions.csproj" />

@@ -23,6 +23,7 @@ using DcMateH5.Abstractions.RegistrationLicense;
 using DcMateH5.Abstractions.Token;
 using DcMateH5.Abstractions.Token.Model;
 using DcMateH5.Abstractions.Wip;
+using DcMateH5.Abstractions.Export;
 using DcMateH5.Infrastructure.Eqm;
 using DcMateH5.Infrastructure.Form.Form;
 using DcMateH5.Infrastructure.Form.FormLogic;
@@ -34,6 +35,7 @@ using DcMateH5.Infrastructure.Mms;
 using DcMateH5.Infrastructure.RegistrationLicense;
 using DcMateH5.Infrastructure.Token;
 using DcMateH5.Infrastructure.Wip;
+using DcMateH5.Infrastructure.Export;
 using DcMateH5Api.BackgroundService;
 using DcMateH5Api.MiddlewareExtension;
 using DcMateH5Api.MiddlewareExtension.Token;
@@ -152,6 +154,8 @@ builder.Services.AddScoped<IMmsLotService, MmsLotService>();
 builder.Services.AddScoped<ITransactionService, TransactionService>();
 builder.Services.AddScoped<ICacheService, RedisCacheService>();
 
+// Export Pdf匯出(Excel待補)
+builder.Services.AddScoped<DcMateH5.Abstractions.Export.Pdf.IPdfExportService, DcMateH5.Infrastructure.Export.Pdf.PdfExportService>();
 
 // 註冊 Authentication Scheme
 builder.Services
