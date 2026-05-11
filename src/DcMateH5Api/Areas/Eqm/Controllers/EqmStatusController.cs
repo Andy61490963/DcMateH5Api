@@ -42,5 +42,24 @@ namespace DcMateH5Api.Areas.Eqm.Controllers
                 return StatusCode((int)ex.StatusCode, ex.Message);
             }
         }
+
+        /// <summary>
+        /// 變更設備狀態 GET 版本，供只能用 query string 呼叫的前端或測試工具使用。
+        /// </summary>
+        [HttpGet(Routes.StatusChange)]
+        [ProducesResponseType(StatusCodes.Status200OK)]
+        [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status400BadRequest)]
+        public async Task<IActionResult> StatusChangeGet([FromQuery] EqmStatusChangeInputDto input, CancellationToken ct)
+        {
+            try
+            {
+                await _eqmStatusService.StatusChangeAsync(input, ct);
+                return Ok();
+            }
+            catch (HttpStatusCodeException ex)
+            {
+                return StatusCode((int)ex.StatusCode, ex.Message);
+            }
+        }
     }
 }

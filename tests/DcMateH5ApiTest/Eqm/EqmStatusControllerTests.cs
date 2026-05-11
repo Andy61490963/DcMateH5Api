@@ -33,6 +33,28 @@ public class EqmStatusControllerTests
         Assert.Equal("bad request", badRequest.Value);
     }
 
+    [Fact]
+    public async Task StatusChangeGet_ShouldReturnOkResult()
+    {
+        var controller = new EqmStatusController(new FakeEqmStatusService());
+
+        var actionResult = await controller.StatusChangeGet(new EqmStatusChangeInputDto(), CancellationToken.None);
+
+        Assert.IsType<OkResult>(actionResult);
+    }
+
+    [Fact]
+    public async Task StatusChangeGet_ShouldReturnBadRequestResult_WhenServiceThrows()
+    {
+        var controller = new EqmStatusController(new ThrowingEqmStatusService());
+
+        var actionResult = await controller.StatusChangeGet(new EqmStatusChangeInputDto(), CancellationToken.None);
+
+        var badRequest = Assert.IsType<ObjectResult>(actionResult);
+        Assert.Equal((int)HttpStatusCode.BadRequest, badRequest.StatusCode);
+        Assert.Equal("bad request", badRequest.Value);
+    }
+
     private sealed class FakeEqmStatusService : IEqmStatusService
     {
         public Task<Result<bool>> StatusChangeAsync(EqmStatusChangeInputDto input, CancellationToken ct = default)
