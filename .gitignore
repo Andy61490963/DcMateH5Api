@@ -10,6 +10,7 @@ obj/
 
 # VS Code / VS
 .vscode/
+.vs/
 *.suo
 *.user
 
@@ -22,6 +23,7 @@ Thumbs.db
 *.dmp
 
 # Others
+.gitmessage
 AppData/
 *.pdb
 /docker-compose.yml

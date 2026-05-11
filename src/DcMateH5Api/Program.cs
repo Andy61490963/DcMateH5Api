@@ -51,22 +51,6 @@ using SmtpEmailSender = DcMateH5Api.Areas.Security.Services.SmtpEmailSender;
 
 var builder = WebApplication.CreateBuilder(args);
 
-// --- 關鍵設定：金鑰持久化 ---
-// 1. 指定存放路徑：在專案根目錄下建立「SecurityKeys」資料夾
-var keysPath = Path.Combine(builder.Environment.ContentRootPath, "SecurityKeys");
-
-// 2. 確保資料夾存在
-if (!Directory.Exists(keysPath))
-{
-    Directory.CreateDirectory(keysPath);
-}
-
-// 3. 配置資料保護
-builder.Services.AddDataProtection()
-    .PersistKeysToFileSystem(new DirectoryInfo(keysPath)) // 將 XML 金鑰存入硬碟
-    .SetApplicationName("DcMateH5Api") // 固定名稱，這對正確解密非常重要
-    .SetDefaultKeyLifetime(TimeSpan.FromDays(90)); // 金鑰 90 天後自動輪替
-
 // 註冊 CORS 服務
 builder.Services.AddCors(options =>
 {
