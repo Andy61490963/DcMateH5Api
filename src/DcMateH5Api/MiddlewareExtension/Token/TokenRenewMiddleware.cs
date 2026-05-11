@@ -13,30 +13,29 @@ public class TokenRenewMiddleware
     }
 
     private readonly RequestDelegate _next;
-    private readonly ITokenService _tokenService;
 
-    public TokenRenewMiddleware(
-        RequestDelegate next,
-        ITokenService tokenService)
+    public TokenRenewMiddleware(RequestDelegate next)
     {
         _next = next;
-        _tokenService = tokenService;
     }
 
-    public async Task Invoke(HttpContext context)
+    public async Task Invoke(HttpContext context, ITokenService tokenService)
     {
         string currentToken = ExtractBearerToken(context.Request);
 
         context.Response.OnStarting(() =>
         {
-            TryRenewToken(context, currentToken);
+            TryRenewToken(context, currentToken, tokenService);
             return Task.CompletedTask;
         });
 
         await _next(context);
     }
 
-    private void TryRenewToken(HttpContext context, string currentToken)
+    private static void TryRenewToken(
+        HttpContext context,
+        string currentToken,
+        ITokenService tokenService)
     {
         if (string.IsNullOrWhiteSpace(currentToken))
         {
@@ -58,7 +57,7 @@ public class TokenRenewMiddleware
             return;
         }
 
-        TokenValidationResult validationResult = _tokenService.ValidateToken(currentToken);
+        TokenValidationResult validationResult = tokenService.ValidateToken(currentToken);
 
         if (!validationResult.IsValid)
         {
@@ -83,7 +82,7 @@ public class TokenRenewMiddleware
             UserLv = validationResult.UserLv
         };
 
-        GenerateTokenResult newToken = _tokenService.GenerateToken(renewPayload);
+        GenerateTokenResult newToken = tokenService.GenerateToken(renewPayload);
 
         // ★ MODIFY: 不另外用 X-Renew-Token，直接沿用舊的 X-Auth-Token
         context.Response.Headers[HeaderNames.Authorization] =
