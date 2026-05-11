@@ -3,6 +3,7 @@ using System.Text;
 using ClassLibrary;
 using DbExtensions.DbExecutor.Interface;
 using DcMateClassLibrary.Helper;
+using DcMateClassLibrary.Models;
 using DcMateH5Api.Areas.Security.Interfaces;
 using DcMateH5Api.Areas.Security.Options;
 using DcMateH5Api.Areas.Security.ViewModels.Password;
@@ -494,7 +495,9 @@ WHERE USER_SID = @UserId;";
 
     private static string NormalizeActor(string actor)
     {
-        return string.IsNullOrWhiteSpace(actor) ? "SYSTEM" : actor.Trim();
+        return string.IsNullOrWhiteSpace(actor)
+            ? CurrentUserSnapshot.NotLoginUser
+            : actor.Trim();
     }
 
     private static string? NormalizeOptional(string? value)

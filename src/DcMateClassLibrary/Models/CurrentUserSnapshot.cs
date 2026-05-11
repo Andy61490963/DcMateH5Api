@@ -11,11 +11,13 @@ namespace DcMateClassLibrary.Models;
 /// </summary>
 public sealed class CurrentUserSnapshot
 {
+    public const string NotLoginUser = "NOT_LOGIN_USER";
+
     /// <summary>
     /// 使用者帳號
     /// 若未登入，則為 Guid.Empty
     /// </summary>
-    public string Account { get; private init; } = string.Empty;
+    public string Account { get; private init; } = NotLoginUser;
 
     /// <summary>
     /// 使用者的唯一識別碼
@@ -43,7 +45,12 @@ public sealed class CurrentUserSnapshot
     {
         if (user?.Identity?.IsAuthenticated != true)
         {
-            return new CurrentUserSnapshot { IsAuthenticated = false, Id = Guid.Empty };
+            return new CurrentUserSnapshot
+            {
+                Account = NotLoginUser,
+                IsAuthenticated = false,
+                Id = Guid.Empty
+            };
         }
 
         var account = user.FindFirst(AppClaimTypes.Account)?.Value;
@@ -53,9 +60,9 @@ public sealed class CurrentUserSnapshot
 
         return new CurrentUserSnapshot
         {
-            Account = account,
+            Account = string.IsNullOrWhiteSpace(account) ? NotLoginUser : account,
             Id = userId,
-            Lv = lv,
+            Lv = string.IsNullOrWhiteSpace(lv) ? string.Empty : lv,
             IsAuthenticated = userId != Guid.Empty
         };
     }

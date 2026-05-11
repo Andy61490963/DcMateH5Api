@@ -149,7 +149,10 @@ public class MmsLotIntegrationTests
         }
         finally
         {
-            await CleanupAsync(connectionString, arrangement.WorkOrder, arrangement.PreviousReleaseQty, lotCode, mlotCode);
+            if (!ShouldKeepTestData())
+            {
+                await CleanupAsync(connectionString, arrangement.WorkOrder, arrangement.PreviousReleaseQty, lotCode, mlotCode);
+            }
         }
     }
 
@@ -208,9 +211,18 @@ public class MmsLotIntegrationTests
         }
         finally
         {
-            await CleanupAsync(connectionString, arrangement.WorkOrder, arrangement.PreviousReleaseQty, lotCode, mlotCode);
+            if (!ShouldKeepTestData())
+            {
+                await CleanupAsync(connectionString, arrangement.WorkOrder, arrangement.PreviousReleaseQty, lotCode, mlotCode);
+            }
         }
     }
+
+    private static bool ShouldKeepTestData()
+        => string.Equals(
+            Environment.GetEnvironmentVariable("KEEP_MMS_TEST_DATA"),
+            "1",
+            StringComparison.Ordinal);
 
     private static MmsLotService CreateMmsService(string connectionString, string accountNo)
         => new(CreateSqlHelper(connectionString, accountNo));

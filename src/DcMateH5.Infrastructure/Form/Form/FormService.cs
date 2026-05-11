@@ -1,6 +1,7 @@
 using Dapper;
 using DcMateClassLibrary.Enums.Form;
 using DcMateClassLibrary.Helper.FormHelper;
+using DcMateClassLibrary.Models;
 using DcMateH5.Abstractions.CurrentUser;
 using DcMateH5.Abstractions.Form.Form;
 using DcMateH5.Abstractions.Form.FormLogic;
@@ -791,7 +792,9 @@ FROM (
     private string GetCurrentAccount()
     {
         var account = _currentUser.Get().Account;
-        return string.IsNullOrWhiteSpace(account) ? "SYSTEM" : account;
+        return string.IsNullOrWhiteSpace(account)
+            ? CurrentUserSnapshot.NotLoginUser
+            : account;
     }
 
     public async Task<DeleteWithGuardResultViewModel> DeleteWithGuardAsync(
