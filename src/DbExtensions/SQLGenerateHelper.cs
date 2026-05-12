@@ -6,6 +6,7 @@ using System.Linq.Expressions;
 using System.Reflection;
 using Dapper;
 using DbExtensions.DbExecutor.Interface;
+using DcMateClassLibrary.Models;
 using DcMateH5.Abstractions.CurrentUser;
 using Microsoft.Data.SqlClient;
 
@@ -69,7 +70,9 @@ namespace DbExtensions
         private string GetCurrentUserId()
         {
             var user = _currentUser.Get();
-            return user.Account;
+            return string.IsNullOrWhiteSpace(user.Account)
+                ? CurrentUserSnapshot.NotLoginUser
+                : user.Account;
         }
 
         private Task<DateTime> GetDbNowAsync(CancellationToken ct)
