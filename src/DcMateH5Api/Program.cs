@@ -1,16 +1,10 @@
-using DcMateH5Api.Services.Cache;
-using Microsoft.AspNetCore.DataProtection;
-using Microsoft.AspNetCore.HttpOverrides;
-using Microsoft.Extensions.Diagnostics.HealthChecks;
-using Microsoft.OpenApi.Models;
-using Microsoft.Data.SqlClient;
-using System.Reflection;
 using DbExtensions;
 using DbExtensions.DbExecutor.Interface;
 using DbExtensions.DbExecutor.Service;
 using DcMateClassLibrary.Helper;
 using DcMateH5.Abstractions.CurrentUser;
 using DcMateH5.Abstractions.Eqm;
+using DcMateH5.Abstractions.Export;
 using DcMateH5.Abstractions.Form.Form;
 using DcMateH5.Abstractions.Form.FormLogic;
 using DcMateH5.Abstractions.Form.Options;
@@ -23,8 +17,8 @@ using DcMateH5.Abstractions.RegistrationLicense;
 using DcMateH5.Abstractions.Token;
 using DcMateH5.Abstractions.Token.Model;
 using DcMateH5.Abstractions.Wip;
-using DcMateH5.Abstractions.Export;
 using DcMateH5.Infrastructure.Eqm;
+using DcMateH5.Infrastructure.Export;
 using DcMateH5.Infrastructure.Form.Form;
 using DcMateH5.Infrastructure.Form.FormLogic;
 using DcMateH5.Infrastructure.Form.Transaction;
@@ -35,20 +29,27 @@ using DcMateH5.Infrastructure.Mms;
 using DcMateH5.Infrastructure.RegistrationLicense;
 using DcMateH5.Infrastructure.Token;
 using DcMateH5.Infrastructure.Wip;
-using DcMateH5.Infrastructure.Export;
+using DcMateH5Api.Areas.Security.Options;
 using DcMateH5Api.BackgroundService;
 using DcMateH5Api.MiddlewareExtension;
 using DcMateH5Api.MiddlewareExtension.Token;
-using DcMateH5Api.Areas.Security.Options;
+using DcMateH5Api.Services.Cache;
 using DcMateH5Api.Services.Cache.Redis.Interfaces;
 using DcMateH5Api.Services.Cache.Redis.Services;
 using DcMateH5Api.Services.CurrentUser;
 using Microsoft.AspNetCore.Authentication;
-using IEmailSender = DcMateH5Api.Areas.Security.Interfaces.IEmailSender;
+using Microsoft.AspNetCore.DataProtection;
+using Microsoft.AspNetCore.HttpOverrides;
+using Microsoft.Data.SqlClient;
+using Microsoft.Extensions.Diagnostics.HealthChecks;
+using Microsoft.OpenApi.Models;
+using PdfSharp.Fonts;
+using System.Reflection;
 using AccountService = DcMateH5Api.Areas.Security.Services.AccountService;
-using IAccountService = DcMateH5Api.Areas.Security.Interfaces.IAccountService;
 using AuthenticationService = DcMateH5Api.Areas.Security.Services.AuthenticationService;
+using IAccountService = DcMateH5Api.Areas.Security.Interfaces.IAccountService;
 using IAuthenticationService = DcMateH5Api.Areas.Security.Interfaces.IAuthenticationService;
+using IEmailSender = DcMateH5Api.Areas.Security.Interfaces.IEmailSender;
 using SmtpEmailSender = DcMateH5Api.Areas.Security.Services.SmtpEmailSender;
 
 var builder = WebApplication.CreateBuilder(args);
@@ -156,6 +157,9 @@ builder.Services.AddScoped<ICacheService, RedisCacheService>();
 
 // Export Pdf匯出(Excel待補)
 builder.Services.AddScoped<DcMateH5.Abstractions.Export.Pdf.IPdfExportService, DcMateH5.Infrastructure.Export.Pdf.PdfExportService>();
+
+// 宣告 產生pdf使用字體
+GlobalFontSettings.FontResolver = new MyFontResolver();
 
 // 註冊 Authentication Scheme
 builder.Services

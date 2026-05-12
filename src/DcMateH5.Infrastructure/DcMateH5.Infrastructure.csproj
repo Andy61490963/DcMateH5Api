@@ -7,8 +7,16 @@
     </PropertyGroup>
 
     <ItemGroup>
-      <PackageReference Include="PDFsharp-MigraDoc-GDI" />
+      <Compile Remove="Fonts\**" />
+      <EmbeddedResource Remove="Fonts\**" />
+      <None Remove="Fonts\**" />
+    </ItemGroup>
+
+    <ItemGroup>
+      <PackageReference Include="PDFsharp-MigraDoc" />
       <PackageReference Include="QRCoder" />
+      <PackageReference Include="SkiaSharp" />
+      <PackageReference Include="SkiaSharp.NativeAssets.Win32" />
       <PackageReference Include="System.Drawing.Common" />
     </ItemGroup>
 

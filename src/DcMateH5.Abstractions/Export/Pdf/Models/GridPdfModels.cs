@@ -63,7 +63,7 @@ namespace DcMateH5.Abstractions.Export.Pdf.Models
         public string Align { get; set; } = "Center";
 
         [JsonPropertyName("borders")]
-        public GridCellBorder Borders { get; set; }
+        public GridCellBorder? Borders { get; set; }
 
         [JsonPropertyName("IsPageBreak")]
         public bool IsPageBreak { get; set; } = false;

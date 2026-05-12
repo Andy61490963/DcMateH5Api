@@ -1,22 +1,22 @@
-﻿using System;
+﻿using DcMateH5.Abstractions.Export.Pdf;
+// 3. 引用你的 Abstractions
+using DcMateH5.Abstractions.Export.Pdf.Models;
+// 2. 【補足缺失的枚舉】RelativeVertical/Horizontal 在 Shapes 命名空間下
+using MigraDoc.DocumentObjectModel;
+using MigraDoc.DocumentObjectModel.Shapes; // <--- 補上這行，QR Code 定位就不會報錯了
+using MigraDoc.DocumentObjectModel.Tables;
+using MigraDoc.Rendering;
+using PdfSharp.Fonts;
+using QRCoder;
+using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
+using System.Runtime.InteropServices;
 
 // 1. 【解決模稜兩可】使用別名 (Alias) 指向正確的類別
 using Document = MigraDoc.DocumentObjectModel.Document;
 using Section = MigraDoc.DocumentObjectModel.Section;
-
-// 2. 【補足缺失的枚舉】RelativeVertical/Horizontal 在 Shapes 命名空間下
-using MigraDoc.DocumentObjectModel;
-using MigraDoc.DocumentObjectModel.Tables;
-using MigraDoc.DocumentObjectModel.Shapes; // <--- 補上這行，QR Code 定位就不會報錯了
-using MigraDoc.Rendering;
-using QRCoder;
-
-// 3. 引用你的 Abstractions
-using DcMateH5.Abstractions.Export.Pdf.Models;
-using DcMateH5.Abstractions.Export.Pdf;
 
 namespace DcMateH5.Infrastructure.Export.Pdf
 {
@@ -24,7 +24,31 @@ namespace DcMateH5.Infrastructure.Export.Pdf
     {
         public byte[] GenerateGridTableReport(GridReportRequest request)
         {
+            // 1. 強制從 runtimes 路徑載入 Native DLL (解決 SkiaSharp 找不到眼睛的問題)
+            string nativeDllPath = Path.Combine(AppDomain.CurrentDomain.BaseDirectory,
+                "runtimes", "win-x64", "native", "libSkiaSharp.dll");
+            if (File.Exists(nativeDllPath))
+            {
+                NativeLibrary.Load(nativeDllPath);
+            }
+
+            using var temp = new SkiaSharp.SKBitmap(1, 1);
+            // 強制再次確認註冊，避免 Program.cs 沒跑到的情況
+            if (GlobalFontSettings.FontResolver is not MyFontResolver)
+            {
+                GlobalFontSettings.FontResolver = new MyFontResolver();
+            }
+
             MigraDoc.DocumentObjectModel.Document document = new Document();
+
+            // ============================================================
+            // 【新增】設定全域預設字體，這會與你的 MyFontResolver 對接
+            // ============================================================
+            var style = document.Styles["Normal"];
+            style.Font.Name = "Microsoft JhengHei"; // 必須跟 Resolver 裡寫的名字一模一樣
+            style.Font.Size = 9;
+            // ============================================================
+
             MigraDoc.DocumentObjectModel.Section section = document.AddSection();
 
             // 1. 紙張設定
@@ -87,6 +111,13 @@ namespace DcMateH5.Infrastructure.Export.Pdf
                             }
 
                             Paragraph p = cell.AddParagraph(c.Text ?? "");
+                            // 確保 Text 真的有東西，至少給個空格
+                            if (string.IsNullOrEmpty(c.Text))
+                            {
+                                // 某些版本在空 Paragraph 上會噴錯，給它一個隱形字元測試
+                                p.AddText(" ");
+                            }
+
                             p.Format.Font.Size = c.FontSize > 0 ? c.FontSize : 9;
                             p.Format.Font.Bold = c.IsBold;
                             p.Format.Alignment = GetAlignment(c.Align);
@@ -118,9 +149,14 @@ namespace DcMateH5.Infrastructure.Export.Pdf
             foreach (var qr in qrCodes.Where(x => x.Enabled && !string.IsNullOrEmpty(x.Value)))
             {
                 byte[] qrBytes = CreateQrCodeBytes(qr.Value);
-                if (qrBytes.Length > 0)
+                if (qrBytes != null && qrBytes.Length > 0)
                 {
-                    var img = section.AddImage("base64:" + Convert.ToBase64String(qrBytes));
+                    // 去除所有可能干擾的換行符號
+                    string base64Data = Convert.ToBase64String(qrBytes).Replace("\n", "").Replace("\r", "");
+
+                    // 餵給我們剛才驗證成功的 base64 協定
+                    var img = section.AddImage("base64:" + base64Data);
+
                     img.Width = Unit.FromMillimeter(qr.SizeMm);
                     img.RelativeVertical = RelativeVertical.Page;
                     img.RelativeHorizontal = RelativeHorizontal.Page;
@@ -134,7 +170,16 @@ namespace DcMateH5.Infrastructure.Export.Pdf
         {
             using (QRCodeGenerator qg = new QRCodeGenerator())
             using (QRCodeData qd = qg.CreateQrCode(text, QRCodeGenerator.ECCLevel.Q))
-            using (PngByteQRCode qr = new PngByteQRCode(qd)) return qr.GetGraphic(20);
+            // 1. 先用 QRCode 產生 Bitmap (這是最標準的 GDI+ 物件)
+            using (QRCode qr = new QRCode(qd))
+            using (System.Drawing.Bitmap bmp = qr.GetGraphic(5)) // 解析度設為 5 就夠了
+            using (MemoryStream ms = new MemoryStream())
+            {
+                // 2. 強迫透過 System.Drawing 將 Bitmap 重新編碼為標準 PNG
+                // 這會補齊所有 SkiaSharp 期待的 Header 資訊
+                bmp.Save(ms, System.Drawing.Imaging.ImageFormat.Png);
+                return ms.ToArray();
+            }
         }
 
         private ParagraphAlignment GetAlignment(string align)

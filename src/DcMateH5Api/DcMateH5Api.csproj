@@ -23,6 +23,7 @@
 	<PackageReference Include="Dapper" />
 	<PackageReference Include="Microsoft.Data.SqlClient" />
 	<PackageReference Include="Microsoft.SqlServer.TransactSql.ScriptDom" />
+	<PackageReference Include="SkiaSharp.NativeAssets.Win32" />
 	<PackageReference Include="StackExchangeRedisCache.Contrib" />
 	<PackageReference Include="Swashbuckle.AspNetCore" />
 	<PackageReference Include="Microsoft.AspNetCore.Authentication.JwtBearer" />
