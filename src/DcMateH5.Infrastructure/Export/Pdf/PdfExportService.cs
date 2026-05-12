@@ -1,6 +1,8 @@
 ﻿using DcMateH5.Abstractions.Export.Pdf;
 // 3. 引用你的 Abstractions
 using DcMateH5.Abstractions.Export.Pdf.Models;
+using Microsoft.Extensions.Options;
+
 // 2. 【補足缺失的枚舉】RelativeVertical/Horizontal 在 Shapes 命名空間下
 using MigraDoc.DocumentObjectModel;
 using MigraDoc.DocumentObjectModel.Shapes; // <--- 補上這行，QR Code 定位就不會報錯了
@@ -22,8 +24,24 @@ namespace DcMateH5.Infrastructure.Export.Pdf
 {
     public class PdfExportService : IPdfExportService
     {
+        private readonly PdfExportOptions _options;
+
+        // 透過建構子注入設定
+        public PdfExportService(IOptions<PdfExportOptions> options)
+        {
+            _options = options.Value;
+        }
+
         public byte[] GenerateGridTableReport(GridReportRequest request)
         {
+            // 【Debug 指令】檢查設定檔是否為空
+            if (_options == null || _options.FontFiles == null)
+            {
+                throw new Exception("PDF 設定檔讀取失敗，請檢查 appsettings.json 結構！");
+            }
+
+            System.Diagnostics.Debug.WriteLine($"目前使用的字體: {_options.FontFamilyName}");
+
             // 【自動判斷環境載入對應位元的 DLL
             string arch = RuntimeInformation.ProcessArchitecture.ToString().ToLower(); // 會拿到 x64 或 x86
             string nativeDllPath = Path.Combine(AppDomain.CurrentDomain.BaseDirectory,
@@ -39,7 +57,7 @@ namespace DcMateH5.Infrastructure.Export.Pdf
             // 強制再次確認註冊，避免 Program.cs 沒跑到的情況
             if (GlobalFontSettings.FontResolver is not MyFontResolver)
             {
-                GlobalFontSettings.FontResolver = new MyFontResolver();
+                GlobalFontSettings.FontResolver = new MyFontResolver(_options);
             }
 
             MigraDoc.DocumentObjectModel.Document document = new Document();
@@ -48,7 +66,7 @@ namespace DcMateH5.Infrastructure.Export.Pdf
             // 【新增】設定全域預設字體，這會與你的 MyFontResolver 對接
             // ============================================================
             var style = document.Styles["Normal"];
-            style.Font.Name = "Microsoft JhengHei"; // 必須跟 Resolver 裡寫的名字一模一樣
+            style.Font.Name = _options.FontFamilyName; // 改用 JSON 裡的設定
             style.Font.Size = 9;
             // ============================================================
 
@@ -129,8 +147,14 @@ namespace DcMateH5.Infrastructure.Export.Pdf
                 }
             }
 
-            PdfDocumentRenderer renderer = new PdfDocumentRenderer(true) { Document = document };
+            // 4. 渲染器初始化
+            PdfDocumentRenderer renderer = new PdfDocumentRenderer();
+            renderer.Document = document;
+
+            // 如果這行噴 NullRef，代表上面的 Resolver 或 Document 內容有問題
             renderer.RenderDocument();
+
+            // 【一定要回傳，否則編譯不過】
             using (MemoryStream ms = new MemoryStream())
             {
                 renderer.PdfDocument.Save(ms);

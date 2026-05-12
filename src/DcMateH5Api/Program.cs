@@ -5,6 +5,8 @@ using DcMateClassLibrary.Helper;
 using DcMateH5.Abstractions.CurrentUser;
 using DcMateH5.Abstractions.Eqm;
 using DcMateH5.Abstractions.Export;
+using DcMateH5.Abstractions.Export.Pdf;
+using DcMateH5.Abstractions.Export.Pdf.Models;
 using DcMateH5.Abstractions.Form.Form;
 using DcMateH5.Abstractions.Form.FormLogic;
 using DcMateH5.Abstractions.Form.Options;
@@ -19,6 +21,7 @@ using DcMateH5.Abstractions.Token.Model;
 using DcMateH5.Abstractions.Wip;
 using DcMateH5.Infrastructure.Eqm;
 using DcMateH5.Infrastructure.Export;
+using DcMateH5.Infrastructure.Export.Pdf;
 using DcMateH5.Infrastructure.Form.Form;
 using DcMateH5.Infrastructure.Form.FormLogic;
 using DcMateH5.Infrastructure.Form.Transaction;
@@ -155,11 +158,31 @@ builder.Services.AddScoped<IMmsLotService, MmsLotService>();
 builder.Services.AddScoped<ITransactionService, TransactionService>();
 builder.Services.AddScoped<ICacheService, RedisCacheService>();
 
-// Export Pdf匯出(Excel待補)
-builder.Services.AddScoped<DcMateH5.Abstractions.Export.Pdf.IPdfExportService, DcMateH5.Infrastructure.Export.Pdf.PdfExportService>();
+// 1. 先從 Config 抓資料
+var pdfSection = builder.Configuration.GetSection("PdfExportSettings");
+var fontSettings = pdfSection.Get<PdfExportOptions>();
 
-// 宣告 產生pdf使用字體
-GlobalFontSettings.FontResolver = new MyFontResolver();
+// 2. 【除錯關鍵】在這裡打斷點，看 fontSettings.FontFiles 裡面到底有沒有路徑
+if (fontSettings == null || fontSettings.FontFiles == null || fontSettings.FontFiles.Count == 0)
+{
+    // 如果這裡噴了，代表 JSON 根本沒讀到，後面的 Resolver 註冊什麼都沒用
+    throw new Exception("CRITICAL: 無法載入 PDF 字體設定，請檢查 appsettings.json！");
+}
+
+// 3. 強行覆蓋註冊 (在開發階段建議先拿掉 if 判斷，確保每次都用最新路徑)
+try
+{
+    PdfSharp.Fonts.GlobalFontSettings.FontResolver = new MyFontResolver(fontSettings);
+}
+catch
+{
+    // 某些版本如果不能重複設定，就在這裡處理
+    Console.WriteLine("FontResolver 已經註冊過，無法覆蓋。");
+}
+// 4. DI 註冊 (讓 PdfExportService 也能拿到設定)
+builder.Services.Configure<PdfExportOptions>(pdfSection);
+builder.Services.AddScoped<IPdfExportService, PdfExportService>();
+
 
 // 註冊 Authentication Scheme
 builder.Services

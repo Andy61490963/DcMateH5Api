@@ -85,4 +85,10 @@ namespace DcMateH5.Abstractions.Export.Pdf.Models
         public double XPosMm { get; set; } = 0;
         public double YPosMm { get; set; } = 0;
     }
+
+    public class PdfExportOptions
+    {
+        public string FontFamilyName { get; set; }
+        public Dictionary<string, string> FontFiles { get; set; }
+    }
 }
