@@ -24,12 +24,15 @@ namespace DcMateH5.Infrastructure.Export.Pdf
     {
         public byte[] GenerateGridTableReport(GridReportRequest request)
         {
-            // 1. 強制從 runtimes 路徑載入 Native DLL (解決 SkiaSharp 找不到眼睛的問題)
+            // 【自動判斷環境載入對應位元的 DLL
+            string arch = RuntimeInformation.ProcessArchitecture.ToString().ToLower(); // 會拿到 x64 或 x86
             string nativeDllPath = Path.Combine(AppDomain.CurrentDomain.BaseDirectory,
-                "runtimes", "win-x64", "native", "libSkiaSharp.dll");
+                "runtimes", $"win-{arch}", "native", "libSkiaSharp.dll");
+
             if (File.Exists(nativeDllPath))
             {
-                NativeLibrary.Load(nativeDllPath);
+                // 如果之前載入過了會報錯，加個 try-catch 比較保險
+                try { NativeLibrary.Load(nativeDllPath); } catch { }
             }
 
             using var temp = new SkiaSharp.SKBitmap(1, 1);
