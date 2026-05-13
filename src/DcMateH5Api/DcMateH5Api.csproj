@@ -19,10 +19,30 @@
   </PropertyGroup>
 
   <ItemGroup>
+    <None Remove="Areas\Font\arial.ttf" />
+    <None Remove="Areas\Font\arialbd.ttf" />
+    <None Remove="Areas\Font\arialbi.ttf" />
+    <None Remove="Areas\Font\ariali.ttf" />
+    <None Remove="Areas\Font\ARIALN.TTF" />
+    <None Remove="Areas\Font\ARIALNB.TTF" />
+    <None Remove="Areas\Font\ARIALNBI.TTF" />
+    <None Remove="Areas\Font\ARIALNI.TTF" />
+    <None Remove="Areas\Font\ariblk.ttf" />
+    <None Remove="Areas\Font\msjh.ttf" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <Content Include="Areas\Font\msjh.ttf">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </Content>
+  </ItemGroup>
+
+  <ItemGroup>
     <PackageReference Include="ClosedXML" />
 	<PackageReference Include="Dapper" />
 	<PackageReference Include="Microsoft.Data.SqlClient" />
 	<PackageReference Include="Microsoft.SqlServer.TransactSql.ScriptDom" />
+	<PackageReference Include="SkiaSharp.NativeAssets.Win32" />
 	<PackageReference Include="StackExchangeRedisCache.Contrib" />
 	<PackageReference Include="Swashbuckle.AspNetCore" />
 	<PackageReference Include="Microsoft.AspNetCore.Authentication.JwtBearer" />
@@ -38,6 +58,33 @@
 
   <!-- 這段可留可不留；有些 IDE/CI 喜歡明確宣告 launchSettings -->
   <ItemGroup>
+    <Content Include="Areas\Font\arial.ttf">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </Content>
+    <Content Include="Areas\Font\arialbd.ttf">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </Content>
+    <Content Include="Areas\Font\arialbi.ttf">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </Content>
+    <Content Include="Areas\Font\ariali.ttf">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </Content>
+    <Content Include="Areas\Font\ARIALN.TTF">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </Content>
+    <Content Include="Areas\Font\ARIALNB.TTF">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </Content>
+    <Content Include="Areas\Font\ARIALNBI.TTF">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </Content>
+    <Content Include="Areas\Font\ARIALNI.TTF">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </Content>
+    <Content Include="Areas\Font\ariblk.ttf">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </Content>
     <Content Include="Properties\launchSettings.json" />
   </ItemGroup>
   <ItemGroup>

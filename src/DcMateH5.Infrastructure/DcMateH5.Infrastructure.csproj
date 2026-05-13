@@ -7,6 +7,20 @@
     </PropertyGroup>
 
     <ItemGroup>
+      <Compile Remove="Fonts\**" />
+      <EmbeddedResource Remove="Fonts\**" />
+      <None Remove="Fonts\**" />
+    </ItemGroup>
+
+    <ItemGroup>
+      <PackageReference Include="PDFsharp-MigraDoc" />
+      <PackageReference Include="QRCoder" />
+      <PackageReference Include="SkiaSharp" />
+      <PackageReference Include="SkiaSharp.NativeAssets.Win32" />
+      <PackageReference Include="System.Drawing.Common" />
+    </ItemGroup>
+
+    <ItemGroup>
       <ProjectReference Include="..\DbExtensions\DbExtensions.csproj" />
       <ProjectReference Include="..\DcMateH5.Abstractions\DcMateH5.Abstractions.csproj" />
       <ProjectReference Include="..\DbExtensions\DbExtensions.csproj" />

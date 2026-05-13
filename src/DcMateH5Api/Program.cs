@@ -1,16 +1,12 @@
-using DcMateH5Api.Services.Cache;
-using Microsoft.AspNetCore.DataProtection;
-using Microsoft.AspNetCore.HttpOverrides;
-using Microsoft.Extensions.Diagnostics.HealthChecks;
-using Microsoft.OpenApi.Models;
-using Microsoft.Data.SqlClient;
-using System.Reflection;
 using DbExtensions;
 using DbExtensions.DbExecutor.Interface;
 using DbExtensions.DbExecutor.Service;
 using DcMateClassLibrary.Helper;
 using DcMateH5.Abstractions.CurrentUser;
 using DcMateH5.Abstractions.Eqm;
+using DcMateH5.Abstractions.Export;
+using DcMateH5.Abstractions.Export.Pdf;
+using DcMateH5.Abstractions.Export.Pdf.Models;
 using DcMateH5.Abstractions.Form.Form;
 using DcMateH5.Abstractions.Form.FormLogic;
 using DcMateH5.Abstractions.Form.Options;
@@ -24,6 +20,8 @@ using DcMateH5.Abstractions.Token;
 using DcMateH5.Abstractions.Token.Model;
 using DcMateH5.Abstractions.Wip;
 using DcMateH5.Infrastructure.Eqm;
+using DcMateH5.Infrastructure.Export;
+using DcMateH5.Infrastructure.Export.Pdf;
 using DcMateH5.Infrastructure.Form.Form;
 using DcMateH5.Infrastructure.Form.FormLogic;
 using DcMateH5.Infrastructure.Form.Transaction;
@@ -34,19 +32,27 @@ using DcMateH5.Infrastructure.Mms;
 using DcMateH5.Infrastructure.RegistrationLicense;
 using DcMateH5.Infrastructure.Token;
 using DcMateH5.Infrastructure.Wip;
+using DcMateH5Api.Areas.Security.Options;
 using DcMateH5Api.BackgroundService;
 using DcMateH5Api.MiddlewareExtension;
 using DcMateH5Api.MiddlewareExtension.Token;
-using DcMateH5Api.Areas.Security.Options;
+using DcMateH5Api.Services.Cache;
 using DcMateH5Api.Services.Cache.Redis.Interfaces;
 using DcMateH5Api.Services.Cache.Redis.Services;
 using DcMateH5Api.Services.CurrentUser;
 using Microsoft.AspNetCore.Authentication;
-using IEmailSender = DcMateH5Api.Areas.Security.Interfaces.IEmailSender;
+using Microsoft.AspNetCore.DataProtection;
+using Microsoft.AspNetCore.HttpOverrides;
+using Microsoft.Data.SqlClient;
+using Microsoft.Extensions.Diagnostics.HealthChecks;
+using Microsoft.OpenApi.Models;
+using PdfSharp.Fonts;
+using System.Reflection;
 using AccountService = DcMateH5Api.Areas.Security.Services.AccountService;
-using IAccountService = DcMateH5Api.Areas.Security.Interfaces.IAccountService;
 using AuthenticationService = DcMateH5Api.Areas.Security.Services.AuthenticationService;
+using IAccountService = DcMateH5Api.Areas.Security.Interfaces.IAccountService;
 using IAuthenticationService = DcMateH5Api.Areas.Security.Interfaces.IAuthenticationService;
+using IEmailSender = DcMateH5Api.Areas.Security.Interfaces.IEmailSender;
 using SmtpEmailSender = DcMateH5Api.Areas.Security.Services.SmtpEmailSender;
 
 var builder = WebApplication.CreateBuilder(args);
@@ -151,6 +157,31 @@ builder.Services.AddScoped<IMmsLotService, MmsLotService>();
 // 工作站與交易
 builder.Services.AddScoped<ITransactionService, TransactionService>();
 builder.Services.AddScoped<ICacheService, RedisCacheService>();
+
+// 1. 先從 Config 抓資料
+var pdfSection = builder.Configuration.GetSection("PdfExportSettings");
+var fontSettings = pdfSection.Get<PdfExportOptions>();
+
+// 2. 【除錯關鍵】在這裡打斷點，看 fontSettings.FontFiles 裡面到底有沒有路徑
+if (fontSettings == null || fontSettings.FontFiles == null || fontSettings.FontFiles.Count == 0)
+{
+    // 如果這裡噴了，代表 JSON 根本沒讀到，後面的 Resolver 註冊什麼都沒用
+    throw new Exception("CRITICAL: 無法載入 PDF 字體設定，請檢查 appsettings.json！");
+}
+
+// 3. 強行覆蓋註冊 (在開發階段建議先拿掉 if 判斷，確保每次都用最新路徑)
+try
+{
+    PdfSharp.Fonts.GlobalFontSettings.FontResolver = new MyFontResolver(fontSettings);
+}
+catch
+{
+    // 某些版本如果不能重複設定，就在這裡處理
+    Console.WriteLine("FontResolver 已經註冊過，無法覆蓋。");
+}
+// 4. DI 註冊 (讓 PdfExportService 也能拿到設定)
+builder.Services.Configure<PdfExportOptions>(pdfSection);
+builder.Services.AddScoped<IPdfExportService, PdfExportService>();
 
 
 // 註冊 Authentication Scheme
