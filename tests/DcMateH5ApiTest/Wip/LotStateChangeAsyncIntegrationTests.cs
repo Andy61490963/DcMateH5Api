@@ -66,7 +66,7 @@ public class LotStateChangeAsyncIntegrationTests
 
     [Fact]
     [Trait("Category", "Integration")]
-    public async Task LotTerminatedAsync_ShouldRejectLotThatIsNotWait()
+    public async Task LotTerminatedAsync_ShouldRejectLotThatIsNotWaitOrHold()
     {
         var connectionString = TestConfiguration.LoadConnectionString();
         var arrangement = await LoadArrangementAsync(connectionString);
@@ -83,6 +83,41 @@ public class LotStateChangeAsyncIntegrationTests
 
             Assert.Equal(System.Net.HttpStatusCode.BadRequest, exception.StatusCode);
             await AssertLotStatusAndLatestActionAsync(connectionString, lotCode, "Finished", "LOT_FINISHED", arrangement.ReasonSid);
+        }
+        finally
+        {
+            await CleanupAsync(connectionString, arrangement.WorkOrder, arrangement.PreviousReleaseQty, lotCode);
+        }
+    }
+
+    [Fact]
+    [Trait("Category", "Integration")]
+    public async Task LotTerminatedAsync_ShouldAllowLotThatIsHold()
+    {
+        var connectionString = TestConfiguration.LoadConnectionString();
+        var arrangement = await LoadArrangementAsync(connectionString);
+        var lotCode = $"ITEST-STATE3-{DateTime.UtcNow:yyyyMMddHHmmssfff}";
+        var service = CreateService(connectionString, arrangement.AccountNo);
+
+        try
+        {
+            await CreateTestLotAsync(service, arrangement, lotCode, 900000001121m);
+
+            var hold = await service.LotHoldAsync(new WipLotHoldInputDto
+            {
+                LOT = lotCode,
+                REASON_SID = arrangement.ReasonSid,
+                DATA_LINK_SID = 900000001122m,
+                ACCOUNT_NO = arrangement.AccountNo,
+                COMMENT = "LotTerminatedAsync hold source integration test",
+                INPUT_FORM_NAME = "DcMateH5ApiTest"
+            });
+            Assert.True(hold.IsSuccess);
+
+            var terminated = await service.LotTerminatedAsync(BuildStatusActionInput(lotCode, arrangement, 900000001123m));
+
+            Assert.True(terminated.IsSuccess);
+            await AssertLotStatusAndLatestActionAsync(connectionString, lotCode, "Terminated", "LOT_TERMINATED", arrangement.ReasonSid);
         }
         finally
         {
@@ -224,6 +259,7 @@ public class LotStateChangeAsyncIntegrationTests
             """,
             new { Lot = lotCode },
             tx);
+        await conn.ExecuteAsync("DELETE FROM WIP_LOT_HOLD_HIST WHERE LOT = @Lot", new { Lot = lotCode }, tx);
         await conn.ExecuteAsync("DELETE FROM WIP_LOT_HIST WHERE LOT = @Lot", new { Lot = lotCode }, tx);
         await conn.ExecuteAsync("DELETE FROM WIP_LOT WHERE LOT = @Lot", new { Lot = lotCode }, tx);
         await conn.ExecuteAsync(

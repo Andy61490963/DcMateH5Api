@@ -339,7 +339,7 @@ public class WipLotSettingController : ControllerBase
     }
 
     /// <summary>
-    /// 將 Wait 狀態 LOT 結束為 Terminated。
+    /// 將 Wait 或 Hold 狀態 LOT 結束為 Terminated。
     /// </summary>
     /// <param name="input">LOT 狀態動作資料。</param>
     /// <param name="ct"></param>

@@ -268,7 +268,7 @@ public class LotBaseSettingService : ILotBaseSettingService
                     input,
                     LotStateChangeCodes.StateChangeAction,
                     input.NEW_STATE_CODE,
-                    allowedCurrentStatusCode: null,
+                    allowedCurrentStatusCodes: null,
                     innerCt);
             },
             isolation: IsolationLevel.ReadCommitted,
@@ -283,7 +283,7 @@ public class LotBaseSettingService : ILotBaseSettingService
             input,
             LotStateChangeCodes.TerminatedAction,
             LotStateChangeCodes.TerminatedStatus,
-            LotStateChangeCodes.WaitStatus,
+            [LotStateChangeCodes.WaitStatus, LotHoldCodes.HoldStatus],
             ct);
 
         return Result<bool>.Ok(true);
@@ -295,7 +295,7 @@ public class LotBaseSettingService : ILotBaseSettingService
             input,
             LotStateChangeCodes.UnTerminatedAction,
             LotStateChangeCodes.WaitStatus,
-            LotStateChangeCodes.TerminatedStatus,
+            [LotStateChangeCodes.TerminatedStatus],
             ct);
 
         return Result<bool>.Ok(true);
@@ -307,7 +307,7 @@ public class LotBaseSettingService : ILotBaseSettingService
             input,
             LotStateChangeCodes.FinishedAction,
             LotStateChangeCodes.FinishedStatus,
-            LotStateChangeCodes.WaitStatus,
+            [LotStateChangeCodes.WaitStatus],
             ct);
 
         return Result<bool>.Ok(true);
@@ -319,7 +319,7 @@ public class LotBaseSettingService : ILotBaseSettingService
             input,
             LotStateChangeCodes.UnFinishedAction,
             LotStateChangeCodes.WaitStatus,
-            LotStateChangeCodes.FinishedStatus,
+            [LotStateChangeCodes.FinishedStatus],
             ct);
 
         return Result<bool>.Ok(true);
@@ -329,7 +329,7 @@ public class LotBaseSettingService : ILotBaseSettingService
         WipLotStatusActionInputDto input,
         string actionCode,
         string targetStatusCode,
-        string allowedCurrentStatusCode,
+        string[] allowedCurrentStatusCodes,
         CancellationToken ct)
     {
         var stateChangeInput = new WipLotStateChangeInputDto
@@ -353,7 +353,7 @@ public class LotBaseSettingService : ILotBaseSettingService
                     stateChangeInput,
                     actionCode,
                     targetStatusCode,
-                    allowedCurrentStatusCode,
+                    allowedCurrentStatusCodes,
                     innerCt);
             },
             isolation: IsolationLevel.ReadCommitted,
@@ -1723,18 +1723,19 @@ public class LotBaseSettingService : ILotBaseSettingService
         WipLotStateChangeInputDto input,
         string actionCode,
         string targetStatusCode,
-        string? allowedCurrentStatusCode,
+        string[]? allowedCurrentStatusCodes,
         CancellationToken ct)
     {
         ValidateLotStateChangeInput(input, targetStatusCode);
 
         var lot = await GetLotByCodeInTxAsync(conn, tx, input.LOT, ct);
-        if (!string.IsNullOrWhiteSpace(allowedCurrentStatusCode)
-            && !string.Equals(lot.LOT_STATUS_CODE, allowedCurrentStatusCode, StringComparison.OrdinalIgnoreCase))
+        if (allowedCurrentStatusCodes is { Length: > 0 }
+            && !allowedCurrentStatusCodes.Any(status => string.Equals(lot.LOT_STATUS_CODE, status, StringComparison.OrdinalIgnoreCase)))
         {
+            var allowedStatusMessage = string.Join(" or ", allowedCurrentStatusCodes);
             throw new HttpStatusCodeException(
                 System.Net.HttpStatusCode.BadRequest,
-                $"LOT status must be {allowedCurrentStatusCode}: {input.LOT}");
+                $"LOT status must be {allowedStatusMessage}: {input.LOT}");
         }
 
         var user = await GetUserByAccountAsync(input.ACCOUNT_NO, ct);

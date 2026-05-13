@@ -466,7 +466,7 @@ POST /api/Wip/WipLotSetting/LotUnFinished
 
 | API | 狀態限制 | 目標狀態 | ACTION_CODE |
 |---|---|---|---|
-| `LotTerminated` | 目前必須是 `Wait` | `Terminated` | `LOT_TERMINATED` |
+| `LotTerminated` | 目前必須是 `Wait` / `Hold` | `Terminated` | `LOT_TERMINATED` |
 | `LotUnTerminated` | 目前必須是 `Terminated` | `Wait` | `LOT_UNTERMINATED` |
 | `LotFinished` | 目前必須是 `Wait` | `Finished` | `LOT_FINISHED` |
 | `LotUnFinished` | 目前必須是 `Finished` | `Wait` | `LOT_UNFINISHED` |
