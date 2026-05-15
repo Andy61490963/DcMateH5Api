@@ -345,7 +345,8 @@ public class WipBaseSettingService : IWipBaseSettingService
         ct.ThrowIfCancellationRequested();
 
         var detailWhere = new WhereBuilder<WipOpiWdoeacicoHistDetailDto>()
-            .AndEq(x => x.WIP_OPI_WDOEACICO_HIST_DETAIL_SID!, detailSid);
+            .AndEq(x => x.WIP_OPI_WDOEACICO_HIST_DETAIL_SID!, detailSid)
+            .AndNotDeleted();
 
         var detail = await _sqlHelper.SelectFirstOrDefaultInTxAsync(conn, tx, detailWhere, ct: ct);
         if (detail == null)
@@ -403,7 +404,8 @@ public class WipBaseSettingService : IWipBaseSettingService
         CancellationToken ct)
     {
         var where = new WhereBuilder<WipOpiWdoeacicoHistDetailDto>()
-            .AndEq(x => x.WIP_OPI_WDOEACICO_HIST_SID!, histSid);
+            .AndEq(x => x.WIP_OPI_WDOEACICO_HIST_SID!, histSid)
+            .AndNotDeleted();
 
         var rows = await _sqlHelper.SelectWhereInTxAsync(conn, tx, where, ct: ct);
 
