@@ -43,6 +43,9 @@ public class WipBaseSettingService : IWipBaseSettingService
             ct: ct);
     }
 
+    /// <summary>
+    /// 上模開始，建立一筆 TOL 紀錄以及相關 HIST 與 CAV 紀錄。
+    /// </summary>
     public async Task<WipModelUploadCheckInResponseDto> ModelUploadCheckInAsync(
         WipModelUploadCheckInInputDto input,
         CancellationToken ct = default)
@@ -92,6 +95,30 @@ public class WipBaseSettingService : IWipBaseSettingService
                     TolSid = tolSid,
                     HistSids = histSids
                 };
+            },
+            isolation: IsolationLevel.ReadCommitted,
+            ct: ct);
+    }
+
+    /// <summary>
+    /// 下模結束，寫入 MODLE_REMOVE_END 並關閉相關 HIST 與 CAV 紀錄。
+    /// </summary>
+    public async Task ModelUploadCheckOutAsync(WipModelUploadCheckOutInputDto input, CancellationToken ct = default)
+    {
+        ValidateModelUploadCheckOutInput(input);
+
+        await _sqlHelper.TxAsync(
+            async (conn, tx, innerCt) =>
+            {
+                await UpdateModelUploadTolDateInTxAsync(
+                    conn,
+                    tx,
+                    input.WIP_OPI_WDOEACICO_HIST_TOL_SID,
+                    "MODLE_REMOVE_END",
+                    input.CHECK_OUT_TIME,
+                    innerCt);
+                await CheckOutModelUploadHistsInTxAsync(conn, tx, input.WIP_OPI_WDOEACICO_HIST_TOL_SID, input.CHECK_OUT_TIME, innerCt);
+                await EndModelUploadCavsInTxAsync(conn, tx, input.WIP_OPI_WDOEACICO_HIST_TOL_SID, input.CHECK_OUT_TIME, innerCt);
             },
             isolation: IsolationLevel.ReadCommitted,
             ct: ct);
@@ -297,6 +324,158 @@ public class WipBaseSettingService : IWipBaseSettingService
         await cmd.ExecuteNonQueryAsync(ct);
     }
 
+    private static void ValidateEditModelUploadCavInput(WipEditModelUploadCavInputDto input)
+    {
+        if (input == null)
+        {
+            throw new HttpStatusCodeException(System.Net.HttpStatusCode.BadRequest, "Model upload CAV input is required.");
+        }
+
+        if (input.WIP_OPI_WDOEACICO_HIST_CAV_SID <= 0)
+        {
+            throw new HttpStatusCodeException(System.Net.HttpStatusCode.BadRequest, "WIP_OPI_WDOEACICO_HIST_CAV_SID is required.");
+        }
+
+        if (input.OPI_CAV <= 0)
+        {
+            throw new HttpStatusCodeException(System.Net.HttpStatusCode.BadRequest, "OPI_CAV must be greater than 0.");
+        }
+    }
+
+    private static void ValidateModelUploadTolSid(decimal tolSid)
+    {
+        if (tolSid <= 0)
+        {
+            throw new HttpStatusCodeException(System.Net.HttpStatusCode.BadRequest, "WIP_OPI_WDOEACICO_HIST_TOL_SID is required.");
+        }
+    }
+
+    private static void ValidateModelUploadCheckOutInput(WipModelUploadCheckOutInputDto input)
+    {
+        if (input == null)
+        {
+            throw new HttpStatusCodeException(System.Net.HttpStatusCode.BadRequest, "Model upload check-out input is required.");
+        }
+
+        ValidateModelUploadTolSid(input.WIP_OPI_WDOEACICO_HIST_TOL_SID);
+    }
+
+    /// <summary>
+    /// 更新既有上模 CAV 紀錄的 CAV 數值。
+    /// </summary>
+    private static async Task UpdateModelUploadCavInTxAsync(
+        SqlConnection conn,
+        SqlTransaction tx,
+        decimal cavSid,
+        decimal cav,
+        CancellationToken ct)
+    {
+        using var cmd = conn.CreateCommand();
+        cmd.Transaction = tx;
+        cmd.CommandText = """
+                          UPDATE [WIP_OPI_WDOEACICO_HIST_CAV]
+                          SET [OPI_CAV] = @Cav
+                          WHERE [WIP_OPI_WDOEACICO_HIST_CAV_SID] = @CavSid;
+                          """;
+        cmd.Parameters.Add(new SqlParameter("@Cav", SqlDbType.NVarChar, 255) { Value = cav.ToString(CultureInfo.InvariantCulture) });
+        cmd.Parameters.Add(new SqlParameter("@CavSid", SqlDbType.Decimal) { Value = cavSid });
+
+        var affectedRows = await cmd.ExecuteNonQueryAsync(ct);
+        if (affectedRows == 0)
+        {
+            throw new HttpStatusCodeException(
+                System.Net.HttpStatusCode.BadRequest,
+                $"Model upload CAV {cavSid} does not exist.");
+        }
+    }
+
+    /// <summary>
+    /// 更新既有 TOL 紀錄的日期欄位；上模開始建立資料時會直接 insert 開始時間，不使用此方法。
+    /// </summary>
+    private static async Task UpdateModelUploadTolDateInTxAsync(
+        SqlConnection conn,
+        SqlTransaction tx,
+        decimal tolSid,
+        string columnName,
+        DateTime value,
+        CancellationToken ct)
+    {
+        if (columnName != "MODLE_UPLOAD_END" && columnName != "MODLE_REMOVE_START" && columnName != "MODLE_REMOVE_END")
+        {
+            throw new InvalidOperationException($"Unsupported model upload TOL date column: {columnName}");
+        }
+
+        using var cmd = conn.CreateCommand();
+        cmd.Transaction = tx;
+        cmd.CommandText = $"""
+                           UPDATE [WIP_OPI_WDOEACICO_HIST_TOL]
+                           SET [{columnName}] = @Value
+                           WHERE [WIP_OPI_WDOEACICO_HIST_TOL_SID] = @TolSid;
+                           """;
+        cmd.Parameters.Add(new SqlParameter("@Value", SqlDbType.DateTime) { Value = value });
+        cmd.Parameters.Add(new SqlParameter("@TolSid", SqlDbType.Decimal) { Value = tolSid });
+
+        var affectedRows = await cmd.ExecuteNonQueryAsync(ct);
+        if (affectedRows == 0)
+        {
+            throw new HttpStatusCodeException(
+                System.Net.HttpStatusCode.BadRequest,
+                $"Model upload TOL {tolSid} does not exist.");
+        }
+    }
+
+    /// <summary>
+    /// 關閉指定 TOL SID 關聯的所有 HIST 紀錄。
+    /// </summary>
+    private static async Task CheckOutModelUploadHistsInTxAsync(
+        SqlConnection conn,
+        SqlTransaction tx,
+        decimal tolSid,
+        DateTime checkOutTime,
+        CancellationToken ct)
+    {
+        using var cmd = conn.CreateCommand();
+        cmd.Transaction = tx;
+        cmd.CommandText = """
+                          UPDATE [WIP_OPI_WDOEACICO_HIST]
+                          SET [CHECK_OUT_TIME] = @CheckOutTime,
+                              [COMPLETED] = @Completed
+                          WHERE [WIP_OPI_WDOEACICO_HIST_TOL_SID] = @TolSid;
+                          """;
+        cmd.Parameters.Add(new SqlParameter("@CheckOutTime", SqlDbType.DateTime) { Value = checkOutTime });
+        cmd.Parameters.Add(new SqlParameter("@Completed", SqlDbType.Char, 1) { Value = Flags.Yes });
+        cmd.Parameters.Add(new SqlParameter("@TolSid", SqlDbType.Decimal) { Value = tolSid });
+
+        await cmd.ExecuteNonQueryAsync(ct);
+    }
+
+    /// <summary>
+    /// 關閉指定 TOL SID 關聯且尚未結束的所有 CAV 紀錄。
+    /// </summary>
+    private static async Task EndModelUploadCavsInTxAsync(
+        SqlConnection conn,
+        SqlTransaction tx,
+        decimal tolSid,
+        DateTime checkOutTime,
+        CancellationToken ct)
+    {
+        using var cmd = conn.CreateCommand();
+        cmd.Transaction = tx;
+        cmd.CommandText = """
+                          UPDATE cav
+                          SET cav.[END_TIME] = @CheckOutTime
+                          FROM [WIP_OPI_WDOEACICO_HIST_CAV] cav
+                          INNER JOIN [WIP_OPI_WDOEACICO_HIST] hist
+                              ON hist.[WIP_OPI_WDOEACICO_HIST_SID] = cav.[WIP_OPI_WDOEACICO_HIST_SID]
+                          WHERE hist.[WIP_OPI_WDOEACICO_HIST_TOL_SID] = @TolSid
+                            AND cav.[END_TIME] IS NULL;
+                          """;
+        cmd.Parameters.Add(new SqlParameter("@CheckOutTime", SqlDbType.DateTime) { Value = checkOutTime });
+        cmd.Parameters.Add(new SqlParameter("@TolSid", SqlDbType.Decimal) { Value = tolSid });
+
+        await cmd.ExecuteNonQueryAsync(ct);
+    }
+
     public async Task CheckInCancelAsync(WipCheckInCancelInputDto input, CancellationToken ct = default)
     {
         await _sqlHelper.TxAsync(
@@ -337,6 +516,57 @@ public class WipBaseSettingService : IWipBaseSettingService
             async (conn, tx, innerCt) =>
             {
                 await DeleteDetailsInTxAsync(conn, tx, input.WIP_OPI_WDOEACICO_HIST_DETAIL_SID, innerCt);
+            },
+            isolation: IsolationLevel.ReadCommitted,
+            ct: ct);
+    }
+
+    public async Task EditModelUploadCavAsync(WipEditModelUploadCavInputDto input, CancellationToken ct = default)
+    {
+        ValidateEditModelUploadCavInput(input);
+
+        await _sqlHelper.TxAsync(
+            async (conn, tx, innerCt) =>
+            {
+                await UpdateModelUploadCavInTxAsync(conn, tx, input.WIP_OPI_WDOEACICO_HIST_CAV_SID, input.OPI_CAV, innerCt);
+            },
+            isolation: IsolationLevel.ReadCommitted,
+            ct: ct);
+    }
+
+    public async Task EditModelUploadEndAsync(WipEditModelUploadEndInputDto input, CancellationToken ct = default)
+    {
+        ValidateModelUploadTolSid(input?.WIP_OPI_WDOEACICO_HIST_TOL_SID ?? 0);
+
+        await _sqlHelper.TxAsync(
+            async (conn, tx, innerCt) =>
+            {
+                await UpdateModelUploadTolDateInTxAsync(
+                    conn,
+                    tx,
+                    input!.WIP_OPI_WDOEACICO_HIST_TOL_SID,
+                    "MODLE_UPLOAD_END",
+                    input.MODLE_UPLOAD_END,
+                    innerCt);
+            },
+            isolation: IsolationLevel.ReadCommitted,
+            ct: ct);
+    }
+
+    public async Task EditModelRemoveStartAsync(WipEditModelRemoveStartInputDto input, CancellationToken ct = default)
+    {
+        ValidateModelUploadTolSid(input?.WIP_OPI_WDOEACICO_HIST_TOL_SID ?? 0);
+
+        await _sqlHelper.TxAsync(
+            async (conn, tx, innerCt) =>
+            {
+                await UpdateModelUploadTolDateInTxAsync(
+                    conn,
+                    tx,
+                    input!.WIP_OPI_WDOEACICO_HIST_TOL_SID,
+                    "MODLE_REMOVE_START",
+                    input.MODLE_REMOVE_START,
+                    innerCt);
             },
             isolation: IsolationLevel.ReadCommitted,
             ct: ct);

@@ -17,7 +17,6 @@ namespace DcMateH5Api.Areas.Wip.Controllers
         private static class Routes
         {
             public const string CheckInWip = "CheckInWip";
-            public const string ModelUploadCheckIn = "ModelUploadCheckIn";
             public const string CheckInCancel = "CheckInCancel";
             public const string AddWipDetails = "AddWipDetails";
             public const string EditWipDetails = "EditWipDetails";
@@ -55,27 +54,11 @@ namespace DcMateH5Api.Areas.Wip.Controllers
         }
 
         /// <summary>
-        /// 上模 + 進站
+        /// 取消一筆 WIP 進站紀錄。
         /// </summary>
-        /// <param name="input"></param>
-        /// <param name="ct"></param>
-        /// <returns></returns>
-        [HttpPost(Routes.ModelUploadCheckIn)]
-        [ProducesResponseType(typeof(Result<WipModelUploadCheckInResponseDto>), StatusCodes.Status200OK)]
-        [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status400BadRequest)]
-        public async Task<IActionResult> ModelUploadCheckIn([FromBody] WipModelUploadCheckInInputDto input, CancellationToken ct)
-        {
-            try
-            {
-                var result = await _wipBaseSettingService.ModelUploadCheckInAsync(input, ct);
-                return Ok(Result<WipModelUploadCheckInResponseDto>.Ok(result));
-            }
-            catch (HttpStatusCodeException ex)
-            {
-                return StatusCode((int)ex.StatusCode, ex.Message);
-            }
-        }
-
+        /// <param name="input">進站取消資料。</param>
+        /// <param name="ct">取消權杖。</param>
+        /// <returns>取消成功時回傳 HTTP 200。</returns>
         [HttpPost(Routes.CheckInCancel)]
         [ProducesResponseType(StatusCodes.Status200OK)]
         [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status400BadRequest)]
