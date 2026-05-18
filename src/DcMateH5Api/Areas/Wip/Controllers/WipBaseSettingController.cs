@@ -17,6 +17,7 @@ namespace DcMateH5Api.Areas.Wip.Controllers
         private static class Routes
         {
             public const string CheckInWip = "CheckInWip";
+            public const string ModelUploadCheckIn = "ModelUploadCheckIn";
             public const string CheckInCancel = "CheckInCancel";
             public const string AddWipDetails = "AddWipDetails";
             public const string EditWipDetails = "EditWipDetails";
@@ -46,6 +47,28 @@ namespace DcMateH5Api.Areas.Wip.Controllers
                 {
                     HistSid = histSid
                 }));
+            }
+            catch (HttpStatusCodeException ex)
+            {
+                return StatusCode((int)ex.StatusCode, ex.Message);
+            }
+        }
+
+        /// <summary>
+        /// 上模 + 進站
+        /// </summary>
+        /// <param name="input"></param>
+        /// <param name="ct"></param>
+        /// <returns></returns>
+        [HttpPost(Routes.ModelUploadCheckIn)]
+        [ProducesResponseType(typeof(Result<WipModelUploadCheckInResponseDto>), StatusCodes.Status200OK)]
+        [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status400BadRequest)]
+        public async Task<IActionResult> ModelUploadCheckIn([FromBody] WipModelUploadCheckInInputDto input, CancellationToken ct)
+        {
+            try
+            {
+                var result = await _wipBaseSettingService.ModelUploadCheckInAsync(input, ct);
+                return Ok(Result<WipModelUploadCheckInResponseDto>.Ok(result));
             }
             catch (HttpStatusCodeException ex)
             {

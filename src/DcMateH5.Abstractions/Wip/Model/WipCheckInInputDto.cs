@@ -50,3 +50,32 @@ public class WipCheckInResponseDto
     [JsonPropertyName("histSid")]
     public decimal HistSid { get; set; }
 }
+
+public class WipModelUploadCheckInInputDto
+{
+    public List<string>? Account { get; set; }
+    public List<string>? Equipment { get; set; }
+    public DateTime CheckInTime { get; set; }
+    public string Operation { get; set; } = null!;
+    public string Department { get; set; } = null!;
+    public string? Comment { get; set; }
+    public List<WipModelUploadCheckInDetailInputDto>? Details { get; set; } = new();
+}
+
+public class WipModelUploadCheckInDetailInputDto
+{
+    public string WorkOrder { get; set; } = null!;
+    public string TolNo { get; set; } = null!;
+    public string TolDetalsNo { get; set; } = null!;
+    public string PartNo { get; set; } = null!;
+    public decimal Cav { get; set; }
+}
+
+public class WipModelUploadCheckInResponseDto
+{
+    [JsonPropertyName("tolSid")]
+    public decimal TolSid { get; set; }
+
+    [JsonPropertyName("histSids")]
+    public List<decimal> HistSids { get; set; } = new();
+}

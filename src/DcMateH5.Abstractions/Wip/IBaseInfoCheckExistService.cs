@@ -12,4 +12,7 @@ public interface IBaseInfoCheckExistService
     Task<WipWoDto?> CheckWorkOrderExistAsync(string wo, CancellationToken ct = default);
     Task<WipOperationDto?> CheckOperationExistAsync(string operationNo, CancellationToken ct = default);
     Task<WipDepartmentDto?> CheckDepartmentExistAsync(string deptNo, CancellationToken ct = default);
+    Task<WipPartNoDto?> CheckPartNoExistAsync(string partNo, CancellationToken ct = default);
+    Task<TolMasterDto?> CheckToolExistAsync(string tolNo, CancellationToken ct = default);
+    Task<TolMasterDetailsDto?> CheckToolDetailExistAsync(string tolNo, string tolDetalsNo, CancellationToken ct = default);
 }

@@ -54,6 +54,29 @@ public class WipDepartmentDto
     public string DEPT_NO { get; set; } = null!;
 }
 
+[Table("TOL_MASTER")]
+public class TolMasterDto
+{
+    [Key]
+    public decimal TOL_MASTER_SID { get; set; }
+    public string TOL_MASTER_NO { get; set; } = null!;
+    public string TOL_MASTER_NAME { get; set; } = null!;
+    public string ENABLE_FLAG { get; set; } = null!;
+}
+
+[Table("TOL_MASTER_DETAILS")]
+public class TolMasterDetailsDto
+{
+    [Key]
+    public decimal TOL_MASTER_DETALS_SID { get; set; }
+    public string TOL_MASTER_NO { get; set; } = null!;
+    public string TOL_MASTER_DETALS_NO { get; set; } = null!;
+    public string? PART_NO { get; set; }
+    public decimal? DEFAULT_CAV { get; set; }
+    public decimal? CUR_CAV { get; set; }
+    public string? ENABLE_FLAG { get; set; }
+}
+
 [Table("WIP_OPI_WDOEACICO_HIST")]
 public class WipOpiWdoeacicoHistDto
 {
@@ -63,12 +86,41 @@ public class WipOpiWdoeacicoHistDto
     public string? DEPT_NO { get; set; }
     public string? OPERATION_CODE { get; set; }
     public string? EQP_NO { get; set; }
+    public string? TOL_NO { get; set; }
+    public string? TOL_DETALS_NO { get; set; }
+    public string? PART_NO { get; set; }
     public DateTime? CHECK_IN_TIME { get; set; }
     public DateTime? CHECK_OUT_TIME { get; set; }
     public string? COMPLETED { get; set; }
     public string? COMMENT { get; set; }
     public decimal? TOTAL_OK_QTY { get; set; }
     public decimal? TOTAL_NG_QTY { get; set; }
+    public string? ENABLE_FLAG { get; set; }
+    public decimal? WIP_OPI_WDOEACICO_HIST_TOL_SID { get; set; }
+}
+
+[Table("WIP_OPI_WDOEACICO_HIST_TOL")]
+public class WipOpiWdoeacicoHistTolDto
+{
+    [Key]
+    public decimal WIP_OPI_WDOEACICO_HIST_TOL_SID { get; set; }
+    public string? TOL_NO { get; set; }
+    public DateTime? MODLE_UPLOAD_START { get; set; }
+    public DateTime? MODLE_UPLOAD_END { get; set; }
+    public DateTime? MODLE_REMOVE_START { get; set; }
+    public DateTime? MODLE_REMOVE_END { get; set; }
+    public string? IS_ACTIVE { get; set; }
+}
+
+[Table("WIP_OPI_WDOEACICO_HIST_CAV")]
+public class WipOpiWdoeacicoHistCavDto
+{
+    [Key]
+    public decimal WIP_OPI_WDOEACICO_HIST_CAV_SID { get; set; }
+    public decimal WIP_OPI_WDOEACICO_HIST_SID { get; set; }
+    public string? OPI_CAV { get; set; }
+    public DateTime? START_TIME { get; set; }
+    public DateTime? END_TIME { get; set; }
 }
 
 [Table("WIP_OPI_WDOEACICO_HIST_USER")]

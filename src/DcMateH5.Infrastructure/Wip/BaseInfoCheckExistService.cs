@@ -53,4 +53,32 @@ public class BaseInfoCheckExistService : IBaseInfoCheckExistService
         
         return _sqlHelper.SelectFirstOrDefaultAsync(where, ct);
     }
+
+    public Task<WipPartNoDto?> CheckPartNoExistAsync(string partNo, CancellationToken ct = default)
+    {
+        var where = new WhereBuilder<WipPartNoDto>()
+            .AndEq(x => x.WIP_PARTNO_NO, partNo);
+
+        return _sqlHelper.SelectFirstOrDefaultAsync(where, ct);
+    }
+
+    public Task<TolMasterDto?> CheckToolExistAsync(string tolNo, CancellationToken ct = default)
+    {
+        var where = new WhereBuilder<TolMasterDto>()
+            .AndEq(x => x.TOL_MASTER_NO, tolNo);
+
+        return _sqlHelper.SelectFirstOrDefaultAsync(where, ct);
+    }
+
+    public Task<TolMasterDetailsDto?> CheckToolDetailExistAsync(
+        string tolNo,
+        string tolDetalsNo,
+        CancellationToken ct = default)
+    {
+        var where = new WhereBuilder<TolMasterDetailsDto>()
+            .AndEq(x => x.TOL_MASTER_NO, tolNo)
+            .AndEq(x => x.TOL_MASTER_DETALS_NO, tolDetalsNo);
+
+        return _sqlHelper.SelectFirstOrDefaultAsync(where, ct);
+    }
 }

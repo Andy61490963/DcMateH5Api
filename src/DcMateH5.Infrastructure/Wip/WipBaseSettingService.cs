@@ -1,4 +1,5 @@
 using System.Data;
+using System.Globalization;
 using DbExtensions;
 using DcMateClassLibrary.Helper;
 using DcMateClassLibrary.Helper.HttpHelper;
@@ -40,6 +41,260 @@ public class WipBaseSettingService : IWipBaseSettingService
             },
             isolation: IsolationLevel.ReadCommitted,
             ct: ct);
+    }
+
+    public async Task<WipModelUploadCheckInResponseDto> ModelUploadCheckInAsync(
+        WipModelUploadCheckInInputDto input,
+        CancellationToken ct = default)
+    {
+        return await _sqlHelper.TxAsync(
+            async (conn, tx, innerCt) =>
+            {
+                ValidateModelUploadCheckInInput(input);
+
+                var tolNo = input.Details![0].TolNo;
+                var userSids = await ValidateAndGetUserSidsAsync(ToCheckInInput(input, input.Details[0]), innerCt);
+
+                await ValidateEquipmentAsync(ToCheckInInput(input, input.Details[0]), innerCt);
+                await ValidateOperationAsync(ToCheckInInput(input, input.Details[0]), innerCt);
+                await ValidateDepartmentAsync(ToCheckInInput(input, input.Details[0]), innerCt);
+                await ValidateToolAsync(tolNo, innerCt);
+
+                var tolSid = RandomHelper.GenerateRandomDecimal();
+                await InsertModelUploadTolInTxAsync(conn, tx, tolSid, tolNo, input.CheckInTime, innerCt);
+
+                var histSids = new List<decimal>();
+                foreach (var detail in input.Details)
+                {
+                    var checkIn = ToCheckInInput(input, detail);
+
+                    await ValidateWorkOrderAsync(checkIn, innerCt);
+                    await ValidateToolDetailAsync(detail, innerCt);
+                    await EnsureNoDuplicateCheckInInTxAsync(conn, tx, checkIn, innerCt);
+
+                    var histSid = await CreateModelUploadHistInTxAsync(
+                        conn,
+                        tx,
+                        tolSid,
+                        checkIn,
+                        detail,
+                        innerCt);
+
+                    await InsertEquipmentsIfNeededInTxAsync(conn, tx, histSid, input.Equipment, innerCt);
+                    await InsertUsersIfNeededInTxAsync(conn, tx, histSid, input.Account, userSids, innerCt);
+                    await InsertModelUploadCavInTxAsync(conn, tx, histSid, detail.Cav, input.CheckInTime, innerCt);
+
+                    histSids.Add(histSid);
+                }
+
+                return new WipModelUploadCheckInResponseDto
+                {
+                    TolSid = tolSid,
+                    HistSids = histSids
+                };
+            },
+            isolation: IsolationLevel.ReadCommitted,
+            ct: ct);
+    }
+
+    private static void ValidateModelUploadCheckInInput(WipModelUploadCheckInInputDto input)
+    {
+        if (input == null)
+        {
+            throw new HttpStatusCodeException(System.Net.HttpStatusCode.BadRequest, "Model upload check-in input is required.");
+        }
+
+        if (input.Details == null || input.Details.Count == 0)
+        {
+            throw new HttpStatusCodeException(System.Net.HttpStatusCode.BadRequest, "Details is required.");
+        }
+
+        if (input.Equipment == null || input.Equipment.Count == 0 || input.Equipment.Any(string.IsNullOrWhiteSpace))
+        {
+            throw new HttpStatusCodeException(System.Net.HttpStatusCode.BadRequest, "Equipment must contain at least one equipment.");
+        }
+
+        if (string.IsNullOrWhiteSpace(input.Operation))
+        {
+            throw new HttpStatusCodeException(System.Net.HttpStatusCode.BadRequest, "Operation is required.");
+        }
+
+        if (string.IsNullOrWhiteSpace(input.Department))
+        {
+            throw new HttpStatusCodeException(System.Net.HttpStatusCode.BadRequest, "Department is required.");
+        }
+
+        foreach (var detail in input.Details)
+        {
+            ValidateModelUploadCheckInDetail(detail);
+        }
+
+        var tolNos = input.Details
+            .Select(x => x.TolNo)
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToList();
+        if (tolNos.Count > 1)
+        {
+            throw new HttpStatusCodeException(System.Net.HttpStatusCode.BadRequest, "All Details must use the same TolNo.");
+        }
+    }
+
+    private static void ValidateModelUploadCheckInDetail(WipModelUploadCheckInDetailInputDto detail)
+    {
+        if (detail == null)
+        {
+            throw new HttpStatusCodeException(System.Net.HttpStatusCode.BadRequest, "Detail is required.");
+        }
+
+        if (string.IsNullOrWhiteSpace(detail.WorkOrder))
+        {
+            throw new HttpStatusCodeException(System.Net.HttpStatusCode.BadRequest, "WorkOrder is required.");
+        }
+
+        if (string.IsNullOrWhiteSpace(detail.TolNo))
+        {
+            throw new HttpStatusCodeException(System.Net.HttpStatusCode.BadRequest, "TolNo is required.");
+        }
+
+        if (string.IsNullOrWhiteSpace(detail.TolDetalsNo))
+        {
+            throw new HttpStatusCodeException(System.Net.HttpStatusCode.BadRequest, "TolDetalsNo is required.");
+        }
+
+        if (string.IsNullOrWhiteSpace(detail.PartNo))
+        {
+            throw new HttpStatusCodeException(System.Net.HttpStatusCode.BadRequest, "PartNo is required.");
+        }
+
+        if (detail.Cav <= 0)
+        {
+            throw new HttpStatusCodeException(System.Net.HttpStatusCode.BadRequest, "Cav must be greater than 0.");
+        }
+    }
+
+    private static WipCheckInInputDto ToCheckInInput(
+        WipModelUploadCheckInInputDto input,
+        WipModelUploadCheckInDetailInputDto detail)
+    {
+        return new WipCheckInInputDto
+        {
+            Account = input.Account,
+            Equipment = input.Equipment,
+            WorkOrder = detail.WorkOrder,
+            CheckInTime = input.CheckInTime,
+            Operation = input.Operation,
+            Department = input.Department,
+            Comment = input.Comment
+        };
+    }
+
+    private async Task<decimal> CreateModelUploadHistInTxAsync(
+        SqlConnection conn,
+        SqlTransaction tx,
+        decimal tolSid,
+        WipCheckInInputDto checkIn,
+        WipModelUploadCheckInDetailInputDto detail,
+        CancellationToken ct)
+    {
+        ct.ThrowIfCancellationRequested();
+
+        var histSid = RandomHelper.GenerateRandomDecimal();
+        var hist = new WipOpiWdoeacicoHistDto
+        {
+            WIP_OPI_WDOEACICO_HIST_SID = histSid,
+            WO = detail.WorkOrder,
+            EQP_NO = checkIn.Equipment!.Count == 1 ? checkIn.Equipment[0] : null,
+            DEPT_NO = checkIn.Department,
+            OPERATION_CODE = checkIn.Operation,
+            TOL_NO = detail.TolNo,
+            TOL_DETALS_NO = detail.TolDetalsNo,
+            PART_NO = detail.PartNo,
+            CHECK_IN_TIME = checkIn.CheckInTime,
+            COMMENT = checkIn.Comment,
+            ENABLE_FLAG = Flags.Enabled,
+            WIP_OPI_WDOEACICO_HIST_TOL_SID = tolSid,
+            COMPLETED = Flags.No
+        };
+
+        await _sqlHelper.InsertInTxAsync(conn, tx, hist, ct: ct);
+        return histSid;
+    }
+
+    private async Task ValidateToolAsync(string tolNo, CancellationToken ct)
+    {
+        var tool = await _baseInfoCheckExistService.CheckToolExistAsync(tolNo, ct);
+        if (tool == null)
+        {
+            throw new HttpStatusCodeException(System.Net.HttpStatusCode.BadRequest, $"Tool {tolNo} does not exist.");
+        }
+    }
+
+    private async Task ValidateToolDetailAsync(WipModelUploadCheckInDetailInputDto detail, CancellationToken ct)
+    {
+        var partNo = await _baseInfoCheckExistService.CheckPartNoExistAsync(detail.PartNo, ct);
+        if (partNo == null)
+        {
+            throw new HttpStatusCodeException(System.Net.HttpStatusCode.BadRequest, $"PartNo {detail.PartNo} does not exist.");
+        }
+
+        var toolDetail = await _baseInfoCheckExistService.CheckToolDetailExistAsync(
+            detail.TolNo,
+            detail.TolDetalsNo,
+            ct);
+        if (toolDetail == null)
+        {
+            throw new HttpStatusCodeException(
+                System.Net.HttpStatusCode.BadRequest,
+                $"Tool detail {detail.TolNo}/{detail.TolDetalsNo} does not exist.");
+        }
+    }
+
+    private static async Task InsertModelUploadTolInTxAsync(
+        SqlConnection conn,
+        SqlTransaction tx,
+        decimal tolSid,
+        string tolNo,
+        DateTime checkInTime,
+        CancellationToken ct)
+    {
+        using var cmd = conn.CreateCommand();
+        cmd.Transaction = tx;
+        cmd.CommandText = """
+                          INSERT INTO [WIP_OPI_WDOEACICO_HIST_TOL]
+                              ([WIP_OPI_WDOEACICO_HIST_TOL_SID], [TOL_NO], [MODLE_UPLOAD_START], [IS_ACTIVE])
+                          VALUES
+                              (@TolSid, @TolNo, @CheckInTime, @IsActive);
+                          """;
+        cmd.Parameters.Add(new SqlParameter("@TolSid", SqlDbType.Decimal) { Value = tolSid });
+        cmd.Parameters.Add(new SqlParameter("@TolNo", SqlDbType.NVarChar, 255) { Value = tolNo });
+        cmd.Parameters.Add(new SqlParameter("@CheckInTime", SqlDbType.DateTime) { Value = checkInTime });
+        cmd.Parameters.Add(new SqlParameter("@IsActive", SqlDbType.Char, 1) { Value = Flags.Yes });
+
+        await cmd.ExecuteNonQueryAsync(ct);
+    }
+
+    private static async Task InsertModelUploadCavInTxAsync(
+        SqlConnection conn,
+        SqlTransaction tx,
+        decimal histSid,
+        decimal cav,
+        DateTime checkInTime,
+        CancellationToken ct)
+    {
+        using var cmd = conn.CreateCommand();
+        cmd.Transaction = tx;
+        cmd.CommandText = """
+                          INSERT INTO [WIP_OPI_WDOEACICO_HIST_CAV]
+                              ([WIP_OPI_WDOEACICO_HIST_CAV_SID], [WIP_OPI_WDOEACICO_HIST_SID], [OPI_CAV], [START_TIME])
+                          VALUES
+                              (@CavSid, @HistSid, @Cav, @StartTime);
+                          """;
+        cmd.Parameters.Add(new SqlParameter("@CavSid", SqlDbType.Decimal) { Value = RandomHelper.GenerateRandomDecimal() });
+        cmd.Parameters.Add(new SqlParameter("@HistSid", SqlDbType.Decimal) { Value = histSid });
+        cmd.Parameters.Add(new SqlParameter("@Cav", SqlDbType.NVarChar, 255) { Value = cav.ToString(CultureInfo.InvariantCulture) });
+        cmd.Parameters.Add(new SqlParameter("@StartTime", SqlDbType.DateTime) { Value = checkInTime });
+
+        await cmd.ExecuteNonQueryAsync(ct);
     }
 
     public async Task CheckInCancelAsync(WipCheckInCancelInputDto input, CancellationToken ct = default)
