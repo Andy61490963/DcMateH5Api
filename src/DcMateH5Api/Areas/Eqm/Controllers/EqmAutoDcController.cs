@@ -31,14 +31,15 @@ public class EqmAutoDcController : ControllerBase
     /// ### 使用說明
     /// GET版本範例
     /// 1. **WIP 模式 (預設，不帶 Mode 參數)**
-    /// http://[Server_IP]/api/Eqm/EqmAutoDc/AutoDcUpload?EQP_NO=ME01&amp;VALUE=Temperature:25.8,Qty:1020
+    /// http://[Server_IP]/api/Eqm/EqmAutoDc/AutoDcUpload?EQP_NO=ME01&amp;VALUE=Temperature:25.8,Qty:1020&amp;SameChange=TRUE&amp;AutoIdle=TRUE
     /// 2. **EDC 模式 (網址最後必須強帶 &amp;Mode=EDC)**
-    /// http://[Server_IP]/api/Eqm/EqmAutoDc/AutoDcUpload?EQP_NO=ME01&amp;VALUE=Pressure:6.5&amp;Mode=EDC
+    /// http://[Server_IP]/api/Eqm/EqmAutoDc/AutoDcUpload?EQP_NO=ME01&amp;VALUE=Pressure:6.5&amp;Mode=EDC&amp;SameChange=TRUE&amp;AutoIdle=TRUE
     /// 
     /// 1. **數據拆解規格 (`Value`)**
     ///     - 格式固定為 `項目代碼:數值`。
     ///     - 若有多個 Sensor 項目，請以 **「半形逗號 (,)」** 隔開。
-    /// 
+    ///     - SameChange 為機況相同時是否要呼叫一次機況切換api
+    ///     - AutoIdle 為 當差異值為0自動切成 Idle , 反之 切成Run
     /// 2. **計算模式 (`Mode`)**
     ///     - **初次上傳**：若該項目在系統內無任何歷史紀錄，則本次寫入歷史表的差異值一律強制歸零 (`0`)。
     /// 
