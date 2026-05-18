@@ -4,6 +4,7 @@ using DbExtensions.DbExecutor.Service;
 using DcMateClassLibrary.Helper;
 using DcMateH5.Abstractions.CurrentUser;
 using DcMateH5.Abstractions.Eqm;
+using DcMateH5.Abstractions.EQM;
 using DcMateH5.Abstractions.Export;
 using DcMateH5.Abstractions.Export.Pdf;
 using DcMateH5.Abstractions.Export.Pdf.Models;
@@ -20,6 +21,7 @@ using DcMateH5.Abstractions.Token;
 using DcMateH5.Abstractions.Token.Model;
 using DcMateH5.Abstractions.Wip;
 using DcMateH5.Infrastructure.Eqm;
+using DcMateH5.Infrastructure.EQM;
 using DcMateH5.Infrastructure.Export;
 using DcMateH5.Infrastructure.Export.Pdf;
 using DcMateH5.Infrastructure.Form.Form;
@@ -150,7 +152,7 @@ builder.Services.AddScoped<IWipBaseSettingService, WipBaseSettingService>();
 // Eqm
 builder.Services.AddScoped<IEqmStatusService, EqmStatusService>();
 builder.Services.AddScoped<ILotBaseSettingService, LotBaseSettingService>();
-
+builder.Services.AddScoped<IEqmAutoDcService, EqmAutoDcService>();
 // Mms
 builder.Services.AddScoped<IMmsLotService, MmsLotService>();
 
