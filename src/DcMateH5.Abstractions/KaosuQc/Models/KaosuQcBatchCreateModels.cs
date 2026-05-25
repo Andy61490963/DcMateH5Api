@@ -38,6 +38,9 @@ public class KaosuQcHeaderCreateRequest
 
     public string? EqpNo { get; set; }
 
+    /// <summary>WIP 進站主檔 SID。</summary>
+    public decimal? WIP_OPI_WDOEACICO_HIST_SID { get; set; }
+
 
 
     /// <summary>來源單號。</summary>
