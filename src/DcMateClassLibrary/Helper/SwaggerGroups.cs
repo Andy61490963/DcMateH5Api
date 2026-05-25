@@ -22,6 +22,7 @@ public static class SwaggerGroups
     public const string Wip = nameof(Wip);
     public const string Eqm = nameof(Eqm);
     public const string Mms = nameof(Mms);
+    public const string ZZKaosuQc = nameof(ZZKaosuQc);
     public const string Test = nameof(Test);
 
     public static readonly Dictionary<string, string> DisplayNames = new()
@@ -43,6 +44,7 @@ public static class SwaggerGroups
         { Wip, "WIP" },
         { Eqm, "EQM" },
         { Mms, "MMS" },
+        { ZZKaosuQc, "高速客製" },
         { Test, "測試" }
     };
 }
