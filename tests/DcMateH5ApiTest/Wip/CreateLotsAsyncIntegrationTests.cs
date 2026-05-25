@@ -83,12 +83,12 @@ public class CreateLotsAsyncIntegrationTests
 
     [Fact]
     [Trait("Category", "Integration")]
-    public async Task CreateLotsAsync_ShouldRollbackWhenOneLotAlreadyExists()
+    public async Task CreateLotsAsync_ShouldContinueWhenOneLotAlreadyExists()
     {
         var connectionString = TestConfiguration.LoadConnectionString();
         var arrangement = await LoadArrangementAsync(connectionString);
         var existingLot = $"ITEST-RB-{DateTime.UtcNow:yyyyMMddHHmmssfff}";
-        var rolledBackLot = $"ITEST-RB2-{DateTime.UtcNow:yyyyMMddHHmmssfff}";
+        var continuedLot = $"ITEST-RB2-{DateTime.UtcNow:yyyyMMddHHmmssfff}";
         var service = CreateService(connectionString, arrangement.AccountNo);
 
         try
@@ -111,51 +111,52 @@ public class CreateLotsAsyncIntegrationTests
 
             Assert.True(singleResult.IsSuccess);
 
-            await Assert.ThrowsAsync<DcMateClassLibrary.Helper.HttpHelper.HttpStatusCodeException>(async () =>
-                await service.CreateLotsAsync(
-                [
-                    new WipCreateLotInputDto
-                    {
-                        DATA_LINK_SID = 900000000304m,
-                        LOT = existingLot,
-                        ALIAS_LOT1 = $"{existingLot}-B1",
-                        ALIAS_LOT2 = $"{existingLot}-B2",
-                        WO = arrangement.WorkOrder,
-                        ROUTE_SID = arrangement.RouteSid,
-                        LOT_QTY = 1,
-                        REPORT_TIME = DateTime.Now,
-                        ACCOUNT_NO = arrangement.AccountNo,
-                        INPUT_FORM_NAME = "DcMateH5ApiTest",
-                        COMMENT = "CreateLotsAsync duplicate"
-                    },
-                    new WipCreateLotInputDto
-                    {
-                        DATA_LINK_SID = 900000000305m,
-                        LOT = rolledBackLot,
-                        ALIAS_LOT1 = $"{rolledBackLot}-A1",
-                        ALIAS_LOT2 = $"{rolledBackLot}-A2",
-                        WO = arrangement.WorkOrder,
-                        ROUTE_SID = arrangement.RouteSid,
-                        LOT_QTY = 1,
-                        REPORT_TIME = DateTime.Now,
-                        ACCOUNT_NO = arrangement.AccountNo,
-                        INPUT_FORM_NAME = "DcMateH5ApiTest",
-                        COMMENT = "CreateLotsAsync rollback target"
-                    }
-                ]));
+            var batchResult = await service.CreateLotsAsync(
+            [
+                new WipCreateLotInputDto
+                {
+                    DATA_LINK_SID = 900000000304m,
+                    LOT = existingLot,
+                    ALIAS_LOT1 = $"{existingLot}-B1",
+                    ALIAS_LOT2 = $"{existingLot}-B2",
+                    WO = arrangement.WorkOrder,
+                    ROUTE_SID = arrangement.RouteSid,
+                    LOT_QTY = 1,
+                    REPORT_TIME = DateTime.Now,
+                    ACCOUNT_NO = arrangement.AccountNo,
+                    INPUT_FORM_NAME = "DcMateH5ApiTest",
+                    COMMENT = "CreateLotsAsync duplicate"
+                },
+                new WipCreateLotInputDto
+                {
+                    DATA_LINK_SID = 900000000305m,
+                    LOT = continuedLot,
+                    ALIAS_LOT1 = $"{continuedLot}-A1",
+                    ALIAS_LOT2 = $"{continuedLot}-A2",
+                    WO = arrangement.WorkOrder,
+                    ROUTE_SID = arrangement.RouteSid,
+                    LOT_QTY = 1,
+                    REPORT_TIME = DateTime.Now,
+                    ACCOUNT_NO = arrangement.AccountNo,
+                    INPUT_FORM_NAME = "DcMateH5ApiTest",
+                    COMMENT = "CreateLotsAsync continue target"
+                }
+            ]);
+
+            Assert.False(batchResult.IsSuccess);
 
             await using var conn = new SqlConnection(connectionString);
             await conn.OpenAsync();
 
-            var rollbackTargetExists = await conn.ExecuteScalarAsync<int>(
+            var continuedLotExists = await conn.ExecuteScalarAsync<int>(
                 "SELECT COUNT(1) FROM WIP_LOT WHERE LOT = @Lot",
-                new { Lot = rolledBackLot });
+                new { Lot = continuedLot });
 
-            Assert.Equal(0, rollbackTargetExists);
+            Assert.Equal(1, continuedLotExists);
         }
         finally
         {
-            await CleanupAsync(connectionString, arrangement.WorkOrder, arrangement.PreviousReleaseQty, existingLot, rolledBackLot);
+            await CleanupAsync(connectionString, arrangement.WorkOrder, arrangement.PreviousReleaseQty, existingLot, continuedLot);
         }
     }
 

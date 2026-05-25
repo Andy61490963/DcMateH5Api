@@ -52,11 +52,11 @@ public class WipLotSettingController : ControllerBase
     [ProducesResponseType(typeof(Result<bool>), StatusCodes.Status400BadRequest)]
     [ProducesResponseType(typeof(Result<bool>), StatusCodes.Status409Conflict)]
     [ProducesResponseType(typeof(Result<bool>), StatusCodes.Status500InternalServerError)]
-    public async Task<IActionResult> CreateLot([FromBody] WipCreateLotInputDto input, CancellationToken ct)
+    public async Task<IActionResult> CreateLot([FromBody] IEnumerable<WipCreateLotInputDto> input, CancellationToken ct)
     {
         try
         {
-            return Ok(await _lotBaseSettingService.CreateLotAsync(input, ct));
+            return Ok(await _lotBaseSettingService.CreateLotsAsync(input, ct));
         }
         catch (HttpStatusCodeException ex)
         {

@@ -17,12 +17,26 @@ public class LotBaseSettingControllerTests
     {
         var controller = new WipLotSettingController(new FakeLotBaseSettingService());
 
-        var actionResult = await controller.CreateLot(new WipCreateLotInputDto(), CancellationToken.None);
+        var actionResult = await controller.CreateLot([new WipCreateLotInputDto()], CancellationToken.None);
 
         var okResult = Assert.IsType<OkObjectResult>(actionResult);
         var result = Assert.IsType<Result<bool>>(okResult.Value);
         Assert.True(result.IsSuccess);
         Assert.True(result.Data);
+    }
+
+    [Fact]
+    public async Task CreateLot_ShouldReturnBadRequestResult_WhenNoLotsProvided()
+    {
+        var controller = new WipLotSettingController(new FakeLotBaseSettingService());
+
+        var actionResult = await controller.CreateLot([], CancellationToken.None);
+
+        var badRequest = Assert.IsType<ObjectResult>(actionResult);
+        Assert.Equal((int)HttpStatusCode.BadRequest, badRequest.StatusCode);
+        var result = Assert.IsType<Result<bool>>(badRequest.Value);
+        Assert.False(result.IsSuccess);
+        Assert.Equal(WipLotErrorCode.BadRequest.ToString(), result.Code);
     }
 
     [Fact]
@@ -214,7 +228,12 @@ public class LotBaseSettingControllerTests
             => Task.FromResult(Result<bool>.Ok(true));
 
         public Task<Result<bool>> CreateLotsAsync(IEnumerable<WipCreateLotInputDto> inputs, CancellationToken ct = default)
-            => Task.FromResult(Result<bool>.Ok(true));
+        {
+            if (!inputs.Any())
+                throw new HttpStatusCodeException(HttpStatusCode.BadRequest, "CreateLot inputs are required.");
+
+            return Task.FromResult(Result<bool>.Ok(true));
+        }
 
         public Task<Result<bool>> LotCheckInAsync(WipLotCheckInInputDto input, CancellationToken ct = default)
             => Task.FromResult(Result<bool>.Ok(true));

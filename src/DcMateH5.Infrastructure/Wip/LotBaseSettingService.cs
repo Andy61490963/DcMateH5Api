@@ -1,4 +1,5 @@
 using System.Data;
+using ClassLibrary;
 using DbExtensions;
 using DcMateClassLibrary.Helper;
 using DcMateClassLibrary.Helper.HttpHelper;
@@ -126,16 +127,38 @@ public class LotBaseSettingService : ILotBaseSettingService
         if (createLotInputs.Count == 0)
             throw new HttpStatusCodeException(System.Net.HttpStatusCode.BadRequest, "CreateLot inputs are required.");
 
-        await _sqlHelper.TxAsync(
-            async (conn, tx, innerCt) =>
+        var failures = new List<CreateLotFailure>();
+
+        foreach (var input in createLotInputs)
+        {
+            ct.ThrowIfCancellationRequested();
+
+            try
             {
-                foreach (var input in createLotInputs)
-                {
-                    await CreateLotInTxAsync(conn, tx, input, innerCt);
-                }
-            },
-            isolation: IsolationLevel.ReadCommitted,
-            ct: ct);
+                // Each LOT owns its own transaction so one failed LOT does not rollback the rest of the batch.
+                await _sqlHelper.TxAsync(
+                    async (conn, tx, innerCt) =>
+                    {
+                        await CreateLotInTxAsync(conn, tx, input, innerCt);
+                    },
+                    isolation: IsolationLevel.ReadCommitted,
+                    ct: ct);
+            }
+            catch (HttpStatusCodeException ex)
+            {
+                failures.Add(new CreateLotFailure(input.LOT, (int)ex.StatusCode, ex.Message));
+            }
+            catch (Exception ex) when (ex is not OperationCanceledException)
+            {
+                failures.Add(new CreateLotFailure(input.LOT, (int)System.Net.HttpStatusCode.InternalServerError, ex.Message));
+            }
+        }
+
+        if (failures.Count > 0)
+        {
+            var message = $"CreateLot completed with {createLotInputs.Count - failures.Count} success and {failures.Count} failed.";
+            return Result<bool>.Fail(WipLotErrorCode.BadRequest, message, failures);
+        }
 
         return Result<bool>.Ok(true);
     }
@@ -3009,4 +3032,6 @@ public class LotBaseSettingService : ILotBaseSettingService
         if (affectedRows != 1)
             throw new HttpStatusCodeException(System.Net.HttpStatusCode.Conflict, $"LOT check-in failed because the data was modified concurrently: {lot.LOT}");
     }
+
+    private sealed record CreateLotFailure(string? LOT, int StatusCode, string Message);
 }
