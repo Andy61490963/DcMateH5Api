@@ -121,46 +121,12 @@ public class LotBaseSettingService : ILotBaseSettingService
 
     public async Task<Result<bool>> CreateLotsAsync(IEnumerable<WipCreateLotInputDto> inputs, CancellationToken ct = default)
     {
-        var createLotInputs = inputs?.ToList()
-                              ?? throw new HttpStatusCodeException(System.Net.HttpStatusCode.BadRequest, "CreateLot inputs are required.");
-
-        if (createLotInputs.Count == 0)
-            throw new HttpStatusCodeException(System.Net.HttpStatusCode.BadRequest, "CreateLot inputs are required.");
-
-        var failures = new List<CreateLotFailure>();
-
-        foreach (var input in createLotInputs)
-        {
-            ct.ThrowIfCancellationRequested();
-
-            try
-            {
-                // Each LOT owns its own transaction so one failed LOT does not rollback the rest of the batch.
-                await _sqlHelper.TxAsync(
-                    async (conn, tx, innerCt) =>
-                    {
-                        await CreateLotInTxAsync(conn, tx, input, innerCt);
-                    },
-                    isolation: IsolationLevel.ReadCommitted,
-                    ct: ct);
-            }
-            catch (HttpStatusCodeException ex)
-            {
-                failures.Add(new CreateLotFailure(input.LOT, (int)ex.StatusCode, ex.Message));
-            }
-            catch (Exception ex) when (ex is not OperationCanceledException)
-            {
-                failures.Add(new CreateLotFailure(input.LOT, (int)System.Net.HttpStatusCode.InternalServerError, ex.Message));
-            }
-        }
-
-        if (failures.Count > 0)
-        {
-            var message = $"CreateLot completed with {createLotInputs.Count - failures.Count} success and {failures.Count} failed.";
-            return Result<bool>.Fail(WipLotErrorCode.BadRequest, message, failures);
-        }
-
-        return Result<bool>.Ok(true);
+        return await ExecuteLotBatchAsync(
+            inputs,
+            "CreateLot",
+            CreateLotInTxAsync,
+            input => input.LOT,
+            ct);
     }
 
     public async Task<Result<bool>> LotCheckInAsync(WipLotCheckInInputDto input, CancellationToken ct = default)
@@ -174,6 +140,16 @@ public class LotBaseSettingService : ILotBaseSettingService
             ct: ct);
 
         return Result<bool>.Ok(true);
+    }
+
+    public async Task<Result<bool>> LotCheckInsAsync(IEnumerable<WipLotCheckInInputDto> inputs, CancellationToken ct = default)
+    {
+        return await ExecuteLotBatchAsync(
+            inputs,
+            "LotCheckIn",
+            LotCheckInInTxAsync,
+            input => input.LOT,
+            ct);
     }
 
     public async Task<Result<bool>> LotCheckInCancelAsync(WipLotCheckInCancelInputDto input, CancellationToken ct = default)
@@ -198,6 +174,65 @@ public class LotBaseSettingService : ILotBaseSettingService
             },
             isolation: IsolationLevel.ReadCommitted,
             ct: ct);
+
+        return Result<bool>.Ok(true);
+    }
+
+    public async Task<Result<bool>> LotCheckOutsAsync(IEnumerable<WipLotCheckOutInputDto> inputs, CancellationToken ct = default)
+    {
+        return await ExecuteLotBatchAsync(
+            inputs,
+            "LotCheckOut",
+            LotCheckOutInTxAsync,
+            input => input.LOT,
+            ct);
+    }
+
+    private async Task<Result<bool>> ExecuteLotBatchAsync<TInput>(
+        IEnumerable<TInput>? inputs,
+        string operationName,
+        Func<SqlConnection, SqlTransaction, TInput, CancellationToken, Task> action,
+        Func<TInput, string?> lotSelector,
+        CancellationToken ct)
+    {
+        var batchInputs = inputs?.ToList()
+                          ?? throw new HttpStatusCodeException(System.Net.HttpStatusCode.BadRequest, $"{operationName} inputs are required.");
+
+        if (batchInputs.Count == 0)
+            throw new HttpStatusCodeException(System.Net.HttpStatusCode.BadRequest, $"{operationName} inputs are required.");
+
+        var failures = new List<LotBatchFailure>();
+
+        foreach (var input in batchInputs)
+        {
+            ct.ThrowIfCancellationRequested();
+
+            try
+            {
+                // Each LOT owns its own transaction so one failed LOT does not rollback the rest of the batch.
+                await _sqlHelper.TxAsync(
+                    async (conn, tx, innerCt) =>
+                    {
+                        await action(conn, tx, input, innerCt);
+                    },
+                    isolation: IsolationLevel.ReadCommitted,
+                    ct: ct);
+            }
+            catch (HttpStatusCodeException ex)
+            {
+                failures.Add(new LotBatchFailure(lotSelector(input), (int)ex.StatusCode, ex.Message));
+            }
+            catch (Exception ex) when (ex is not OperationCanceledException)
+            {
+                failures.Add(new LotBatchFailure(lotSelector(input), (int)System.Net.HttpStatusCode.InternalServerError, ex.Message));
+            }
+        }
+
+        if (failures.Count > 0)
+        {
+            var message = $"{operationName} completed with {batchInputs.Count - failures.Count} success and {failures.Count} failed.";
+            return Result<bool>.Fail(WipLotErrorCode.BadRequest, message, failures);
+        }
 
         return Result<bool>.Ok(true);
     }
@@ -3033,5 +3068,5 @@ public class LotBaseSettingService : ILotBaseSettingService
             throw new HttpStatusCodeException(System.Net.HttpStatusCode.Conflict, $"LOT check-in failed because the data was modified concurrently: {lot.LOT}");
     }
 
-    private sealed record CreateLotFailure(string? LOT, int StatusCode, string Message);
+    private sealed record LotBatchFailure(string? LOT, int StatusCode, string Message);
 }

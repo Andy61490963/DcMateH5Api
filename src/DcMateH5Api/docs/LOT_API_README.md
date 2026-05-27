@@ -66,19 +66,21 @@ POST /api/Wip/WipLotSetting/CreateLot
 測試 payload:
 
 ```json
-{
-  "DATA_LINK_SID": 900000000900,
-  "LOT": "SWAGGER-LOT-001",
-  "ALIAS_LOT1": "SWAGGER-LOT-001-A1",
-  "ALIAS_LOT2": "SWAGGER-LOT-001-A2",
-  "WO": "HC260407004",
-  "ROUTE_SID": 158772156102000,
-  "LOT_QTY": 2,
-  "REPORT_TIME": "2026-04-22T10:00:00",
-  "ACCOUNT_NO": "TestAc1",
-  "INPUT_FORM_NAME": "Swagger",
-  "COMMENT": "swagger create lot test"
-}
+[
+  {
+    "DATA_LINK_SID": 900000000900,
+    "LOT": "SWAGGER-LOT-001",
+    "ALIAS_LOT1": "SWAGGER-LOT-001-A1",
+    "ALIAS_LOT2": "SWAGGER-LOT-001-A2",
+    "WO": "HC260407004",
+    "ROUTE_SID": 158772156102000,
+    "LOT_QTY": 2,
+    "REPORT_TIME": "2026-04-22T10:00:00",
+    "ACCOUNT_NO": "TestAc1",
+    "INPUT_FORM_NAME": "Swagger",
+    "COMMENT": "swagger create lot test"
+  }
+]
 ```
 
 ### CreateLot 起始站點
@@ -96,20 +98,22 @@ POST /api/Wip/WipLotSetting/CreateLot
 指定起始站 payload 範例：
 
 ```json
-{
-  "DATA_LINK_SID": 900000000900,
-  "LOT": "SWAGGER-LOT-001",
-  "ALIAS_LOT1": "SWAGGER-LOT-001-A1",
-  "ALIAS_LOT2": "SWAGGER-LOT-001-A2",
-  "WO": "HC260407004",
-  "ROUTE_SID": 158772156102000,
-  "OPERATION_SID": 158772156102002,
-  "LOT_QTY": 2,
-  "REPORT_TIME": "2026-04-22T10:00:00",
-  "ACCOUNT_NO": "TestAc1",
-  "INPUT_FORM_NAME": "Swagger",
-  "COMMENT": "swagger create lot test from selected operation"
-}
+[
+  {
+    "DATA_LINK_SID": 900000000900,
+    "LOT": "SWAGGER-LOT-001",
+    "ALIAS_LOT1": "SWAGGER-LOT-001-A1",
+    "ALIAS_LOT2": "SWAGGER-LOT-001-A2",
+    "WO": "HC260407004",
+    "ROUTE_SID": 158772156102000,
+    "OPERATION_SID": 158772156102002,
+    "LOT_QTY": 2,
+    "REPORT_TIME": "2026-04-22T10:00:00",
+    "ACCOUNT_NO": "TestAc1",
+    "INPUT_FORM_NAME": "Swagger",
+    "COMMENT": "swagger create lot test from selected operation"
+  }
+]
 ```
 
 ## LotCheckIn
@@ -136,17 +140,19 @@ POST /api/Wip/WipLotSetting/LotCheckIn
 測試 payload:
 
 ```json
-{
-  "LOT": "SWAGGER-LOT-001",
-  "DATA_LINK_SID": 900000000901,
-  "REPORT_TIME": "2026-04-22T10:05:00",
-  "ACCOUNT_NO": "TestAc1",
-  "EQP_NO": "MC1",
-  "SHIFT_SID": 1,
-  "LOT_SUB_STATUS_CODE": "NORMAL",
-  "COMMENT": "swagger lot check in test",
-  "INPUT_FORM_NAME": "Swagger"
-}
+[
+  {
+    "LOT": "SWAGGER-LOT-001",
+    "DATA_LINK_SID": 900000000901,
+    "REPORT_TIME": "2026-04-22T10:05:00",
+    "ACCOUNT_NO": "TestAc1",
+    "EQP_NO": "MC1",
+    "SHIFT_SID": 1,
+    "LOT_SUB_STATUS_CODE": "NORMAL",
+    "COMMENT": "swagger lot check in test",
+    "INPUT_FORM_NAME": "Swagger"
+  }
+]
 ```
 
 ## LotCheckInCancel
@@ -201,17 +207,19 @@ POST /api/Wip/WipLotSetting/LotCheckOut
 測試 payload:
 
 ```json
-{
-  "LOT": "SWAGGER-LOT-001",
-  "DATA_LINK_SID": 900000000903,
-  "REPORT_TIME": "2026-04-22T10:15:00",
-  "ACCOUNT_NO": "TestAc1",
-  "EQP_NO": "MC1",
-  "SHIFT_SID": 1,
-  "GROUP_IN_USER": false,
-  "COMMENT": "swagger lot check out test",
-  "INPUT_FORM_NAME": "Swagger"
-}
+[
+  {
+    "LOT": "SWAGGER-LOT-001",
+    "DATA_LINK_SID": 900000000903,
+    "REPORT_TIME": "2026-04-22T10:15:00",
+    "ACCOUNT_NO": "TestAc1",
+    "EQP_NO": "MC1",
+    "SHIFT_SID": 1,
+    "GROUP_IN_USER": false,
+    "COMMENT": "swagger lot check out test",
+    "INPUT_FORM_NAME": "Swagger"
+  }
+]
 ```
 
 ## LotHold

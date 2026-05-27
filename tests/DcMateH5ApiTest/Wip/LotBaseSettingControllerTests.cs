@@ -44,7 +44,7 @@ public class LotBaseSettingControllerTests
     {
         var controller = new WipLotSettingController(new ThrowingLotBaseSettingService());
 
-        var actionResult = await controller.LotCheckIn(new WipLotCheckInInputDto(), CancellationToken.None);
+        var actionResult = await controller.LotCheckIn([new WipLotCheckInInputDto()], CancellationToken.None);
 
         var badRequest = Assert.IsType<ObjectResult>(actionResult);
         Assert.Equal((int)HttpStatusCode.BadRequest, badRequest.StatusCode);
@@ -67,16 +67,44 @@ public class LotBaseSettingControllerTests
     }
 
     [Fact]
+    public async Task LotCheckIn_ShouldReturnBadRequestResult_WhenNoLotsProvided()
+    {
+        var controller = new WipLotSettingController(new FakeLotBaseSettingService());
+
+        var actionResult = await controller.LotCheckIn([], CancellationToken.None);
+
+        var badRequest = Assert.IsType<ObjectResult>(actionResult);
+        Assert.Equal((int)HttpStatusCode.BadRequest, badRequest.StatusCode);
+        var result = Assert.IsType<Result<bool>>(badRequest.Value);
+        Assert.False(result.IsSuccess);
+        Assert.Equal(WipLotErrorCode.BadRequest.ToString(), result.Code);
+    }
+
+    [Fact]
     public async Task LotCheckOut_ShouldReturnOkResult()
     {
         var controller = new WipLotSettingController(new FakeLotBaseSettingService());
 
-        var actionResult = await controller.LotCheckOut(new WipLotCheckOutInputDto(), CancellationToken.None);
+        var actionResult = await controller.LotCheckOut([new WipLotCheckOutInputDto()], CancellationToken.None);
 
         var okResult = Assert.IsType<OkObjectResult>(actionResult);
         var result = Assert.IsType<Result<bool>>(okResult.Value);
         Assert.True(result.IsSuccess);
         Assert.True(result.Data);
+    }
+
+    [Fact]
+    public async Task LotCheckOut_ShouldReturnBadRequestResult_WhenNoLotsProvided()
+    {
+        var controller = new WipLotSettingController(new FakeLotBaseSettingService());
+
+        var actionResult = await controller.LotCheckOut([], CancellationToken.None);
+
+        var badRequest = Assert.IsType<ObjectResult>(actionResult);
+        Assert.Equal((int)HttpStatusCode.BadRequest, badRequest.StatusCode);
+        var result = Assert.IsType<Result<bool>>(badRequest.Value);
+        Assert.False(result.IsSuccess);
+        Assert.Equal(WipLotErrorCode.BadRequest.ToString(), result.Code);
     }
 
     [Fact]
@@ -238,11 +266,27 @@ public class LotBaseSettingControllerTests
         public Task<Result<bool>> LotCheckInAsync(WipLotCheckInInputDto input, CancellationToken ct = default)
             => Task.FromResult(Result<bool>.Ok(true));
 
+        public Task<Result<bool>> LotCheckInsAsync(IEnumerable<WipLotCheckInInputDto> inputs, CancellationToken ct = default)
+        {
+            if (!inputs.Any())
+                throw new HttpStatusCodeException(HttpStatusCode.BadRequest, "LotCheckIn inputs are required.");
+
+            return Task.FromResult(Result<bool>.Ok(true));
+        }
+
         public Task<Result<bool>> LotCheckInCancelAsync(WipLotCheckInCancelInputDto input, CancellationToken ct = default)
             => Task.FromResult(Result<bool>.Ok(true));
 
         public Task<Result<bool>> LotCheckOutAsync(WipLotCheckOutInputDto input, CancellationToken ct = default)
             => Task.FromResult(Result<bool>.Ok(true));
+
+        public Task<Result<bool>> LotCheckOutsAsync(IEnumerable<WipLotCheckOutInputDto> inputs, CancellationToken ct = default)
+        {
+            if (!inputs.Any())
+                throw new HttpStatusCodeException(HttpStatusCode.BadRequest, "LotCheckOut inputs are required.");
+
+            return Task.FromResult(Result<bool>.Ok(true));
+        }
 
         public Task<Result<bool>> LotReassignOperationAsync(WipLotReassignOperationInputDto input, CancellationToken ct = default)
             => Task.FromResult(Result<bool>.Ok(true));
@@ -289,10 +333,16 @@ public class LotBaseSettingControllerTests
         public Task<Result<bool>> LotCheckInAsync(WipLotCheckInInputDto input, CancellationToken ct = default)
             => throw new HttpStatusCodeException(HttpStatusCode.BadRequest, "bad request");
 
+        public Task<Result<bool>> LotCheckInsAsync(IEnumerable<WipLotCheckInInputDto> inputs, CancellationToken ct = default)
+            => throw new HttpStatusCodeException(HttpStatusCode.BadRequest, "bad request");
+
         public Task<Result<bool>> LotCheckInCancelAsync(WipLotCheckInCancelInputDto input, CancellationToken ct = default)
             => throw new HttpStatusCodeException(HttpStatusCode.BadRequest, "bad request");
 
         public Task<Result<bool>> LotCheckOutAsync(WipLotCheckOutInputDto input, CancellationToken ct = default)
+            => throw new HttpStatusCodeException(HttpStatusCode.BadRequest, "bad request");
+
+        public Task<Result<bool>> LotCheckOutsAsync(IEnumerable<WipLotCheckOutInputDto> inputs, CancellationToken ct = default)
             => throw new HttpStatusCodeException(HttpStatusCode.BadRequest, "bad request");
 
         public Task<Result<bool>> LotReassignOperationAsync(WipLotReassignOperationInputDto input, CancellationToken ct = default)

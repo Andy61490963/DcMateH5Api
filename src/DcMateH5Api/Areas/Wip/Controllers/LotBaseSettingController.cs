@@ -79,11 +79,11 @@ public class WipLotSettingController : ControllerBase
     [ProducesResponseType(typeof(Result<bool>), StatusCodes.Status400BadRequest)]
     [ProducesResponseType(typeof(Result<bool>), StatusCodes.Status409Conflict)]
     [ProducesResponseType(typeof(Result<bool>), StatusCodes.Status500InternalServerError)]
-    public async Task<IActionResult> LotCheckIn([FromBody] WipLotCheckInInputDto input, CancellationToken ct)
+    public async Task<IActionResult> LotCheckIn([FromBody] IEnumerable<WipLotCheckInInputDto> input, CancellationToken ct)
     {
         try
         {
-            return Ok(await _lotBaseSettingService.LotCheckInAsync(input, ct));
+            return Ok(await _lotBaseSettingService.LotCheckInsAsync(input, ct));
         }
         catch (HttpStatusCodeException ex)
         {
@@ -133,11 +133,11 @@ public class WipLotSettingController : ControllerBase
     [ProducesResponseType(typeof(Result<bool>), StatusCodes.Status400BadRequest)]
     [ProducesResponseType(typeof(Result<bool>), StatusCodes.Status409Conflict)]
     [ProducesResponseType(typeof(Result<bool>), StatusCodes.Status500InternalServerError)]
-    public async Task<IActionResult> LotCheckOut([FromBody] WipLotCheckOutInputDto input, CancellationToken ct)
+    public async Task<IActionResult> LotCheckOut([FromBody] IEnumerable<WipLotCheckOutInputDto> input, CancellationToken ct)
     {
         try
         {
-            return Ok(await _lotBaseSettingService.LotCheckOutAsync(input, ct));
+            return Ok(await _lotBaseSettingService.LotCheckOutsAsync(input, ct));
         }
         catch (HttpStatusCodeException ex)
         {
