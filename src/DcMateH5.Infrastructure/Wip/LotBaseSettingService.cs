@@ -12,6 +12,7 @@ namespace DcMateH5.Infrastructure.Wip;
 
 public class LotBaseSettingService : ILotBaseSettingService
 {
+    // 這些常數對應資料庫代碼值，集中管理可避免 SQL 寫入時散落 magic string。
     private static class Flags
     {
         public const string No = "N";
@@ -121,6 +122,7 @@ public class LotBaseSettingService : ILotBaseSettingService
 
     public async Task<Result<bool>> CreateLotsAsync(IEnumerable<WipCreateLotInputDto> inputs, CancellationToken ct = default)
     {
+        // 批次建立時每筆 LOT 各自使用交易，讓呼叫端可送混合批次並檢視逐筆失敗資訊。
         return await ExecuteLotBatchAsync(
             inputs,
             "CreateLot",
@@ -144,6 +146,7 @@ public class LotBaseSettingService : ILotBaseSettingService
 
     public async Task<Result<bool>> LotCheckInsAsync(IEnumerable<WipLotCheckInInputDto> inputs, CancellationToken ct = default)
     {
+        // 批次進站沿用 CreateLotsAsync 的部分成功模式。
         return await ExecuteLotBatchAsync(
             inputs,
             "LotCheckIn",
@@ -180,6 +183,7 @@ public class LotBaseSettingService : ILotBaseSettingService
 
     public async Task<Result<bool>> LotCheckOutsAsync(IEnumerable<WipLotCheckOutInputDto> inputs, CancellationToken ct = default)
     {
+        // 批次出站沿用 CreateLotsAsync 的部分成功模式。
         return await ExecuteLotBatchAsync(
             inputs,
             "LotCheckOut",
@@ -195,6 +199,7 @@ public class LotBaseSettingService : ILotBaseSettingService
         Func<TInput, string?> lotSelector,
         CancellationToken ct)
     {
+        // 先 materialize 一次，確保驗證、成功/失敗筆數與錯誤回報都使用同一批資料。
         var batchInputs = inputs?.ToList()
                           ?? throw new HttpStatusCodeException(System.Net.HttpStatusCode.BadRequest, $"{operationName} inputs are required.");
 
@@ -230,6 +235,8 @@ public class LotBaseSettingService : ILotBaseSettingService
 
         if (failures.Count > 0)
         {
+            // 批次部分失敗時回傳 HTTP 200 + Result.Fail。
+            // Controller 層例外只保留給整個請求都無法處理的情境，例如批次輸入為空。
             var message = $"{operationName} completed with {batchInputs.Count - failures.Count} success and {failures.Count} failed.";
             return Result<bool>.Fail(WipLotErrorCode.BadRequest, message, failures);
         }
@@ -337,6 +344,7 @@ public class LotBaseSettingService : ILotBaseSettingService
 
     public async Task<Result<bool>> LotTerminatedAsync(WipLotStatusActionInputDto input, CancellationToken ct = default)
     {
+        // 固定狀態動作：只有 Wait/Hold 的 LOT 可轉為 Terminated。
         await ExecuteLotStatusActionAsync(
             input,
             LotStateChangeCodes.TerminatedAction,
@@ -349,6 +357,7 @@ public class LotBaseSettingService : ILotBaseSettingService
 
     public async Task<Result<bool>> LotUnTerminatedAsync(WipLotStatusActionInputDto input, CancellationToken ct = default)
     {
+        // 固定狀態動作：只有 Terminated 的 LOT 可還原為 Wait。
         await ExecuteLotStatusActionAsync(
             input,
             LotStateChangeCodes.UnTerminatedAction,
@@ -361,6 +370,7 @@ public class LotBaseSettingService : ILotBaseSettingService
 
     public async Task<Result<bool>> LotFinishedAsync(WipLotStatusActionInputDto input, CancellationToken ct = default)
     {
+        // 固定狀態動作：只有 Wait 的 LOT 可手動轉為 Finished。
         await ExecuteLotStatusActionAsync(
             input,
             LotStateChangeCodes.FinishedAction,
@@ -373,6 +383,7 @@ public class LotBaseSettingService : ILotBaseSettingService
 
     public async Task<Result<bool>> LotUnFinishedAsync(WipLotStatusActionInputDto input, CancellationToken ct = default)
     {
+        // 固定狀態動作：只有 Finished 的 LOT 可還原為 Wait。
         await ExecuteLotStatusActionAsync(
             input,
             LotStateChangeCodes.UnFinishedAction,
@@ -390,6 +401,8 @@ public class LotBaseSettingService : ILotBaseSettingService
         string[] allowedCurrentStatusCodes,
         CancellationToken ct)
     {
+        // 固定狀態 endpoint 共用同一個狀態變更實作。
+        // 差異只在 action code、目標狀態與允許的目前狀態。
         var stateChangeInput = new WipLotStateChangeInputDto
         {
             LOT = input.LOT,

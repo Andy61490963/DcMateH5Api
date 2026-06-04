@@ -9,12 +9,17 @@ using System.Net;
 
 namespace DcMateH5Api.Areas.Wip.Controllers;
 
+/// <summary>
+/// 提供 WIP LOT 生命週期相關 API。
+/// Controller 只負責路由、呼叫服務與統一錯誤回應；驗證與資料庫狀態異動由 ILotBaseSettingService 處理。
+/// </summary>
 [Area("Wip")]
 [Route("api/[area]/[controller]")]
 [ApiExplorerSettings(GroupName = SwaggerGroups.Wip)]
 [ApiController]
 public class WipLotSettingController : ControllerBase
 {
+    // 集中管理 action route 名稱，避免 attribute、測試與文件各自維護後不一致。
     private static class Routes
     {
         public const string CreateLot = "CreateLot";
@@ -42,11 +47,10 @@ public class WipLotSettingController : ControllerBase
     }
 
     /// <summary>
-    /// 新增 lot
+    /// 新增一筆或多筆 LOT，並建立第一站點的進站前置歷程。
     /// </summary>
-    /// <param name="input"></param>
-    /// <param name="ct"></param>
-    /// <returns></returns>
+    /// <param name="input">LOT 建立資料；每筆資料由 service 獨立處理。</param>
+    /// <param name="ct">請求取消權杖。</param>
     [HttpPost(Routes.CreateLot)]
     [ProducesResponseType(typeof(Result<bool>), StatusCodes.Status200OK)]
     [ProducesResponseType(typeof(Result<bool>), StatusCodes.Status400BadRequest)]
@@ -69,11 +73,10 @@ public class WipLotSettingController : ControllerBase
     }
 
     /// <summary>
-    /// 進站
+    /// 將一筆或多筆 LOT 進站至目前站點，狀態由 Wait 轉為 Run。
     /// </summary>
-    /// <param name="input"></param>
-    /// <param name="ct"></param>
-    /// <returns></returns>
+    /// <param name="input">進站資料；批次中的單筆失敗會回傳在 service result。</param>
+    /// <param name="ct">請求取消權杖。</param>
     [HttpPost(Routes.LotCheckIn)]
     [ProducesResponseType(typeof(Result<bool>), StatusCodes.Status200OK)]
     [ProducesResponseType(typeof(Result<bool>), StatusCodes.Status400BadRequest)]
@@ -96,11 +99,10 @@ public class WipLotSettingController : ControllerBase
     }
 
     /// <summary>
-    /// 取消進站
+    /// 取消 LOT 目前有效的進站紀錄，並將狀態由 Run 還原為 Wait。
     /// </summary>
-    /// <param name="input"></param>
-    /// <param name="ct"></param>
-    /// <returns></returns>
+    /// <param name="input">取消進站資料。</param>
+    /// <param name="ct">請求取消權杖。</param>
     [HttpPost(Routes.LotCheckInCancel)]
     [ProducesResponseType(typeof(Result<bool>), StatusCodes.Status200OK)]
     [ProducesResponseType(typeof(Result<bool>), StatusCodes.Status400BadRequest)]
@@ -123,11 +125,11 @@ public class WipLotSettingController : ControllerBase
     }
 
     /// <summary>
-    /// 出站
+    /// 將一筆或多筆 LOT 從目前站點出站。
+    /// Service 會依 route 推進到下一站，若已無下一站則將 LOT 標記為 Finished。
     /// </summary>
-    /// <param name="input"></param>
-    /// <param name="ct"></param>
-    /// <returns></returns>
+    /// <param name="input">出站資料；批次中的單筆失敗會回傳在 service result。</param>
+    /// <param name="ct">請求取消權杖。</param>
     [HttpPost(Routes.LotCheckOut)]
     [ProducesResponseType(typeof(Result<bool>), StatusCodes.Status200OK)]
     [ProducesResponseType(typeof(Result<bool>), StatusCodes.Status400BadRequest)]
@@ -150,11 +152,10 @@ public class WipLotSettingController : ControllerBase
     }
 
     /// <summary>
-    /// 把 lot 分派到其他站點
+    /// 將 LOT 重新分派到同一路線中的其他站點順序。
     /// </summary>
-    /// <param name="input"></param>
-    /// <param name="ct"></param>
-    /// <returns></returns>
+    /// <param name="input">目標站點順序與 LOT 相關資料。</param>
+    /// <param name="ct">請求取消權杖。</param>
     [HttpPost(Routes.LotReassignOperation)]
     [ProducesResponseType(typeof(Result<bool>), StatusCodes.Status200OK)]
     [ProducesResponseType(typeof(Result<bool>), StatusCodes.Status400BadRequest)]
@@ -177,11 +178,10 @@ public class WipLotSettingController : ControllerBase
     }
 
     /// <summary>
-    /// 這隻先不理
+    /// 記錄 LOT 目前站點的資料收集值。
     /// </summary>
-    /// <param name="input"></param>
-    /// <param name="ct"></param>
-    /// <returns></returns>
+    /// <param name="input">資料收集主檔與明細值。</param>
+    /// <param name="ct">請求取消權杖。</param>
     [HttpPost(Routes.LotRecordDC)]
     [ProducesResponseType(typeof(Result<bool>), StatusCodes.Status200OK)]
     [ProducesResponseType(typeof(Result<bool>), StatusCodes.Status400BadRequest)]
@@ -204,11 +204,10 @@ public class WipLotSettingController : ControllerBase
     }
 
     /// <summary>
-    /// 鎖住 特定 lot
+    /// 在 LOT 目前狀態允許時將 LOT Hold。
     /// </summary>
-    /// <param name="input"></param>
-    /// <param name="ct"></param>
-    /// <returns></returns>
+    /// <param name="input">Hold 原因與 LOT 相關資料。</param>
+    /// <param name="ct">請求取消權杖。</param>
     [HttpPost(Routes.LotHold)]
     [ProducesResponseType(typeof(Result<bool>), StatusCodes.Status200OK)]
     [ProducesResponseType(typeof(Result<bool>), StatusCodes.Status400BadRequest)]
@@ -231,11 +230,10 @@ public class WipLotSettingController : ControllerBase
     }
 
     /// <summary>
-    /// 解除 特定 lot
+    /// 解除 LOT 目前有效的 Hold 紀錄，並還原 LOT 狀態。
     /// </summary>
-    /// <param name="input"></param>
-    /// <param name="ct"></param>
-    /// <returns></returns>
+    /// <param name="input">解除 Hold 資料；LOT_HOLD_SID 必須指向尚未解除的 Hold 歷程。</param>
+    /// <param name="ct">請求取消權杖。</param>
     [HttpPost(Routes.LotHoldRelease)]
     [ProducesResponseType(typeof(Result<bool>), StatusCodes.Status200OK)]
     [ProducesResponseType(typeof(Result<bool>), StatusCodes.Status400BadRequest)]
@@ -258,11 +256,10 @@ public class WipLotSettingController : ControllerBase
     }
 
     /// <summary>
-    /// 追加 LOT 數量，會寫入 LOT_BONUS 交易紀錄與原因紀錄。
+    /// 追加 LOT 數量，並寫入數量調整原因歷程。
     /// </summary>
-    /// <param name="input">追加數量與原因資料。</param>
-    /// <param name="ct"></param>
-    /// <returns></returns>
+    /// <param name="input">追加數量資料。</param>
+    /// <param name="ct">請求取消權杖。</param>
     [HttpPost(Routes.LotBonus)]
     [ProducesResponseType(typeof(Result<bool>), StatusCodes.Status200OK)]
     [ProducesResponseType(typeof(Result<bool>), StatusCodes.Status400BadRequest)]
@@ -285,11 +282,10 @@ public class WipLotSettingController : ControllerBase
     }
 
     /// <summary>
-    /// 報廢 LOT 數量，會寫入 LOT_NG 交易紀錄與原因紀錄。
+    /// 報廢 LOT 數量，並寫入 NG 數量調整原因歷程。
     /// </summary>
-    /// <param name="input">報廢數量與原因資料。</param>
-    /// <param name="ct"></param>
-    /// <returns></returns>
+    /// <param name="input">報廢數量資料。</param>
+    /// <param name="ct">請求取消權杖。</param>
     [HttpPost(Routes.LotScrap)]
     [ProducesResponseType(typeof(Result<bool>), StatusCodes.Status200OK)]
     [ProducesResponseType(typeof(Result<bool>), StatusCodes.Status400BadRequest)]
@@ -312,11 +308,10 @@ public class WipLotSettingController : ControllerBase
     }
 
     /// <summary>
-    /// 變更 LOT 狀態，會寫入狀態異動履歷與原因履歷。
+    /// 將 LOT 變更為呼叫端指定的目標狀態。
     /// </summary>
-    /// <param name="input">LOT 狀態變更資料。</param>
-    /// <param name="ct"></param>
-    /// <returns></returns>
+    /// <param name="input">包含 NEW_STATE_CODE 的狀態變更資料。</param>
+    /// <param name="ct">請求取消權杖。</param>
     [HttpPost(Routes.LotStateChange)]
     [ProducesResponseType(typeof(Result<bool>), StatusCodes.Status200OK)]
     [ProducesResponseType(typeof(Result<bool>), StatusCodes.Status400BadRequest)]
@@ -339,11 +334,10 @@ public class WipLotSettingController : ControllerBase
     }
 
     /// <summary>
-    /// 將 Wait 或 Hold 狀態 LOT 結束為 Terminated。
+    /// 將 LOT 由 Wait 或 Hold 轉為 Terminated。
     /// </summary>
-    /// <param name="input">LOT 狀態動作資料。</param>
-    /// <param name="ct"></param>
-    /// <returns></returns>
+    /// <param name="input">固定狀態動作資料。</param>
+    /// <param name="ct">請求取消權杖。</param>
     [HttpPost(Routes.LotTerminated)]
     [ProducesResponseType(typeof(Result<bool>), StatusCodes.Status200OK)]
     [ProducesResponseType(typeof(Result<bool>), StatusCodes.Status400BadRequest)]
@@ -366,11 +360,10 @@ public class WipLotSettingController : ControllerBase
     }
 
     /// <summary>
-    /// 將 Terminated 狀態 LOT 還原為 Wait。
+    /// 將 LOT 由 Terminated 還原為 Wait。
     /// </summary>
-    /// <param name="input">LOT 狀態動作資料。</param>
-    /// <param name="ct"></param>
-    /// <returns></returns>
+    /// <param name="input">固定狀態動作資料。</param>
+    /// <param name="ct">請求取消權杖。</param>
     [HttpPost(Routes.LotUnTerminated)]
     [ProducesResponseType(typeof(Result<bool>), StatusCodes.Status200OK)]
     [ProducesResponseType(typeof(Result<bool>), StatusCodes.Status400BadRequest)]
@@ -393,11 +386,10 @@ public class WipLotSettingController : ControllerBase
     }
 
     /// <summary>
-    /// 將 Wait 狀態 LOT 完工為 Finished。
+    /// 將 LOT 由 Wait 轉為 Finished。
     /// </summary>
-    /// <param name="input">LOT 狀態動作資料。</param>
-    /// <param name="ct"></param>
-    /// <returns></returns>
+    /// <param name="input">固定狀態動作資料。</param>
+    /// <param name="ct">請求取消權杖。</param>
     [HttpPost(Routes.LotFinished)]
     [ProducesResponseType(typeof(Result<bool>), StatusCodes.Status200OK)]
     [ProducesResponseType(typeof(Result<bool>), StatusCodes.Status400BadRequest)]
@@ -420,11 +412,10 @@ public class WipLotSettingController : ControllerBase
     }
 
     /// <summary>
-    /// 將 Finished 狀態 LOT 還原為 Wait。
+    /// 將 LOT 由 Finished 還原為 Wait。
     /// </summary>
-    /// <param name="input">LOT 狀態動作資料。</param>
-    /// <param name="ct"></param>
-    /// <returns></returns>
+    /// <param name="input">固定狀態動作資料。</param>
+    /// <param name="ct">請求取消權杖。</param>
     [HttpPost(Routes.LotUnFinished)]
     [ProducesResponseType(typeof(Result<bool>), StatusCodes.Status200OK)]
     [ProducesResponseType(typeof(Result<bool>), StatusCodes.Status400BadRequest)]
@@ -448,6 +439,8 @@ public class WipLotSettingController : ControllerBase
 
     private IActionResult BuildErrorResult(HttpStatusCode statusCode, string message)
     {
+        // Service 會用 HttpStatusCodeException 表示預期內的業務錯誤。
+        // 這裡統一讓 HTTP status 與 Result<bool> 的錯誤代碼保持一致。
         var code = statusCode switch
         {
             HttpStatusCode.BadRequest => WipLotErrorCode.BadRequest,
