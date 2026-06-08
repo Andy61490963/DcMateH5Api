@@ -8,7 +8,7 @@ namespace DcMateH5Api.Areas.Eqm.Controllers
 {
     [Area("Eqm")]
     [Route("api/[area]/[controller]")]
-    [ApiExplorerSettings(GroupName = "Eqm")]
+    [ApiExplorerSettings(GroupName = SwaggerGroups.Eqm)]
     [ApiController]
     public class EqmStatusController : ControllerBase
     {

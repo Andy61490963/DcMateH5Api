@@ -12,6 +12,7 @@ using Microsoft.Extensions.Configuration;
 using System;
 using System.Data;
 using System.Linq;
+using System.Text.RegularExpressions;
 using System.Threading;
 using System.Threading.Tasks;
 
@@ -19,6 +20,10 @@ namespace DcMateH5.Infrastructure.EQM;
 
 public class EqmAutoDcService : IEqmAutoDcService
 {
+    private const string DefaultHistoryTableName = "dbo.EQM_MASTER_AUTODC_OUTPUT";
+    private const string DefaultCurrentTableName = "dbo.EQM_MASTER_AUTODC_OUTPUT_CUR";
+    private static readonly Regex SqlIdentifierPattern = new(@"^[A-Za-z_][A-Za-z0-9_]*$", RegexOptions.Compiled);
+
     private readonly SQLGenerateHelper _sqlHelper;
     private readonly ICurrentUserAccessor _currentUserAccessor;
     private readonly IConfiguration _configuration;
@@ -121,12 +126,22 @@ public class EqmAutoDcService : IEqmAutoDcService
         }
 
         var items = arrayData.Select(x => x.Split(':')[0]).ToList();
-        string itemInClause = string.Join(",", items.Select(x => $"'{x}'"));
+        var historyTable = ResolveTableName(input.HistoryTableName, DefaultHistoryTableName);
+        var currentTable = ResolveTableName(input.CurrentTableName, DefaultCurrentTableName);
+        var todayTable = ResolveOptionalTableName(input.TodayTableName);
+        if (todayTable != null)
+        {
+            await DeleteOtherShiftDayRowsAsync(conn, tx, todayTable, shiftDayStr, ct);
+        }
+
+        var itemParameterNames = items
+            .Select((_, index) => $"@Item{index}")
+            .ToArray();
 
         string selectLastSql = $@"SELECT [AUTODC_ITEM], [AUTODC_OUTPUT] 
-                                 FROM [dbo].[EQM_MASTER_AUTODC_OUTPUT_CUR] 
+                                 FROM {currentTable.SqlName}
                                  WHERE [EQM_MASTER_NO] = @EqmMasterNo 
-                                   AND [AUTODC_ITEM] IN ({itemInClause})";
+                                   AND [AUTODC_ITEM] IN ({string.Join(", ", itemParameterNames)})";
 
         DataTable thisItemLastDt = new DataTable();
         using (var selectCmd = conn.CreateCommand())
@@ -134,6 +149,11 @@ public class EqmAutoDcService : IEqmAutoDcService
             selectCmd.Transaction = tx;
             selectCmd.CommandText = selectLastSql;
             selectCmd.Parameters.Add(new SqlParameter("@EqmMasterNo", SqlDbType.NVarChar, 255) { Value = input.EqmMasterNo });
+            for (var i = 0; i < items.Count; i++)
+            {
+                selectCmd.Parameters.Add(new SqlParameter(itemParameterNames[i], SqlDbType.NVarChar, 255) { Value = items[i] });
+            }
+
             using var reader = await selectCmd.ExecuteReaderAsync(ct);
             thisItemLastDt.Load(reader);
         }
@@ -173,8 +193,9 @@ public class EqmAutoDcService : IEqmAutoDcService
                 {
                     diffValue = curValue - lastValue;
 
-                    await InsertHistoryAsync(conn, tx, dbSid, input.EqmMasterNo, curItem, curValue, diffValue, dbNow, operatorAccount, shift.SHIFT_NO, shiftDayStr, ct);
-                    await UpdateCurrentAsync(conn, tx, input.EqmMasterNo, curItem, curValue, operatorAccount, dbNow, ct);
+                    await InsertHistoryAsync(conn, tx, historyTable, dbSid, input.EqmMasterNo, curItem, curValue, diffValue, dbNow, operatorAccount, shift.SHIFT_NO, shiftDayStr, ct);
+                    await InsertTodayHistoryAsync(conn, tx, todayTable, dbSid, input.EqmMasterNo, curItem, curValue, diffValue, dbNow, operatorAccount, shift.SHIFT_NO, shiftDayStr, ct);
+                    await UpdateCurrentAsync(conn, tx, currentTable, input.EqmMasterNo, curItem, curValue, operatorAccount, dbNow, ct);
                 }
                 // ==========================================
                 // [WIP 全新修改模式]：如果這次比上次小，差異值無條件等於這次的值
@@ -190,16 +211,18 @@ public class EqmAutoDcService : IEqmAutoDcService
                         diffValue = curValue - lastValue;
                     }
 
-                    await InsertHistoryAsync(conn, tx, dbSid, input.EqmMasterNo, curItem, curValue, diffValue, dbNow, operatorAccount, shift.SHIFT_NO, shiftDayStr, ct);
-                    await UpdateCurrentAsync(conn, tx, input.EqmMasterNo, curItem, curValue, operatorAccount, dbNow, ct);
+                    await InsertHistoryAsync(conn, tx, historyTable, dbSid, input.EqmMasterNo, curItem, curValue, diffValue, dbNow, operatorAccount, shift.SHIFT_NO, shiftDayStr, ct);
+                    await InsertTodayHistoryAsync(conn, tx, todayTable, dbSid, input.EqmMasterNo, curItem, curValue, diffValue, dbNow, operatorAccount, shift.SHIFT_NO, shiftDayStr, ct);
+                    await UpdateCurrentAsync(conn, tx, currentTable, input.EqmMasterNo, curItem, curValue, operatorAccount, dbNow, ct);
                 }
             }
             else
             {
                 // [第一次上傳] 初次建立不分 WIP/EDC，差異一律給 0
                 diffValue = 0;
-                await InsertHistoryAsync(conn, tx, dbSid, input.EqmMasterNo, curItem, curValue, diffValue, dbNow, operatorAccount, shift.SHIFT_NO, shiftDayStr, ct);
-                await InsertCurrentAsync(conn, tx, dbSid, input.EqmMasterNo, curItem, curValue, operatorAccount, dbNow, ct);
+                await InsertHistoryAsync(conn, tx, historyTable, dbSid, input.EqmMasterNo, curItem, curValue, diffValue, dbNow, operatorAccount, shift.SHIFT_NO, shiftDayStr, ct);
+                await InsertTodayHistoryAsync(conn, tx, todayTable, dbSid, input.EqmMasterNo, curItem, curValue, diffValue, dbNow, operatorAccount, shift.SHIFT_NO, shiftDayStr, ct);
+                await InsertCurrentAsync(conn, tx, currentTable, dbSid, input.EqmMasterNo, curItem, curValue, operatorAccount, dbNow, ct);
             }
 
             // 累加絕對值落差，防止 EDC 算出負數溫度時把總差異抵消掉
@@ -219,13 +242,64 @@ public class EqmAutoDcService : IEqmAutoDcService
     }
 
     #region --- 資料庫原生操作輔助 (對齊同事寫法) ---
-    private static async Task InsertHistoryAsync(SqlConnection conn, SqlTransaction tx, decimal sid, string eqmNo, string item, decimal output, decimal diff, DateTime now, string user, string shiftNo, string shiftDay, CancellationToken ct)
+    private sealed record AutoDcTableName(string SqlName, string SidColumn);
+
+    private static AutoDcTableName ResolveTableName(string? requestedTableName, string defaultTableName)
+    {
+        var tableName = string.IsNullOrWhiteSpace(requestedTableName)
+            ? defaultTableName
+            : requestedTableName.Trim();
+
+        var parts = tableName.Split('.', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+        if (parts.Length is < 1 or > 2 || parts.Any(part => !SqlIdentifierPattern.IsMatch(part)))
+        {
+            throw new HttpStatusCodeException(System.Net.HttpStatusCode.BadRequest, $"Invalid AutoDC table name: {tableName}");
+        }
+
+        var objectName = parts[^1];
+        var sqlName = parts.Length == 1
+            ? $"[dbo].[{parts[0]}]"
+            : $"[{parts[0]}].[{parts[1]}]";
+
+        return new AutoDcTableName(sqlName, $"[{objectName}_SID]");
+    }
+
+    private static AutoDcTableName? ResolveOptionalTableName(string? requestedTableName)
+    {
+        return string.IsNullOrWhiteSpace(requestedTableName)
+            ? null
+            : ResolveTableName(requestedTableName, requestedTableName);
+    }
+
+    private static async Task DeleteOtherShiftDayRowsAsync(SqlConnection conn, SqlTransaction tx, AutoDcTableName table, string shiftDay, CancellationToken ct)
     {
         using var cmd = conn.CreateCommand();
         cmd.Transaction = tx;
-        cmd.CommandText = """
-            INSERT INTO [dbo].[EQM_MASTER_AUTODC_OUTPUT] (
-                [EQM_MASTER_AUTODC_OUTPUT_SID], [EQM_MASTER_NO], [AUTODC_ITEM], [AUTODC_OUTPUT], [AUTODC_DIFF_VALUE], 
+        cmd.CommandText = $"""
+            DELETE FROM {table.SqlName}
+            WHERE ISNULL([SHIFT_DAY], '') <> @ShiftDay;
+            """;
+        cmd.Parameters.Add(new SqlParameter("@ShiftDay", SqlDbType.NVarChar, 255) { Value = shiftDay });
+        await cmd.ExecuteNonQueryAsync(ct);
+    }
+
+    private static async Task InsertTodayHistoryAsync(SqlConnection conn, SqlTransaction tx, AutoDcTableName? todayTable, decimal sid, string eqmNo, string item, decimal output, decimal diff, DateTime now, string user, string shiftNo, string shiftDay, CancellationToken ct)
+    {
+        if (todayTable == null)
+        {
+            return;
+        }
+
+        await InsertHistoryAsync(conn, tx, todayTable, sid, eqmNo, item, output, diff, now, user, shiftNo, shiftDay, ct);
+    }
+
+    private static async Task InsertHistoryAsync(SqlConnection conn, SqlTransaction tx, AutoDcTableName historyTable, decimal sid, string eqmNo, string item, decimal output, decimal diff, DateTime now, string user, string shiftNo, string shiftDay, CancellationToken ct)
+    {
+        using var cmd = conn.CreateCommand();
+        cmd.Transaction = tx;
+        cmd.CommandText = $"""
+            INSERT INTO {historyTable.SqlName} (
+                {historyTable.SidColumn}, [EQM_MASTER_NO], [AUTODC_ITEM], [AUTODC_OUTPUT], [AUTODC_DIFF_VALUE],
                 [REPORT_TIME], [CREATE_USER], [CREATE_TIME], [EDIT_USER], [EDIT_TIME], [SHIFT_NO], [SHIFT_DAY]
             ) VALUES (
                 @Sid, @EqmNo, @Item, @Output, @Diff, @Now, @User, @Now, @User, @Now, @ShiftNo, @ShiftDay
@@ -245,13 +319,13 @@ public class EqmAutoDcService : IEqmAutoDcService
             throw new HttpStatusCodeException(System.Net.HttpStatusCode.Conflict, $"AutoDC history insert failed: {eqmNo}-{item}");
     }
 
-    private static async Task UpdateCurrentAsync(SqlConnection conn, SqlTransaction tx, string eqmNo, string item, decimal output, string user, DateTime now, CancellationToken ct)
+    private static async Task UpdateCurrentAsync(SqlConnection conn, SqlTransaction tx, AutoDcTableName currentTable, string eqmNo, string item, decimal output, string user, DateTime now, CancellationToken ct)
     {
         using var cmd = conn.CreateCommand();
         cmd.Transaction = tx;
-        cmd.CommandText = """
-            UPDATE [dbo].[EQM_MASTER_AUTODC_OUTPUT_CUR] 
-            SET [AUTODC_OUTPUT] = @Output, [EDIT_USER] = @User, [EDIT_TIME] = @Now 
+        cmd.CommandText = $"""
+            UPDATE {currentTable.SqlName}
+            SET [AUTODC_OUTPUT] = @Output, [EDIT_USER] = @User, [EDIT_TIME] = @Now
             WHERE [EQM_MASTER_NO] = @EqmNo AND [AUTODC_ITEM] = @Item;
             """;
         cmd.Parameters.Add(new SqlParameter("@Output", SqlDbType.NVarChar, 255) { Value = output.ToString() });
@@ -264,13 +338,13 @@ public class EqmAutoDcService : IEqmAutoDcService
             throw new HttpStatusCodeException(System.Net.HttpStatusCode.Conflict, $"AutoDC current update failed: {eqmNo}-{item}");
     }
 
-    private static async Task InsertCurrentAsync(SqlConnection conn, SqlTransaction tx, decimal sid, string eqmNo, string item, decimal output, string user, DateTime now, CancellationToken ct)
+    private static async Task InsertCurrentAsync(SqlConnection conn, SqlTransaction tx, AutoDcTableName currentTable, decimal sid, string eqmNo, string item, decimal output, string user, DateTime now, CancellationToken ct)
     {
         using var cmd = conn.CreateCommand();
         cmd.Transaction = tx;
-        cmd.CommandText = """
-            INSERT INTO [dbo].[EQM_MASTER_AUTODC_OUTPUT_CUR] (
-                [EQM_MASTER_AUTODC_OUTPUT_CUR_SID], [EQM_MASTER_NO], [AUTODC_ITEM], [AUTODC_OUTPUT], [CREATE_USER], [CREATE_TIME], [EDIT_USER], [EDIT_TIME]
+        cmd.CommandText = $"""
+            INSERT INTO {currentTable.SqlName} (
+                {currentTable.SidColumn}, [EQM_MASTER_NO], [AUTODC_ITEM], [AUTODC_OUTPUT], [CREATE_USER], [CREATE_TIME], [EDIT_USER], [EDIT_TIME]
             ) VALUES (
                 @Sid, @EqmNo, @Item, @Output, @User, @Now, @User, @Now
             );

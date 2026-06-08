@@ -8,7 +8,7 @@ namespace DcMateH5Api.Areas.Eqm.Controllers;
 
 [Area("Eqm")]
 [Route("api/[area]/[controller]")]
-[ApiExplorerSettings(GroupName = "Eqm")]
+[ApiExplorerSettings(GroupName = SwaggerGroups.Eqm)]
 [ApiController]
 public class EqmAutoDcController : ControllerBase
 {
@@ -34,12 +34,18 @@ public class EqmAutoDcController : ControllerBase
     /// http://[Server_IP]/api/Eqm/EqmAutoDc/AutoDcUpload?EQP_NO=ME01&amp;VALUE=Temperature:25.8,Qty:1020&amp;SameChange=TRUE&amp;AutoIdle=TRUE
     /// 2. **EDC 模式 (網址最後必須強帶 &amp;Mode=EDC)**
     /// http://[Server_IP]/api/Eqm/EqmAutoDc/AutoDcUpload?EQP_NO=ME01&amp;VALUE=Pressure:6.5&amp;Mode=EDC&amp;SameChange=TRUE&amp;AutoIdle=TRUE
+    /// 3. **指定寫入表 (可選，未帶時使用系統預設表)**
+    /// http://[Server_IP]/api/Eqm/EqmAutoDc/AutoDcUpload?EQP_NO=ME01&amp;VALUE=Qty:1020&amp;TABLE=EQM_MASTER_AUTODC_OUTPUT&amp;CUR_TABLE=EQM_MASTER_AUTODC_OUTPUT_CUR
+    /// 4. **指定當日表 (可選，只保留同一個 SHIFT_DAY 的資料)**
+    /// http://[Server_IP]/api/Eqm/EqmAutoDc/AutoDcUpload?EQP_NO=ME01&amp;VALUE=Qty:1020&amp;TABLE=EMS_AUTODC_OUTPUT_MAIN&amp;CUR_TABLE=EMS_AUTODC_OUTPUT_MAIN_CUR&amp;TODAY_TABLE=EMS_AUTODC_OUTPUT_MAIN_TODAY
     /// 
     /// 1. **數據拆解規格 (`Value`)**
     ///     - 格式固定為 `項目代碼:數值`。
     ///     - 若有多個 Sensor 項目，請以 **「半形逗號 (,)」** 隔開。
     ///     - SameChange 為機況相同時是否要呼叫一次機況切換api
     ///     - AutoIdle 為 當差異值為0自動切成 Idle , 反之 切成Run
+    ///     - TABLE / CUR_TABLE 可指定 AutoDC history/current 寫入表；空白時使用 `EQM_MASTER_AUTODC_OUTPUT` / `EQM_MASTER_AUTODC_OUTPUT_CUR`
+    ///     - TODAY_TABLE 可指定 AutoDC 當日表；空白時不寫入，帶值時會清除非本次 `SHIFT_DAY` 的資料，只保留當日資料
     /// 2. **計算模式 (`Mode`)**
     ///     - **初次上傳**：若該項目在系統內無任何歷史紀錄，則本次寫入歷史表的差異值一律強制歸零 (`0`)。
     /// 
@@ -56,6 +62,9 @@ public class EqmAutoDcController : ControllerBase
     ///   "EqmMasterNo": "ME01",
     ///   "Value": "Temperature:36.5,Power:150.5,Pressure:6.2",
     ///   "Mode": "WIP",
+    ///   "TABLE": "EQM_MASTER_AUTODC_OUTPUT",
+    ///   "CUR_TABLE": "EQM_MASTER_AUTODC_OUTPUT_CUR",
+    ///   "TODAY_TABLE": "EMS_AUTODC_OUTPUT_MAIN_TODAY",
     ///   "AutoIdle": "FALSE",
     ///   "SameChange": "FALSE"
     /// }
