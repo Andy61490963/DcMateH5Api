@@ -10,8 +10,12 @@ using DcMateH5Api.Models;
 using Microsoft.Data.SqlClient;
 using Microsoft.Extensions.Configuration;
 using System;
+using System.Collections.Generic;
 using System.Data;
+using System.Diagnostics;
+using System.IO;
 using System.Linq;
+using System.Text.Json;
 using System.Text.RegularExpressions;
 using System.Threading;
 using System.Threading.Tasks;
@@ -23,6 +27,7 @@ public class EqmAutoDcService : IEqmAutoDcService
     private const string DefaultHistoryTableName = "dbo.EQM_MASTER_AUTODC_OUTPUT";
     private const string DefaultCurrentTableName = "dbo.EQM_MASTER_AUTODC_OUTPUT_CUR";
     private static readonly Regex SqlIdentifierPattern = new(@"^[A-Za-z_][A-Za-z0-9_]*$", RegexOptions.Compiled);
+    private static readonly SemaphoreSlim AutoDcLogLock = new(1, 1);
 
     private readonly SQLGenerateHelper _sqlHelper;
     private readonly ICurrentUserAccessor _currentUserAccessor;
@@ -49,55 +54,69 @@ public class EqmAutoDcService : IEqmAutoDcService
 
     public async Task<Result<bool>> ProcessAutoDcUploadAsync(EqmAutoDcInputDto input, CancellationToken ct = default)
     {
+        var sw = Stopwatch.StartNew();
         // 用來累加本次上傳所有項目的絕對值落差，判斷機台是否有在動
         decimal totalDiffValue = 0;
         string currentDbStatus = string.Empty;
 
-        // 1. 先在外層執行 AutoDC 的雙表資料查詢與寫入交易
-        await _sqlHelper.TxAsync(
-            async (conn, tx, innerCt) =>
-            {
-                // 核心資料處理，並回傳本次這批數據的總差異值
-                totalDiffValue = await ProcessAutoDcInTxAsync(conn, tx, input, innerCt);
+        await TryWriteAutoDcLogAsync("START", input, null, null, sw.ElapsedMilliseconds, ct);
 
-                // 順便查出目前主檔的真實狀態，用來滿足 SAME_CHANGE 邏輯
-                currentDbStatus = await GetCurrentEqmStatusInTxAsync(conn, tx, input.EqmMasterNo, innerCt);
-            },
-            isolation: IsolationLevel.ReadCommitted,
-            ct: ct);
-
-        // 2. 當上述交易成功 Commit 提交後，緊接著執行原本的 AutoIdle 機況自動轉換邏輯
-        if (input.AutoIdle.Equals("TRUE", StringComparison.OrdinalIgnoreCase))
+        try
         {
-            // 如果總體差異值是 0 (機台沒產出)，判定為 Idle；有產出則判定為 Run
-            string newEqpState = totalDiffValue == 0 ? "Idle" : "Run";
-
-            bool isSameStatus = string.Equals(currentDbStatus?.Trim(), newEqpState, StringComparison.OrdinalIgnoreCase);
-            bool shouldChange = input.SameChange.Equals("TRUE", StringComparison.OrdinalIgnoreCase) || !isSameStatus;
-
-            if (shouldChange)
-            {
-                // 產生 yyyyMMddHHmmssfff 格式的 17 位數絕對不重號時間流水號
-                string sidStr = DateTime.Now.ToString("yyyyMMddHHmmssfff");
-                decimal generatedSid = decimal.Parse(sidStr);
-                // 組裝同事約定好的狀態變更實體 DTO
-                var statusInput = new EqmStatusChangeInputDto
+            // 1. 先在外層執行 AutoDC 的雙表資料查詢與寫入交易
+            await _sqlHelper.TxAsync(
+                async (conn, tx, innerCt) =>
                 {
-                    DATA_LINK_SID = generatedSid, // 依系統現狀給予預設或流水號
-                    EQM_NO = input.EqmMasterNo,
-                    EQM_STATUS_NO = newEqpState, // "Idle" 或 "Run"
-                    REASON_NO = "99",      // 請確保 ADM_REASON 表中有一筆啟用的 AUTO_CGI 代碼，否則同事的 API 會報錯
-                    REPORT_TIME = DateTime.Now,
-                    INPUT_FORM_NAME = "CGI",
-                    UPDATE_EQM_MASTER = true     // 即時狀態變更，連動更新主檔
-                };
+                    // 核心資料處理，並回傳本次這批數據的總差異值
+                    totalDiffValue = await ProcessAutoDcInTxAsync(conn, tx, input, innerCt);
 
-                // 呼叫同事寫好的狀態切換服務
-                await _eqmStatusService.StatusChangeAsync(statusInput, ct);
+                    // 順便查出目前主檔的真實狀態，用來滿足 SAME_CHANGE 邏輯
+                    currentDbStatus = await GetCurrentEqmStatusInTxAsync(conn, tx, input.EqmMasterNo, innerCt);
+                },
+                isolation: IsolationLevel.ReadCommitted,
+                ct: ct);
+
+            // 2. 當上述交易成功 Commit 提交後，緊接著執行原本的 AutoIdle 機況自動轉換邏輯
+            if (input.AutoIdle.Equals("TRUE", StringComparison.OrdinalIgnoreCase))
+            {
+                // 如果總體差異值是 0 (機台沒產出)，判定為 Idle；有產出則判定為 Run
+                string newEqpState = totalDiffValue == 0 ? "Idle" : "Run";
+
+                bool isSameStatus = string.Equals(currentDbStatus?.Trim(), newEqpState, StringComparison.OrdinalIgnoreCase);
+                bool shouldChange = input.SameChange.Equals("TRUE", StringComparison.OrdinalIgnoreCase) || !isSameStatus;
+
+                if (shouldChange)
+                {
+                    // 產生 yyyyMMddHHmmssfff 格式的 17 位數絕對不重號時間流水號
+                    string sidStr = DateTime.Now.ToString("yyyyMMddHHmmssfff");
+                    decimal generatedSid = decimal.Parse(sidStr);
+                    // 組裝同事約定好的狀態變更實體 DTO
+                    var statusInput = new EqmStatusChangeInputDto
+                    {
+                        DATA_LINK_SID = generatedSid, // 依系統現狀給予預設或流水號
+                        EQM_NO = input.EqmMasterNo,
+                        EQM_STATUS_NO = newEqpState, // "Idle" 或 "Run"
+                        REASON_NO = "99",      // 請確保 ADM_REASON 表中有一筆啟用的 AUTO_CGI 代碼，否則同事的 API 會報錯
+                        REPORT_TIME = DateTime.Now,
+                        INPUT_FORM_NAME = "CGI",
+                        UPDATE_EQM_MASTER = true     // 即時狀態變更，連動更新主檔
+                    };
+
+                    // 呼叫同事寫好的狀態切換服務
+                    await _eqmStatusService.StatusChangeAsync(statusInput, ct);
+                }
             }
-        }
 
-        return Result<bool>.Ok(true);
+            sw.Stop();
+            await TryWriteAutoDcLogAsync("SUCCESS", input, totalDiffValue, null, sw.ElapsedMilliseconds, ct);
+            return Result<bool>.Ok(true);
+        }
+        catch (Exception ex)
+        {
+            sw.Stop();
+            await TryWriteAutoDcLogAsync("ERROR", input, totalDiffValue, ex, sw.ElapsedMilliseconds, CancellationToken.None);
+            throw;
+        }
     }
 
     /// <summary>
@@ -115,6 +134,7 @@ public class EqmAutoDcService : IEqmAutoDcService
             throw new HttpStatusCodeException(System.Net.HttpStatusCode.BadRequest, "VALUE is required.");
 
         var arrayData = input.Value.Split(',');
+        var unit = input.Unit ?? string.Empty;
         var operatorAccount = _currentUserAccessor.Get()?.Account ?? SystemUsers.GuiUser;
         var dbNow = await GetDbNowInTxAsync(conn, tx, ct);
 
@@ -193,8 +213,8 @@ public class EqmAutoDcService : IEqmAutoDcService
                 {
                     diffValue = curValue - lastValue;
 
-                    await InsertHistoryAsync(conn, tx, historyTable, dbSid, input.EqmMasterNo, curItem, curValue, diffValue, dbNow, operatorAccount, shift.SHIFT_NO, shiftDayStr, ct);
-                    await InsertTodayHistoryAsync(conn, tx, todayTable, dbSid, input.EqmMasterNo, curItem, curValue, diffValue, dbNow, operatorAccount, shift.SHIFT_NO, shiftDayStr, ct);
+                    await InsertHistoryAsync(conn, tx, historyTable, dbSid, input.EqmMasterNo, curItem, curValue, diffValue, dbNow, operatorAccount, shift.SHIFT_NO, shiftDayStr, unit, ct);
+                    await InsertTodayHistoryAsync(conn, tx, todayTable, dbSid, input.EqmMasterNo, curItem, curValue, diffValue, dbNow, operatorAccount, shift.SHIFT_NO, shiftDayStr, unit, ct);
                     await UpdateCurrentAsync(conn, tx, currentTable, input.EqmMasterNo, curItem, curValue, operatorAccount, dbNow, ct);
                 }
                 // ==========================================
@@ -211,8 +231,8 @@ public class EqmAutoDcService : IEqmAutoDcService
                         diffValue = curValue - lastValue;
                     }
 
-                    await InsertHistoryAsync(conn, tx, historyTable, dbSid, input.EqmMasterNo, curItem, curValue, diffValue, dbNow, operatorAccount, shift.SHIFT_NO, shiftDayStr, ct);
-                    await InsertTodayHistoryAsync(conn, tx, todayTable, dbSid, input.EqmMasterNo, curItem, curValue, diffValue, dbNow, operatorAccount, shift.SHIFT_NO, shiftDayStr, ct);
+                    await InsertHistoryAsync(conn, tx, historyTable, dbSid, input.EqmMasterNo, curItem, curValue, diffValue, dbNow, operatorAccount, shift.SHIFT_NO, shiftDayStr, unit, ct);
+                    await InsertTodayHistoryAsync(conn, tx, todayTable, dbSid, input.EqmMasterNo, curItem, curValue, diffValue, dbNow, operatorAccount, shift.SHIFT_NO, shiftDayStr, unit, ct);
                     await UpdateCurrentAsync(conn, tx, currentTable, input.EqmMasterNo, curItem, curValue, operatorAccount, dbNow, ct);
                 }
             }
@@ -220,8 +240,8 @@ public class EqmAutoDcService : IEqmAutoDcService
             {
                 // [第一次上傳] 初次建立不分 WIP/EDC，差異一律給 0
                 diffValue = 0;
-                await InsertHistoryAsync(conn, tx, historyTable, dbSid, input.EqmMasterNo, curItem, curValue, diffValue, dbNow, operatorAccount, shift.SHIFT_NO, shiftDayStr, ct);
-                await InsertTodayHistoryAsync(conn, tx, todayTable, dbSid, input.EqmMasterNo, curItem, curValue, diffValue, dbNow, operatorAccount, shift.SHIFT_NO, shiftDayStr, ct);
+                await InsertHistoryAsync(conn, tx, historyTable, dbSid, input.EqmMasterNo, curItem, curValue, diffValue, dbNow, operatorAccount, shift.SHIFT_NO, shiftDayStr, unit, ct);
+                await InsertTodayHistoryAsync(conn, tx, todayTable, dbSid, input.EqmMasterNo, curItem, curValue, diffValue, dbNow, operatorAccount, shift.SHIFT_NO, shiftDayStr, unit, ct);
                 await InsertCurrentAsync(conn, tx, currentTable, dbSid, input.EqmMasterNo, curItem, curValue, operatorAccount, dbNow, ct);
             }
 
@@ -239,6 +259,62 @@ public class EqmAutoDcService : IEqmAutoDcService
         cmd.CommandText = "SELECT TOP (1) [STATUS] FROM [dbo].[EQM_MASTER] WHERE [EQM_MASTER_NO] = @EqmNo;";
         cmd.Parameters.Add(new SqlParameter("@EqmNo", SqlDbType.NVarChar, 255) { Value = eqmNo });
         return (await cmd.ExecuteScalarAsync(ct))?.ToString() ?? string.Empty;
+    }
+
+    private async Task TryWriteAutoDcLogAsync(string eventName, EqmAutoDcInputDto input, decimal? totalDiffValue, Exception? exception, long elapsedMs, CancellationToken ct)
+    {
+        try
+        {
+            var logDir = ResolveAutoDcLogDirectory();
+            Directory.CreateDirectory(logDir);
+
+            var logEntry = new Dictionary<string, object?>
+            {
+                ["time"] = DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss.fff"),
+                ["event"] = eventName,
+                ["elapsedMs"] = elapsedMs,
+                ["eqpNo"] = input.EqmMasterNo,
+                ["value"] = input.Value,
+                ["unit"] = input.Unit,
+                ["mode"] = input.Mode,
+                ["autoIdle"] = input.AutoIdle,
+                ["sameChange"] = input.SameChange,
+                ["table"] = string.IsNullOrWhiteSpace(input.HistoryTableName) ? DefaultHistoryTableName : input.HistoryTableName,
+                ["curTable"] = string.IsNullOrWhiteSpace(input.CurrentTableName) ? DefaultCurrentTableName : input.CurrentTableName,
+                ["todayTable"] = input.TodayTableName,
+                ["totalDiffValue"] = totalDiffValue,
+                ["error"] = exception?.Message
+            };
+
+            var logLine = JsonSerializer.Serialize(logEntry) + Environment.NewLine;
+            var logPath = Path.Combine(logDir, $"EqmAutoDc_{DateTime.Now:yyyyMMdd}.log");
+
+            await AutoDcLogLock.WaitAsync(ct);
+            try
+            {
+                await File.AppendAllTextAsync(logPath, logLine, ct);
+            }
+            finally
+            {
+                AutoDcLogLock.Release();
+            }
+        }
+        catch
+        {
+            // Log failure must not block CGI/AutoDC uploads.
+        }
+    }
+
+    private string ResolveAutoDcLogDirectory()
+    {
+        var configuredPath = _configuration.GetValue<string>("AutoDcLog:Directory");
+        var logDir = string.IsNullOrWhiteSpace(configuredPath)
+            ? Path.Combine("appsetting", "log")
+            : configuredPath.Trim();
+
+        return Path.IsPathRooted(logDir)
+            ? logDir
+            : Path.Combine(Directory.GetCurrentDirectory(), logDir);
     }
 
     #region --- 資料庫原生操作輔助 (對齊同事寫法) ---
@@ -283,26 +359,26 @@ public class EqmAutoDcService : IEqmAutoDcService
         await cmd.ExecuteNonQueryAsync(ct);
     }
 
-    private static async Task InsertTodayHistoryAsync(SqlConnection conn, SqlTransaction tx, AutoDcTableName? todayTable, decimal sid, string eqmNo, string item, decimal output, decimal diff, DateTime now, string user, string shiftNo, string shiftDay, CancellationToken ct)
+    private static async Task InsertTodayHistoryAsync(SqlConnection conn, SqlTransaction tx, AutoDcTableName? todayTable, decimal sid, string eqmNo, string item, decimal output, decimal diff, DateTime now, string user, string shiftNo, string shiftDay, string unit, CancellationToken ct)
     {
         if (todayTable == null)
         {
             return;
         }
 
-        await InsertHistoryAsync(conn, tx, todayTable, sid, eqmNo, item, output, diff, now, user, shiftNo, shiftDay, ct);
+        await InsertHistoryAsync(conn, tx, todayTable, sid, eqmNo, item, output, diff, now, user, shiftNo, shiftDay, unit, ct);
     }
 
-    private static async Task InsertHistoryAsync(SqlConnection conn, SqlTransaction tx, AutoDcTableName historyTable, decimal sid, string eqmNo, string item, decimal output, decimal diff, DateTime now, string user, string shiftNo, string shiftDay, CancellationToken ct)
+    private static async Task InsertHistoryAsync(SqlConnection conn, SqlTransaction tx, AutoDcTableName historyTable, decimal sid, string eqmNo, string item, decimal output, decimal diff, DateTime now, string user, string shiftNo, string shiftDay, string unit, CancellationToken ct)
     {
         using var cmd = conn.CreateCommand();
         cmd.Transaction = tx;
         cmd.CommandText = $"""
             INSERT INTO {historyTable.SqlName} (
                 {historyTable.SidColumn}, [EQM_MASTER_NO], [AUTODC_ITEM], [AUTODC_OUTPUT], [AUTODC_DIFF_VALUE],
-                [REPORT_TIME], [CREATE_USER], [CREATE_TIME], [EDIT_USER], [EDIT_TIME], [SHIFT_NO], [SHIFT_DAY]
+                [REPORT_TIME], [CREATE_USER], [CREATE_TIME], [EDIT_USER], [EDIT_TIME], [SHIFT_NO], [SHIFT_DAY], [UNIT]
             ) VALUES (
-                @Sid, @EqmNo, @Item, @Output, @Diff, @Now, @User, @Now, @User, @Now, @ShiftNo, @ShiftDay
+                @Sid, @EqmNo, @Item, @Output, @Diff, @Now, @User, @Now, @User, @Now, @ShiftNo, @ShiftDay, @Unit
             );
             """;
         cmd.Parameters.Add(new SqlParameter("@Sid", SqlDbType.Decimal) { Value = sid });
@@ -314,6 +390,7 @@ public class EqmAutoDcService : IEqmAutoDcService
         cmd.Parameters.Add(new SqlParameter("@User", SqlDbType.NVarChar, 255) { Value = user });
         cmd.Parameters.Add(new SqlParameter("@ShiftNo", SqlDbType.NVarChar, 255) { Value = shiftNo ?? string.Empty });
         cmd.Parameters.Add(new SqlParameter("@ShiftDay", SqlDbType.NVarChar, 255) { Value = shiftDay });
+        cmd.Parameters.Add(new SqlParameter("@Unit", SqlDbType.NVarChar, 255) { Value = unit ?? string.Empty });
 
         if (await cmd.ExecuteNonQueryAsync(ct) != 1)
             throw new HttpStatusCodeException(System.Net.HttpStatusCode.Conflict, $"AutoDC history insert failed: {eqmNo}-{item}");

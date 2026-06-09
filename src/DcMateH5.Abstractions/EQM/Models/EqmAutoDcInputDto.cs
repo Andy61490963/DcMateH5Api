@@ -20,9 +20,11 @@ namespace DcMateH5.Abstractions.EQM.Models
         public string EQP_NO { get; set; } = string.Empty;
         public string AutoDcItem { get; set; } = string.Empty;
         public string Value { get; set; } = string.Empty;
+        public string Unit { get; set; } = string.Empty;
 
         public string VALUE { get => Value; set => Value = value; }
         public string DC_ITEM { get => AutoDcItem; set => AutoDcItem = value; }
+        public string UNIT { get => Unit; set => Unit = value; }
 
         private string _historyTableName = string.Empty;
         private string _currentTableName = string.Empty;
