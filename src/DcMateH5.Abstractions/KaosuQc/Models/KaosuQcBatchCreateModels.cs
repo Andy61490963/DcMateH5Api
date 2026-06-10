@@ -38,6 +38,12 @@ public class KaosuQcHeaderCreateRequest
 
     public string? EqpNo { get; set; }
 
+    /// <summary>標準密度。</summary>
+    public string? ZZ_DENSITY_STANDARD { get; set; }
+
+    /// <summary>實際密度。</summary>
+    public string? ZZ_DENSITY_ACTUAL { get; set; }
+
     /// <summary>WIP 進站主檔 SID。</summary>
     public decimal? WIP_OPI_WDOEACICO_HIST_SID { get; set; }
 
