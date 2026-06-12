@@ -311,11 +311,6 @@ ORDER BY C.FORM_FIELD_MASTER_ID, C.FIELD_ORDER;";
         List<FormFieldConfigDto> fieldConfigs,
         Dictionary<string, object?>? tvfParamKvsFromRequest)
     {
-        if (tvfParamKvsFromRequest != null)
-        {
-            return tvfParamKvsFromRequest;
-        }
-
         var paramConfigs = fieldConfigs
             .Where(x => x.IS_TVF_QUERY_PARAMETER)
             .OrderBy(x => x.FIELD_ORDER)
@@ -323,12 +318,87 @@ ORDER BY C.FORM_FIELD_MASTER_ID, C.FIELD_ORDER;";
 
         if (paramConfigs.Count == 0)
         {
+            if (tvfParamKvsFromRequest != null)
+            {
+                return NormalizeTvfParameterKeysOrThrow(formMasterId, tvfParamKvsFromRequest);
+            }
+
             throw new HttpStatusCodeException(
                 HttpStatusCode.BadRequest,
                 $"TVF 查詢參數未設定：FormMasterId={formMasterId} 對應的 TVF 表單沒有任何 IS_TVF_QUERY_PARAMETER = 1 的欄位。");
         }
 
         var dict = new Dictionary<string, object?>(StringComparer.OrdinalIgnoreCase);
+
+        if (tvfParamKvsFromRequest != null)
+        {
+            dict = NormalizeTvfParameterKeysOrThrow(formMasterId, tvfParamKvsFromRequest);
+        }
+        else
+        {
+            foreach (var c in paramConfigs)
+            {
+                var key = NormalizeTvfParamName(c.COLUMN_NAME);
+
+                if (string.IsNullOrWhiteSpace(key))
+                {
+                    throw new HttpStatusCodeException(
+                        HttpStatusCode.BadRequest,
+                        $"TVF 查詢參數設定錯誤：FormMasterId={formMasterId} 的 COLUMN_NAME 不可為空。");
+                }
+
+                if (dict.ContainsKey(key))
+                {
+                    throw new HttpStatusCodeException(
+                        HttpStatusCode.BadRequest,
+                        $"TVF 查詢參數設定錯誤：FormMasterId={formMasterId} 發現重複參數 COLUMN_NAME='{c.COLUMN_NAME}'（正規化後 key='{key}'）。");
+                }
+
+                dict[key] = c.TVF_CURRENT_VALUE;
+            }
+        }
+
+        ValidateRequiredTvfParameters(formMasterId, paramConfigs, dict);
+
+        return dict;
+    }
+
+    private static Dictionary<string, object?> NormalizeTvfParameterKeysOrThrow(
+        Guid formMasterId,
+        Dictionary<string, object?> tvfParamKvsFromRequest)
+    {
+        var dict = new Dictionary<string, object?>(StringComparer.OrdinalIgnoreCase);
+
+        foreach (var (rawKey, value) in tvfParamKvsFromRequest)
+        {
+            var key = NormalizeTvfParamName(rawKey);
+
+            if (string.IsNullOrWhiteSpace(key))
+            {
+                throw new HttpStatusCodeException(
+                    HttpStatusCode.BadRequest,
+                    $"TVF 查詢參數設定錯誤：FormMasterId={formMasterId} 的 TvfParameters key 不可為空。");
+            }
+
+            if (dict.ContainsKey(key))
+            {
+                throw new HttpStatusCodeException(
+                    HttpStatusCode.BadRequest,
+                    $"TVF 查詢參數設定錯誤：FormMasterId={formMasterId} 發現重複參數 key='{rawKey}'（正規化後 key='{key}'）。");
+            }
+
+            dict[key] = value;
+        }
+
+        return dict;
+    }
+
+    private static void ValidateRequiredTvfParameters(
+        Guid formMasterId,
+        List<FormFieldConfigDto> paramConfigs,
+        Dictionary<string, object?> tvfParamKvs)
+    {
+        var missing = new List<string>();
 
         foreach (var c in paramConfigs)
         {
@@ -341,17 +411,28 @@ ORDER BY C.FORM_FIELD_MASTER_ID, C.FIELD_ORDER;";
                     $"TVF 查詢參數設定錯誤：FormMasterId={formMasterId} 的 COLUMN_NAME 不可為空。");
             }
 
-            if (dict.ContainsKey(key))
+            if (!tvfParamKvs.TryGetValue(key, out var value) || IsMissingTvfParameterValue(value))
             {
-                throw new HttpStatusCodeException(
-                    HttpStatusCode.BadRequest,
-                    $"TVF 查詢參數設定錯誤：FormMasterId={formMasterId} 發現重複參數 COLUMN_NAME='{c.COLUMN_NAME}'（正規化後 key='{key}'）。");
+                missing.Add(key);
             }
-
-            dict[key] = c.TVF_CURRENT_VALUE;
         }
 
-        return dict;
+        if (missing.Count > 0)
+        {
+            throw new HttpStatusCodeException(
+                HttpStatusCode.BadRequest,
+                $"TVF 查詢參數缺少必要值：FormMasterId={formMasterId} 缺少 {string.Join(", ", missing)}。");
+        }
+    }
+
+    private static bool IsMissingTvfParameterValue(object? value)
+    {
+        if (value is null)
+        {
+            return true;
+        }
+
+        return value is string s && string.IsNullOrWhiteSpace(s);
     }
 
     // ============================================================
