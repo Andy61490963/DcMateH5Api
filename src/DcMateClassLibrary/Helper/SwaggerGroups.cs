@@ -10,11 +10,11 @@ public static class SwaggerGroups
     public const string Log = nameof(Log);
 
     public const string Form = nameof(Form);
-    public const string FormMigration = nameof(FormMigration);
     public const string FormWithMasterDetail = nameof(FormWithMasterDetail);
     public const string FormWithMultipleMapping = nameof(FormWithMultipleMapping);
     public const string FormTableValueFunction = nameof(FormTableValueFunction);
     public const string FormView = nameof(FormView);
+    public const string FormMigration = nameof(FormMigration);
 
     public const string Security = nameof(Security);
     public const string LanguageKeywords = nameof(LanguageKeywords);
@@ -36,6 +36,7 @@ public static class SwaggerGroups
         { FormWithMultipleMapping, "多重對應表單" },
         { FormTableValueFunction, "TVF 表單" },
         { FormView, "View 表單" },
+        { FormMigration, "Form資料遷移SQL" },
 
         { Security, "安全性 API" },
         { LanguageKeywords, "多語系關鍵字" },
