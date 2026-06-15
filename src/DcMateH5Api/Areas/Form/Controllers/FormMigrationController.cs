@@ -22,7 +22,7 @@ public class FormMigrationController : ControllerBase
     }
 
     /// <summary>
-    /// Generate idempotent migration SQL for a form master and its related settings.
+    /// 產生資料遷移SQL
     /// </summary>
     /// <param name="id">FORM_FIELD_MASTER ID.</param>
     /// <param name="ct">Cancellation token.</param>
