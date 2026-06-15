@@ -217,7 +217,7 @@ var swaggerGroups = new[]
 {
     SwaggerGroups.ApiStatus, SwaggerGroups.Enum, SwaggerGroups.Log,
     SwaggerGroups.Security, SwaggerGroups.Menu, SwaggerGroups.LanguageKeywords,
-    SwaggerGroups.Form, SwaggerGroups.FormWithMasterDetail, SwaggerGroups.FormWithMultipleMapping,
+    SwaggerGroups.Form, SwaggerGroups.FormMigration, SwaggerGroups.FormWithMasterDetail, SwaggerGroups.FormWithMultipleMapping,
     SwaggerGroups.FormTableValueFunction, SwaggerGroups.FormView, SwaggerGroups.Wip,
     SwaggerGroups.Eqm, SwaggerGroups.Mms
 };

@@ -10,6 +10,7 @@ public static class SwaggerGroups
     public const string Log = nameof(Log);
 
     public const string Form = nameof(Form);
+    public const string FormMigration = nameof(FormMigration);
     public const string FormWithMasterDetail = nameof(FormWithMasterDetail);
     public const string FormWithMultipleMapping = nameof(FormWithMultipleMapping);
     public const string FormTableValueFunction = nameof(FormTableValueFunction);
@@ -45,4 +46,9 @@ public static class SwaggerGroups
         { Mms, "MMS" },
         { Test, "測試" }
     };
+
+    static SwaggerGroups()
+    {
+        DisplayNames[FormMigration] = "Form Migration";
+    }
 }

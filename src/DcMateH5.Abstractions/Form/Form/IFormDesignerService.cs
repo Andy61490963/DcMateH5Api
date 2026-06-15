@@ -12,6 +12,8 @@ public interface IFormDesignerService
     Task UpdateFormName( UpdateFormNameViewModel model, CancellationToken ct );
 
     Task DeleteFormMaster(Guid id, CancellationToken ct = default);
+
+    Task<string> GenerateMigrationSql(Guid formMasterId, CancellationToken ct = default);
     
     Task<FormDesignerIndexViewModel> GetFormDesignerIndexViewModel( FormFunctionType functionType, Guid? id, CancellationToken ct );
     

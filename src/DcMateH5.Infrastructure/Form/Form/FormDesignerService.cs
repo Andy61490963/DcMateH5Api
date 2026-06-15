@@ -84,6 +84,315 @@ public class FormDesignerService : IFormDesignerService
         return res;
     }
 
+    public async Task<string> GenerateMigrationSql(Guid formMasterId, CancellationToken ct = default)
+    {
+        ct.ThrowIfCancellationRequested();
+
+        if (formMasterId == Guid.Empty)
+        {
+            throw new DcMateClassLibrary.Helper.HttpHelper.HttpStatusCodeException(
+                System.Net.HttpStatusCode.BadRequest,
+                "FormMasterId 不可為空。");
+        }
+
+        var masterIds = await ResolveMigrationMasterIdsAsync(formMasterId, ct);
+        if (masterIds.Count == 0)
+        {
+            throw new DcMateClassLibrary.Helper.HttpHelper.HttpStatusCodeException(
+                System.Net.HttpStatusCode.NotFound,
+                $"FORM_FIELD_MASTER 查無資料：{formMasterId}");
+        }
+
+        var fieldConfigIds = await QueryIdsAsync(
+            "SELECT ID FROM dbo.FORM_FIELD_CONFIG WHERE FORM_FIELD_MASTER_ID IN @MasterIds ORDER BY FIELD_ORDER, ID",
+            new { MasterIds = masterIds },
+            ct);
+
+        var dropdownIds = fieldConfigIds.Count == 0
+            ? new List<Guid>()
+            : await QueryIdsAsync(
+                "SELECT ID FROM dbo.FORM_FIELD_DROPDOWN WHERE FORM_FIELD_CONFIG_ID IN @FieldConfigIds ORDER BY ID",
+                new { FieldConfigIds = fieldConfigIds },
+                ct);
+
+        var sections = new List<MigrationTableSection>
+        {
+            new(
+                "FORM_FIELD_MASTER",
+                await QueryMigrationRowsAsync(
+                    "FORM_FIELD_MASTER",
+                    "ID IN @MasterIds",
+                    new { MasterIds = masterIds },
+                    "ID",
+                    ct)),
+            new(
+                "FORM_FIELD_CONFIG",
+                await QueryMigrationRowsAsync(
+                    "FORM_FIELD_CONFIG",
+                    "FORM_FIELD_MASTER_ID IN @MasterIds",
+                    new { MasterIds = masterIds },
+                    "FORM_FIELD_MASTER_ID, FIELD_ORDER, ID",
+                    ct))
+        };
+
+        if (fieldConfigIds.Count > 0)
+        {
+            sections.Add(new MigrationTableSection(
+                "FORM_FIELD_DROPDOWN",
+                await QueryMigrationRowsAsync(
+                    "FORM_FIELD_DROPDOWN",
+                    "FORM_FIELD_CONFIG_ID IN @FieldConfigIds",
+                    new { FieldConfigIds = fieldConfigIds },
+                    "FORM_FIELD_CONFIG_ID, ID",
+                    ct)));
+
+            sections.Add(new MigrationTableSection(
+                "FORM_FIELD_VALIDATION_RULE",
+                await QueryMigrationRowsAsync(
+                    "FORM_FIELD_VALIDATION_RULE",
+                    "FORM_FIELD_CONFIG_ID IN @FieldConfigIds",
+                    new { FieldConfigIds = fieldConfigIds },
+                    "FORM_FIELD_CONFIG_ID, VALIDATION_ORDER, ID",
+                    ct)));
+        }
+
+        if (dropdownIds.Count > 0)
+        {
+            sections.Add(new MigrationTableSection(
+                "FORM_FIELD_DROPDOWN_OPTIONS",
+                await QueryMigrationRowsAsync(
+                    "FORM_FIELD_DROPDOWN_OPTIONS",
+                    "FORM_FIELD_DROPDOWN_ID IN @DropdownIds",
+                    new { DropdownIds = dropdownIds },
+                    "FORM_FIELD_DROPDOWN_ID, ID",
+                    ct)));
+        }
+
+        sections.Add(new MigrationTableSection(
+            "FORM_FIELD_DELETE_GUARD_SQL",
+            await QueryMigrationRowsAsync(
+                "FORM_FIELD_DELETE_GUARD_SQL",
+                "FORM_FIELD_MASTER_ID IN @MasterIds",
+                new { MasterIds = masterIds },
+                "FORM_FIELD_MASTER_ID, RULE_ORDER, ID",
+                ct)));
+
+        return BuildMigrationSql(formMasterId, masterIds, sections);
+    }
+
+    private async Task<List<Guid>> ResolveMigrationMasterIdsAsync(Guid rootMasterId, CancellationToken ct)
+    {
+        var resolved = new HashSet<Guid>();
+        var pending = new Queue<Guid>();
+        pending.Enqueue(rootMasterId);
+
+        while (pending.Count > 0)
+        {
+            ct.ThrowIfCancellationRequested();
+
+            var id = pending.Dequeue();
+            if (!resolved.Add(id))
+            {
+                continue;
+            }
+
+            var master = await _con.QueryFirstOrDefaultAsync<FormFieldMasterDto>(new CommandDefinition(
+                "SELECT * FROM dbo.FORM_FIELD_MASTER WHERE ID = @Id",
+                new { Id = id },
+                cancellationToken: ct));
+
+            if (master == null)
+            {
+                resolved.Remove(id);
+                continue;
+            }
+
+            foreach (var referencedId in GetReferencedMasterIds(master))
+            {
+                if (!resolved.Contains(referencedId))
+                {
+                    pending.Enqueue(referencedId);
+                }
+            }
+        }
+
+        return resolved.OrderBy(x => x).ToList();
+    }
+
+    private static IEnumerable<Guid> GetReferencedMasterIds(FormFieldMasterDto master)
+    {
+        Guid?[] ids =
+        [
+            master.BASE_TABLE_ID,
+            master.DETAIL_TABLE_ID,
+            master.VIEW_TABLE_ID,
+            master.MAPPING_TABLE_ID,
+            master.TVF_TABLE_ID,
+            master.FORM_FIELD_MASTER_BUTTON_LINK_ID,
+            master.FORM_FIELD_MASTER1_BUTTON_LINK_ID
+        ];
+
+        return ids
+            .Where(x => x.HasValue && x.Value != Guid.Empty && x.Value != master.ID)
+            .Select(x => x!.Value);
+    }
+
+    private async Task<List<Guid>> QueryIdsAsync(string sql, object param, CancellationToken ct)
+    {
+        var ids = await _con.QueryAsync<Guid>(new CommandDefinition(sql, param, cancellationToken: ct));
+        return ids.ToList();
+    }
+
+    private async Task<List<MigrationRow>> QueryMigrationRowsAsync(
+        string tableName,
+        string whereSql,
+        object param,
+        string orderBySql,
+        CancellationToken ct)
+    {
+        var columns = await GetMigrationColumnsAsync(tableName, ct);
+        if (columns.Count == 0)
+        {
+            return new List<MigrationRow>();
+        }
+
+        var selectColumns = string.Join(", ", columns.Select(x => $"[{x.Name}]"));
+        var sql = $@"
+SELECT {selectColumns}
+FROM dbo.[{tableName}]
+WHERE {whereSql}
+ORDER BY {orderBySql};";
+
+        var rows = await _con.QueryAsync(new CommandDefinition(sql, param, cancellationToken: ct));
+        return rows
+            .Select(row => new MigrationRow(
+                columns,
+                ((IDictionary<string, object?>)row).ToDictionary(
+                    x => x.Key,
+                    x => x.Value,
+                    StringComparer.OrdinalIgnoreCase)))
+            .ToList();
+    }
+
+    private async Task<List<MigrationColumn>> GetMigrationColumnsAsync(string tableName, CancellationToken ct)
+    {
+        const string sql = @"
+SELECT
+    c.name AS Name,
+    ty.name AS TypeName,
+    c.column_id AS ColumnId
+FROM sys.tables t
+JOIN sys.columns c ON c.object_id = t.object_id
+JOIN sys.types ty ON ty.user_type_id = c.user_type_id
+WHERE SCHEMA_NAME(t.schema_id) = 'dbo'
+  AND t.name = @TableName
+  AND c.is_identity = 0
+  AND c.is_computed = 0
+  AND ty.name NOT IN ('timestamp', 'rowversion')
+ORDER BY c.column_id;";
+
+        var rows = await _con.QueryAsync<MigrationColumn>(new CommandDefinition(
+            sql,
+            new { TableName = tableName },
+            cancellationToken: ct));
+
+        return rows.ToList();
+    }
+
+    private static string BuildMigrationSql(
+        Guid rootMasterId,
+        IReadOnlyCollection<Guid> masterIds,
+        IReadOnlyList<MigrationTableSection> sections)
+    {
+        var sql = new System.Text.StringBuilder();
+        sql.AppendLine("SET XACT_ABORT ON;");
+        sql.AppendLine("BEGIN TRANSACTION;");
+        sql.AppendLine();
+        sql.AppendLine($"-- Form migration script generated for FORM_FIELD_MASTER.ID = {rootMasterId}");
+        sql.AppendLine($"-- Included master IDs: {string.Join(", ", masterIds)}");
+        sql.AppendLine();
+
+        foreach (var section in sections)
+        {
+            sql.AppendLine($"-- {section.TableName}");
+
+            if (section.Rows.Count == 0)
+            {
+                sql.AppendLine($"-- No rows for {section.TableName}.");
+                sql.AppendLine();
+                continue;
+            }
+
+            foreach (var row in section.Rows)
+            {
+                sql.Append(BuildMergeSql(section.TableName, row));
+                sql.AppendLine();
+            }
+        }
+
+        sql.AppendLine("COMMIT TRANSACTION;");
+        return sql.ToString();
+    }
+
+    private static string BuildMergeSql(string tableName, MigrationRow row)
+    {
+        var columns = row.Columns;
+        var keyColumn = columns.Any(x => string.Equals(x.Name, "ID", StringComparison.OrdinalIgnoreCase))
+            ? "ID"
+            : columns.First().Name;
+
+        var columnList = string.Join(", ", columns.Select(x => $"[{x.Name}]"));
+        var sourceColumnList = string.Join(", ", columns.Select(x => $"[{x.Name}]"));
+        var valueList = string.Join(", ", columns.Select(x => ToSqlLiteral(row.Values[x.Name], x.TypeName)));
+        var insertValues = string.Join(", ", columns.Select(x => $"source.[{x.Name}]"));
+        var updateColumns = columns
+            .Where(x => !string.Equals(x.Name, keyColumn, StringComparison.OrdinalIgnoreCase))
+            .Select(x => $"target.[{x.Name}] = source.[{x.Name}]")
+            .ToList();
+
+        var sql = new System.Text.StringBuilder();
+        sql.AppendLine($"MERGE dbo.[{tableName}] WITH (HOLDLOCK) AS target");
+        sql.AppendLine($"USING (VALUES ({valueList})) AS source ({sourceColumnList})");
+        sql.AppendLine($"ON target.[{keyColumn}] = source.[{keyColumn}]");
+
+        if (updateColumns.Count > 0)
+        {
+            sql.AppendLine("WHEN MATCHED THEN");
+            sql.AppendLine($"    UPDATE SET {string.Join(", ", updateColumns)}");
+        }
+
+        sql.AppendLine("WHEN NOT MATCHED THEN");
+        sql.AppendLine($"    INSERT ({columnList})");
+        sql.AppendLine($"    VALUES ({insertValues});");
+
+        return sql.ToString();
+    }
+
+    private static string ToSqlLiteral(object? value, string typeName)
+    {
+        if (value == null || value is DBNull)
+        {
+            return "NULL";
+        }
+
+        return typeName.ToLowerInvariant() switch
+        {
+            "uniqueidentifier" => $"CONVERT(uniqueidentifier, '{value}')",
+            "bit" => Convert.ToBoolean(value, System.Globalization.CultureInfo.InvariantCulture) ? "1" : "0",
+            "tinyint" or "smallint" or "int" or "bigint" => Convert.ToString(value, System.Globalization.CultureInfo.InvariantCulture) ?? "NULL",
+            "decimal" or "numeric" or "money" or "smallmoney" or "float" or "real" => Convert.ToString(value, System.Globalization.CultureInfo.InvariantCulture) ?? "NULL",
+            "date" => $"CONVERT(date, '{Convert.ToDateTime(value, System.Globalization.CultureInfo.InvariantCulture):yyyy-MM-dd}', 23)",
+            "datetime" or "datetime2" or "smalldatetime" => $"CONVERT(datetime2, '{Convert.ToDateTime(value, System.Globalization.CultureInfo.InvariantCulture):yyyy-MM-dd HH:mm:ss.fffffff}', 121)",
+            "datetimeoffset" => $"CONVERT(datetimeoffset, '{EscapeSqlString(value.ToString() ?? string.Empty)}')",
+            _ => $"N'{EscapeSqlString(value.ToString() ?? string.Empty)}'"
+        };
+    }
+
+    private static string EscapeSqlString(string value)
+    {
+        return value.Replace("'", "''");
+    }
+
     public async Task UpdateFormName(UpdateFormNameViewModel model, CancellationToken ct)
     {
         await _sqlHelper.UpdateById<FormFieldMasterDto>(model.ID)
@@ -3001,6 +3310,16 @@ ORDER BY isTvfQueryParameter DESC, ORDINAL_POSITION;
 ";
         
     }
+
+    private sealed record MigrationColumn(string Name, string TypeName, int ColumnId);
+
+    private sealed record MigrationRow(
+        IReadOnlyList<MigrationColumn> Columns,
+        IReadOnlyDictionary<string, object?> Values);
+
+    private sealed record MigrationTableSection(
+        string TableName,
+        IReadOnlyList<MigrationRow> Rows);
     
     #endregion
 }
