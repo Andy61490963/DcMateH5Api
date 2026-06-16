@@ -154,7 +154,7 @@ ORDER BY C.FORM_FIELD_MASTER_ID, C.FIELD_ORDER;";
                 fieldConfigs,
                 tvfParamKvsFromRequest);
 
-            var rows = await _txService.WithTransactionAsync(
+            var queryResult = await _txService.WithTransactionAsync(
                 async (conn, tx, ct) =>
                 {
                     var schema = await _schemaService.GetObjectSchemaInTxAsync(
@@ -162,7 +162,9 @@ ORDER BY C.FORM_FIELD_MASTER_ID, C.FIELD_ORDER;";
 
                     if (schema.Count == 0)
                     {
-                        return new List<IDictionary<string, object?>>();
+                        return new TvfQueryResult(
+                            new List<IDictionary<string, object?>>(),
+                            new List<DbColumnInfo>());
                     }
 
                     var tvfParams = schema
@@ -177,7 +179,9 @@ ORDER BY C.FORM_FIELD_MASTER_ID, C.FIELD_ORDER;";
 
                     if (returnColumns.Count == 0)
                     {
-                        return new List<IDictionary<string, object?>>();
+                        return new TvfQueryResult(
+                            new List<IDictionary<string, object?>>(),
+                            returnColumns);
                     }
 
                     var query = BuildTvfQuery(
@@ -191,22 +195,23 @@ ORDER BY C.FORM_FIELD_MASTER_ID, C.FIELD_ORDER;";
                         page,
                         pageSize);
 
-                    return await ExecuteRowsInTxAsync(conn, tx, query.Sql, query.Parameters, ct);
+                    var rows = await ExecuteRowsInTxAsync(conn, tx, query.Sql, query.Parameters, ct);
+                    return new TvfQueryResult(rows, returnColumns);
                 },
                 ct);
 
-            if (rows.Count == 0)
+            if (queryResult.Rows.Count == 0)
             {
                 continue;
             }
 
             var templates = BuildFieldTemplates(
                 fieldConfigs,
-                GetReturnColumnsFromConfigs(fieldConfigs));
+                queryResult.ReturnColumns);
 
             var dropdownMaps = BuildDropdownOptionMaps(templates);
 
-            foreach (var row in rows)
+            foreach (var row in queryResult.Rows)
             {
                 var fields = templates.Select(t =>
                 {
@@ -447,6 +452,7 @@ ORDER BY C.FORM_FIELD_MASTER_ID, C.FIELD_ORDER;";
 SELECT *
 FROM FORM_FIELD_CONFIG
 WHERE FORM_FIELD_MASTER_ID = @MasterId
+  AND IS_DELETE = 0
 ORDER BY FIELD_ORDER;";
 
         var rows = await _con.QueryAsync<FormFieldConfigDto>(
@@ -908,6 +914,10 @@ ORDER BY FIELD_ORDER;";
     }
 
     private readonly record struct TvfQuery(string Sql, DynamicParameters Parameters);
+
+    private readonly record struct TvfQueryResult(
+        List<IDictionary<string, object?>> Rows,
+        IReadOnlyList<DbColumnInfo> ReturnColumns);
 
     private static class ConfigKeys
     {

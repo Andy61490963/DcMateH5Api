@@ -78,6 +78,9 @@ public class FormDesignerTableValueFunctionService : IFormDesignerTableValueFunc
                 .UpsertMissingConfigsInTxAsync(conn, tx, tvfName, masterId, schemaType, columns, configs, ct)
                 .ConfigureAwait(false);
 
+            await MarkStaleConfigsDeletedInTxAsync(conn, tx, tvfName, masterId, columns, ct)
+                .ConfigureAwait(false);
+
             return await GetFieldsByTableNameInTxAsync(conn, tx, tvfName, masterId, schemaType, ct).ConfigureAwait(false);
         }, ct: ct).ConfigureAwait(false);
     }
@@ -293,6 +296,46 @@ public class FormDesignerTableValueFunctionService : IFormDesignerTableValueFunc
             })
             .ThenBy(f => f.COLUMN_NAME, StringComparer.OrdinalIgnoreCase)
             .ToList();
+    }
+
+    private static async Task MarkStaleConfigsDeletedInTxAsync(
+        SqlConnection conn,
+        SqlTransaction tx,
+        string tvfName,
+        Guid masterId,
+        IReadOnlyList<DbColumnInfo> columns,
+        CancellationToken ct)
+    {
+        var liveColumns = columns
+            .Select(x => x.COLUMN_NAME)
+            .Where(x => !string.IsNullOrWhiteSpace(x))
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToList();
+
+        if (liveColumns.Count == 0)
+        {
+            return;
+        }
+
+        const string sql = @"
+UPDATE dbo.FORM_FIELD_CONFIG
+SET IS_DELETE = 1,
+    EDIT_TIME = GETDATE()
+WHERE FORM_FIELD_MASTER_ID = @MasterId
+  AND TABLE_NAME = @TvfName
+  AND IS_DELETE = 0
+  AND COLUMN_NAME NOT IN @LiveColumns;";
+
+        await conn.ExecuteAsync(new CommandDefinition(
+            sql,
+            new
+            {
+                MasterId = masterId,
+                TvfName = tvfName,
+                LiveColumns = liveColumns
+            },
+            transaction: tx,
+            cancellationToken: ct)).ConfigureAwait(false);
     }
 
     private async Task<FormFieldMasterDto> GetTvfMasterAsync(SqlConnection conn, SqlTransaction tx, Guid tvfTableId, CancellationToken ct)
