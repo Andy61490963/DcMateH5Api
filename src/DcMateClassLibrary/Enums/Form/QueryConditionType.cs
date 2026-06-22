@@ -48,4 +48,10 @@ public enum QueryComponentType
     /// </summary>
     [Display(Name = "日期比較", Description = "支援日期的大於、小於等比較運算")]
     DateComparison = 6,
+
+    /// <summary>
+    /// Radio button query input.
+    /// </summary>
+    [Display(Name = "Radio Button", Description = "input type=radio")]
+    Radio = 7,
 }

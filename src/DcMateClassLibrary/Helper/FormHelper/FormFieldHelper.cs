@@ -79,18 +79,18 @@ public static class FormFieldHelper
     /// </summary>
     private static readonly Dictionary<SqlDataType, List<QueryComponentType>> QueryConditionTypeWhitelistMap = new()
     {
-        { SqlDataType.DateTime, new() { QueryComponentType.Date, QueryComponentType.Dropdown } },
-        { SqlDataType.Date,     new() { QueryComponentType.Date, QueryComponentType.Dropdown } },
-        { SqlDataType.Bit,      new() { QueryComponentType.Dropdown } },
+        { SqlDataType.DateTime, new() { QueryComponentType.Date, QueryComponentType.Dropdown, QueryComponentType.Radio } },
+        { SqlDataType.Date,     new() { QueryComponentType.Date, QueryComponentType.Dropdown, QueryComponentType.Radio } },
+        { SqlDataType.Bit,      new() { QueryComponentType.Dropdown, QueryComponentType.Radio } },
 
-        { SqlDataType.Int,      new() { QueryComponentType.Number, QueryComponentType.Text, QueryComponentType.Dropdown } },
-        { SqlDataType.Decimal,  new() { QueryComponentType.Number, QueryComponentType.Text, QueryComponentType.Dropdown } },
+        { SqlDataType.Int,      new() { QueryComponentType.Number, QueryComponentType.Text, QueryComponentType.Dropdown, QueryComponentType.Radio } },
+        { SqlDataType.Decimal,  new() { QueryComponentType.Number, QueryComponentType.Text, QueryComponentType.Dropdown, QueryComponentType.Radio } },
 
-        { SqlDataType.NVarChar, new() { QueryComponentType.Number, QueryComponentType.Text, QueryComponentType.Dropdown } },
-        { SqlDataType.VarChar,  new() { QueryComponentType.Number, QueryComponentType.Text, QueryComponentType.Dropdown } },
+        { SqlDataType.NVarChar, new() { QueryComponentType.Number, QueryComponentType.Text, QueryComponentType.Dropdown, QueryComponentType.Radio } },
+        { SqlDataType.VarChar,  new() { QueryComponentType.Number, QueryComponentType.Text, QueryComponentType.Dropdown, QueryComponentType.Radio } },
 
-        { SqlDataType.Text,     new() { QueryComponentType.Text, QueryComponentType.Dropdown } },
-        { SqlDataType.Unknown,  new() { QueryComponentType.Text, QueryComponentType.Dropdown } }
+        { SqlDataType.Text,     new() { QueryComponentType.Text, QueryComponentType.Dropdown, QueryComponentType.Radio } },
+        { SqlDataType.Unknown,  new() { QueryComponentType.Text, QueryComponentType.Dropdown, QueryComponentType.Radio } }
     };
 
     /// <summary>

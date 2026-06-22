@@ -24,6 +24,8 @@ public static class QueryConditionTypeExtensions
         
         // 日期比較預設為大於等於
         QueryComponentType.DateComparison => ConditionType.GreaterThanOrEqual,
+
+        QueryComponentType.Radio => ConditionType.Equal,
         
         // 單選下拉與未指定則採等於比較
         _ => ConditionType.Equal

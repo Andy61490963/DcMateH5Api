@@ -555,6 +555,7 @@ POST /Form/FormView/f3d5c9bf-4bc6-4bd8-b2c7-721d2ac0d1c2?pk=EQP-001
 | `4` | 下拉選單 |
 | `5` | 數值比較元件 |
 | `6` | 日期區間元件 |
+| `7` | Radio Button |
 
 ## 和一般 Form 的差異
 
