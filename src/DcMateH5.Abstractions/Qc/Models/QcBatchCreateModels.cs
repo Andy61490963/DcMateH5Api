@@ -12,6 +12,7 @@ public class QcHeaderCreateRequest
     public string? MATERIAL_CHECK { get; set; }
     public string? CHECK_RESULT { get; set; }
     public decimal? STANDARD_WEIGHT { get; set; }
+    public decimal? SAMPLING_QTY { get; set; }
     public int? CAVITY { get; set; }
     public string? MOLD_NO { get; set; }
     public string? MOLD_TOL_NO { get; set; }

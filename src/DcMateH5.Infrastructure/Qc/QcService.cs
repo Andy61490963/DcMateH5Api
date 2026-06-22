@@ -60,7 +60,7 @@ public class QcService : IQcService
                     INSERT INTO QMM_INSPECTION_HEADER
                     (
                         QMM_INSPECTION_HEADER_SID, INSPECTION_NO, INSPECTION_TYPE,
-                        MATERIAL_CHECK, CHECK_RESULT, STANDARD_WEIGHT, CAVITY, MOLD_NO,
+                        MATERIAL_CHECK, CHECK_RESULT, STANDARD_WEIGHT, SAMPLING_QTY, CAVITY, MOLD_NO,
                         MOLD_TOL_NO, EQP_NO, WIP_OPI_WDOEACICO_HIST_SID, SOURCE_NO,
                         WORK_ORDER, ITEM_NO, INSPECTION_TIME, INSPECTION_RESULT, INSPECTOR,
                         APPROVE_USER, PRODUCTION_STATUS, COMMENT, CREATE_USER, EDIT_TIME, EDIT_USER
@@ -68,7 +68,7 @@ public class QcService : IQcService
                     VALUES
                     (
                         @SID, @INSPECTION_NO, @INSPECTION_TYPE,
-                        @MATERIAL_CHECK, @CHECK_RESULT, @STANDARD_WEIGHT, @CAVITY, @MOLD_NO,
+                        @MATERIAL_CHECK, @CHECK_RESULT, @STANDARD_WEIGHT, @SAMPLING_QTY, @CAVITY, @MOLD_NO,
                         @MOLD_TOL_NO, @EQP_NO, @WIP_OPI_WDOEACICO_HIST_SID, @SOURCE_NO,
                         @WORK_ORDER, @ITEM_NO, @INSPECTION_TIME, @INSPECTION_RESULT, @INSPECTOR,
                         @APPROVE_USER, @PRODUCTION_STATUS, @COMMENT, @CREATE_USER, SYSDATETIME(), @EDIT_USER
@@ -82,6 +82,7 @@ public class QcService : IQcService
                         MATERIAL_CHECK = header.MATERIAL_CHECK,
                         CHECK_RESULT = header.CHECK_RESULT,
                         STANDARD_WEIGHT = header.STANDARD_WEIGHT,
+                        SAMPLING_QTY = header.SAMPLING_QTY,
                         CAVITY = header.CAVITY,
                         MOLD_NO = header.MOLD_NO,
                         MOLD_TOL_NO = header.MOLD_TOL_NO,
