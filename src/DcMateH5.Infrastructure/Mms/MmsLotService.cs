@@ -1,4 +1,5 @@
 using System.Data;
+using ClassLibrary;
 using DbExtensions;
 using DcMateClassLibrary.Helper;
 using DcMateClassLibrary.Helper.HttpHelper;
@@ -34,6 +35,56 @@ public class MmsLotService : IMmsLotService
             async (conn, tx, innerCt) => await CreateMLotInTxAsync(conn, tx, input, innerCt),
             isolation: IsolationLevel.ReadCommitted,
             ct: ct);
+
+        return Result<bool>.Ok(true);
+    }
+
+    public async Task<Result<bool>> CreateMLotsAsync(
+        IEnumerable<MmsCreateMLotInputDto> inputs,
+        CancellationToken ct = default)
+    {
+        var batchInputs = inputs?.ToList()
+                          ?? throw new HttpStatusCodeException(
+                              System.Net.HttpStatusCode.BadRequest,
+                              "CreateMLot inputs are required.");
+
+        if (batchInputs.Count == 0)
+            throw new HttpStatusCodeException(
+                System.Net.HttpStatusCode.BadRequest,
+                "CreateMLot inputs are required.");
+
+        var failures = new List<MLotBatchFailure>();
+
+        foreach (var input in batchInputs)
+        {
+            ct.ThrowIfCancellationRequested();
+
+            try
+            {
+                await _sqlHelper.TxAsync(
+                    async (conn, tx, innerCt) => await CreateMLotInTxAsync(conn, tx, input, innerCt),
+                    isolation: IsolationLevel.ReadCommitted,
+                    ct: ct);
+            }
+            catch (HttpStatusCodeException ex)
+            {
+                failures.Add(new MLotBatchFailure(input.MLOT, (int)ex.StatusCode, ex.Message));
+            }
+            catch (Exception ex) when (ex is not OperationCanceledException)
+            {
+                failures.Add(new MLotBatchFailure(
+                    input.MLOT,
+                    (int)System.Net.HttpStatusCode.InternalServerError,
+                    ex.Message));
+            }
+        }
+
+        if (failures.Count > 0)
+        {
+            var message =
+                $"CreateMLot completed with {batchInputs.Count - failures.Count} success and {failures.Count} failed.";
+            return Result<bool>.Fail(MmsLotErrorCode.BadRequest, message, failures);
+        }
 
         return Result<bool>.Ok(true);
     }
@@ -771,4 +822,6 @@ public class MmsLotService : IMmsLotService
     private sealed record LotRow(decimal LOT_SID, string LOT, string WO);
 
     private sealed record ReasonRow(decimal ADM_REASON_SID, string? REASON_NO);
+
+    private sealed record MLotBatchFailure(string? MLOT, int StatusCode, string Message);
 }
