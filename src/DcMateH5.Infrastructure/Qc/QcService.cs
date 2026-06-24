@@ -111,14 +111,16 @@ public class QcService : IQcService
                         INSERT INTO QMM_INSPECTION_DETAIL
                         (
                             QMM_INSPECTION_DETAIL_SID, QMM_INSPECTION_HEADER_SID, INSPECTION_NO,
-                            ITEM_NO, INSPECTION_ITEM, INSPECTION_VALUE, INSPECTION_TIME_MINUTES,
+                            ITEM_NO, INSPECTION_ITEM, INSPECTION_VALUE, INSPECTION_DETAIL_RESULT,
+                            INSPECTION_TIME_MINUTES,
                             USL, UCL, SAMPLE_SIZE, TARGET, LCL, LSL, BASE_WORK_TIME, ROW_COUNT,
                             CREATE_USER, EDIT_TIME, EDIT_USER
                         )
                         VALUES
                         (
                             @SID, @HEADER_SID, @INSPECTION_NO,
-                            @ITEM_NO, @INSPECTION_ITEM, @INSPECTION_VALUE, @INSPECTION_TIME_MINUTES,
+                            @ITEM_NO, @INSPECTION_ITEM, @INSPECTION_VALUE, @INSPECTION_DETAIL_RESULT,
+                            @INSPECTION_TIME_MINUTES,
                             @USL, @UCL, @SAMPLE_SIZE, @TARGET, @LCL, @LSL, @BASE_WORK_TIME, @ROW_COUNT,
                             @CREATE_USER, SYSDATETIME(), @EDIT_USER
                         );
@@ -131,6 +133,7 @@ public class QcService : IQcService
                             ITEM_NO = detail.ITEM_NO,
                             INSPECTION_ITEM = detail.INSPECTION_ITEM,
                             INSPECTION_VALUE = detail.INSPECTION_VALUE,
+                            INSPECTION_DETAIL_RESULT = detail.INSPECTION_DETAIL_RESULT,
                             INSPECTION_TIME_MINUTES = detail.INSPECTION_TIME_MINUTES,
                             USL = detail.USL,
                             UCL = detail.UCL,
