@@ -38,11 +38,13 @@ public class MmsLotController : ControllerBase
     [ProducesResponseType(typeof(Result<bool>), StatusCodes.Status400BadRequest)]
     [ProducesResponseType(typeof(Result<bool>), StatusCodes.Status409Conflict)]
     [ProducesResponseType(typeof(Result<bool>), StatusCodes.Status500InternalServerError)]
-    public async Task<IActionResult> CreateMLot([FromBody] MmsCreateMLotInputDto input, CancellationToken ct)
+    public async Task<IActionResult> CreateMLot(
+        [FromBody] IEnumerable<MmsCreateMLotInputDto> input,
+        CancellationToken ct)
     {
         try
         {
-            return Ok(await _mmsLotService.CreateMLotAsync(input, ct));
+            return Ok(await _mmsLotService.CreateMLotsAsync(input, ct));
         }
         catch (HttpStatusCodeException ex)
         {

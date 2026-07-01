@@ -17,12 +17,26 @@ public class MmsLotControllerTests
     {
         var controller = new MmsLotController(new FakeMmsLotService());
 
-        var actionResult = await controller.CreateMLot(new MmsCreateMLotInputDto(), CancellationToken.None);
+        var actionResult = await controller.CreateMLot([new MmsCreateMLotInputDto()], CancellationToken.None);
 
         var okResult = Assert.IsType<OkObjectResult>(actionResult);
         var result = Assert.IsType<Result<bool>>(okResult.Value);
         Assert.True(result.IsSuccess);
         Assert.True(result.Data);
+    }
+
+    [Fact]
+    public async Task CreateMLot_ShouldReturnBadRequestResult_WhenNoMLotsProvided()
+    {
+        var controller = new MmsLotController(new FakeMmsLotService());
+
+        var actionResult = await controller.CreateMLot([], CancellationToken.None);
+
+        var badRequest = Assert.IsType<ObjectResult>(actionResult);
+        Assert.Equal((int)HttpStatusCode.BadRequest, badRequest.StatusCode);
+        var result = Assert.IsType<Result<bool>>(badRequest.Value);
+        Assert.False(result.IsSuccess);
+        Assert.Equal(MmsLotErrorCode.BadRequest.ToString(), result.Code);
     }
 
     [Fact]
@@ -70,6 +84,16 @@ public class MmsLotControllerTests
         public Task<Result<bool>> CreateMLotAsync(MmsCreateMLotInputDto input, CancellationToken ct = default)
             => Task.FromResult(Result<bool>.Ok(true));
 
+        public Task<Result<bool>> CreateMLotsAsync(
+            IEnumerable<MmsCreateMLotInputDto> inputs,
+            CancellationToken ct = default)
+        {
+            if (!inputs.Any())
+                throw new HttpStatusCodeException(HttpStatusCode.BadRequest, "CreateMLot inputs are required.");
+
+            return Task.FromResult(Result<bool>.Ok(true));
+        }
+
         public Task<Result<bool>> MLotConsumeAsync(MmsMLotConsumeInputDto input, CancellationToken ct = default)
             => Task.FromResult(Result<bool>.Ok(true));
 
@@ -83,6 +107,11 @@ public class MmsLotControllerTests
     private sealed class ThrowingMmsLotService : IMmsLotService
     {
         public Task<Result<bool>> CreateMLotAsync(MmsCreateMLotInputDto input, CancellationToken ct = default)
+            => throw new HttpStatusCodeException(HttpStatusCode.BadRequest, "bad request");
+
+        public Task<Result<bool>> CreateMLotsAsync(
+            IEnumerable<MmsCreateMLotInputDto> inputs,
+            CancellationToken ct = default)
             => throw new HttpStatusCodeException(HttpStatusCode.BadRequest, "bad request");
 
         public Task<Result<bool>> MLotConsumeAsync(MmsMLotConsumeInputDto input, CancellationToken ct = default)

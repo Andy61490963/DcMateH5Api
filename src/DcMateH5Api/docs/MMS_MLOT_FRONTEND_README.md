@@ -136,23 +136,25 @@ export interface CreateMLotRequest {
 Request body 範例：
 
 ```json
-{
-  "DATA_LINK_SID": 900000004001,
-  "MLOT": "MLOT-001",
-  "PARENT_MLOT": null,
-  "ALIAS_MLOT1": "MLOT-001-A1",
-  "ALIAS_MLOT2": null,
-  "MLOT_TYPE": "N",
-  "PART_NO": "PART-001",
-  "MLOT_QTY": 10,
-  "MLOT_WO": "WO-001",
-  "EXPIRY_DATE": "2026-12-31T23:59:59",
-  "DATE_CODE": "20260615",
-  "REPORT_TIME": "2026-06-15T14:30:00",
-  "ACCOUNT_NO": "TestAc1",
-  "INPUT_FORM_NAME": "MmsLotCreate",
-  "COMMENT": "create material lot"
-}
+[
+  {
+    "DATA_LINK_SID": 900000004001,
+    "MLOT": "MLOT-001",
+    "PARENT_MLOT": null,
+    "ALIAS_MLOT1": "MLOT-001-A1",
+    "ALIAS_MLOT2": null,
+    "MLOT_TYPE": "N",
+    "PART_NO": "PART-001",
+    "MLOT_QTY": 10,
+    "MLOT_WO": "WO-001",
+    "EXPIRY_DATE": "2026-12-31T23:59:59",
+    "DATE_CODE": "20260615",
+    "REPORT_TIME": "2026-06-15T14:30:00",
+    "ACCOUNT_NO": "TestAc1",
+    "INPUT_FORM_NAME": "MmsLotCreate",
+    "COMMENT": "create material lot"
+  }
+]
 ```
 
 ## 2. MLotConsume
@@ -309,7 +311,7 @@ Request body 範例：
 
 ```ts
 async function createMLot(
-  payload: CreateMLotRequest,
+  payload: CreateMLotRequest[],
 ): Promise<ApiResult<boolean>> {
   const response = await fetch("/api/MMS/MmsLot/CreateMLot", {
     method: "POST",

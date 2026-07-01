@@ -38,6 +38,7 @@ public class QcDetailCreateRequest
     public string ITEM_NO { get; set; } = string.Empty;
     public string INSPECTION_ITEM { get; set; } = string.Empty;
     public string? INSPECTION_VALUE { get; set; }
+    public string? INSPECTION_DETAIL_RESULT { get; set; }
     public int INSPECTION_TIME_MINUTES { get; set; }
     public string? USL { get; set; }
     public string? UCL { get; set; }
