@@ -183,10 +183,11 @@ export interface MLotConsumeRequest {
 - `DATA_LINK_SID > 0`
 - `MLOT` 與 `LOT` 必須存在
 - `CONSUME_QTY > 0`
-- `CONSUME_QTY` 不可大於目前 `MLOT_QTY`
-- 消耗後 `MLOT_QTY` 會扣除 `CONSUME_QTY`
-- 剩餘數量為 `0` 時，MLOT 狀態自動改為 `Finished`
-- 剩餘數量大於 `0` 時，MLOT 狀態為 `Wait`
+- Backend reads `WIP_LOT.PART_NO -> WIP_PARTNO.PARTNO_CATEGORY` to decide stock deduction.
+- `PARTNO_CATEGORY = L1`, blank, or `NULL`: `MLOT_QTY` deducts `1`; history `TRANSATION_QTY` records `-1`.
+- `PARTNO_CATEGORY = L2`: `MLOT_QTY` is not deducted; history `TRANSATION_QTY` records `-CONSUME_QTY`.
+- Other nonblank `PARTNO_CATEGORY` values return `400 BadRequest`.
+- After the category-based deduction, remaining quantity `0` changes MLOT status to `Finished`; otherwise status is `Wait`.
 
 Request body 範例：
 
@@ -342,6 +343,7 @@ async function createMLot(
 | `User not found: ...` | 找不到指定操作帳號 |
 | `MLOT status not found: ...` | 找不到指定狀態 |
 | `MLOT_QTY is insufficient: ...` | 消耗數量超過目前庫存 |
+| `Unsupported WIP_PARTNO.PARTNO_CATEGORY for MLotConsume: ...` | `WIP_PARTNO.PARTNO_CATEGORY` 不是 `L1`、`L2` 或空值 |
 
 ## 前端實作注意事項
 

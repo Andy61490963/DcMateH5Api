@@ -162,8 +162,9 @@ public class MmsLotService : IMmsLotService
 
         var mlot = await GetMlotAsync(conn, tx, input.MLOT, ct);
         var lot = await GetLotAsync(conn, tx, input.LOT, ct);
+        var consumeQuantities = ResolveConsumeQuantities(input.CONSUME_QTY, lot.PARTNO_CATEGORY);
         var bohQty = mlot.MLOT_QTY;
-        var newQty = bohQty - input.CONSUME_QTY;
+        var newQty = bohQty - consumeQuantities.StockDeductQty;
         if (newQty < 0)
             throw new HttpStatusCodeException(System.Net.HttpStatusCode.BadRequest, $"MLOT_QTY is insufficient: {input.MLOT}");
 
@@ -175,13 +176,30 @@ public class MmsLotService : IMmsLotService
         await InsertMlotHistAsync(
             conn,
             tx,
-            BuildMlotQuantityHist(histSid, input.DATA_LINK_SID, mlot, lot, targetStatus, -input.CONSUME_QTY, newQty, bohQty, MLotCodes.Consume, input.ACCOUNT_NO, now, reportTime, input.INPUT_FORM_NAME, input.COMMENT),
+            BuildMlotQuantityHist(histSid, input.DATA_LINK_SID, mlot, lot, targetStatus, consumeQuantities.HistoryTransationQty, newQty, bohQty, MLotCodes.Consume, input.ACCOUNT_NO, now, reportTime, input.INPUT_FORM_NAME, input.COMMENT),
             ct);
 
         if (!await MlotCurUsedExistsAsync(conn, tx, lot.LOT, mlot.MLOT, ct))
             await InsertMlotCurUsedAsync(conn, tx, input.DATA_LINK_SID, lot, mlot, bohQty, input.CONSUME_QTY, newQty, now, input.COMMENT, ct);
 
         await UpdateMlotQuantityAndStatusAsync(conn, tx, mlot, targetStatus, newQty, histSid, input.ACCOUNT_NO, now, ct);
+    }
+
+    private static MLotConsumeQuantities ResolveConsumeQuantities(decimal inputConsumeQty, string? partNoCategory)
+    {
+        var normalizedCategory = string.IsNullOrWhiteSpace(partNoCategory)
+            ? null
+            : partNoCategory.Trim();
+
+        if (normalizedCategory is null || string.Equals(normalizedCategory, "L1", StringComparison.OrdinalIgnoreCase))
+            return new MLotConsumeQuantities(StockDeductQty: 1, HistoryTransationQty: -1);
+
+        if (string.Equals(normalizedCategory, "L2", StringComparison.OrdinalIgnoreCase))
+            return new MLotConsumeQuantities(StockDeductQty: 0, HistoryTransationQty: -inputConsumeQty);
+
+        throw new HttpStatusCodeException(
+            System.Net.HttpStatusCode.BadRequest,
+            $"Unsupported WIP_PARTNO.PARTNO_CATEGORY for MLotConsume: {normalizedCategory}");
     }
 
     /// <summary>
@@ -643,7 +661,18 @@ public class MmsLotService : IMmsLotService
     {
         using var cmd = conn.CreateCommand();
         cmd.Transaction = tx;
-        cmd.CommandText = "SELECT TOP (1) LOT_SID, LOT, WO FROM WIP_LOT WHERE LOT = @Lot;";
+        cmd.CommandText = """
+                          SELECT TOP (1)
+                              l.LOT_SID,
+                              l.LOT,
+                              l.WO,
+                              l.PART_NO,
+                              p.PARTNO_CATEGORY
+                          FROM WIP_LOT l
+                          LEFT JOIN WIP_PARTNO p
+                              ON p.WIP_PARTNO_NO = l.PART_NO
+                          WHERE l.LOT = @Lot;
+                          """;
         cmd.Parameters.Add(new SqlParameter("@Lot", SqlDbType.NVarChar, 100) { Value = lot.Trim() });
         await using var reader = await cmd.ExecuteReaderAsync(ct);
         if (!await reader.ReadAsync(ct))
@@ -652,7 +681,9 @@ public class MmsLotService : IMmsLotService
         return new LotRow(
             reader.GetDecimal(reader.GetOrdinal("LOT_SID")),
             reader.GetString(reader.GetOrdinal("LOT")),
-            reader.GetString(reader.GetOrdinal("WO")));
+            reader.GetString(reader.GetOrdinal("WO")),
+            reader.GetString(reader.GetOrdinal("PART_NO")),
+            GetNullableString(reader, "PARTNO_CATEGORY"));
     }
 
     private static async Task<ReasonRow?> GetReasonByCodeOrDefaultAsync(SqlConnection conn, SqlTransaction tx, string reasonCode, CancellationToken ct)
@@ -768,7 +799,9 @@ public class MmsLotService : IMmsLotService
         string? COMMENT,
         DateTime EDIT_TIME);
 
-    private sealed record LotRow(decimal LOT_SID, string LOT, string WO);
+    private sealed record LotRow(decimal LOT_SID, string LOT, string WO, string PART_NO, string? PARTNO_CATEGORY);
+
+    private sealed record MLotConsumeQuantities(decimal StockDeductQty, decimal HistoryTransationQty);
 
     private sealed record ReasonRow(decimal ADM_REASON_SID, string? REASON_NO);
 }

@@ -32,10 +32,14 @@ public class MmsLotIntegrationTests
         var mlotCode = $"ITEST-MMS-M-{timestamp}";
         var mmsService = CreateMmsService(connectionString, arrangement.AccountNo);
         var lotService = CreateLotService(connectionString, arrangement.AccountNo);
+        string? originalPartNoCategory = null;
+        var restorePartNoCategory = false;
 
         try
         {
             await EnsureMlotStatusesAsync(connectionString);
+            originalPartNoCategory = await SetPartNoCategoryAsync(connectionString, arrangement.PartNo, null);
+            restorePartNoCategory = true;
 
             var lotResult = await lotService.CreateLotAsync(new WipCreateLotInputDto
             {
@@ -56,7 +60,7 @@ public class MmsLotIntegrationTests
                 DATA_LINK_SID = 900000003101m,
                 MLOT = mlotCode,
                 PART_NO = arrangement.PartNo,
-                MLOT_QTY = 10,
+                MLOT_QTY = 2,
                 REPORT_TIME = DateTime.Now,
                 ACCOUNT_NO = arrangement.AccountNo,
                 INPUT_FORM_NAME = "DcMateH5ApiTest",
@@ -69,7 +73,7 @@ public class MmsLotIntegrationTests
 
             var created = await LoadMlotAsync(conn, mlotCode);
             Assert.NotNull(created);
-            Assert.Equal(10, created!.MLOT_QTY);
+            Assert.Equal(2, created!.MLOT_QTY);
             Assert.Equal("Wait", created.MLOT_STATUS_CODE);
 
             var createHistCount = await CountMlotHistAsync(conn, mlotCode, "MLOT_CREATE");
@@ -89,10 +93,10 @@ public class MmsLotIntegrationTests
             Assert.True(consumeResult.IsSuccess);
 
             var consumed = await LoadMlotAsync(conn, mlotCode);
-            Assert.Equal(6, consumed!.MLOT_QTY);
+            Assert.Equal(1, consumed!.MLOT_QTY);
             Assert.Equal("Wait", consumed.MLOT_STATUS_CODE);
             Assert.Equal(1, await CountCurUsedAsync(conn, lotCode, mlotCode));
-            Assert.Equal(-4, await LoadLatestTransationQtyAsync(conn, mlotCode, "MLOT_CONSUME"));
+            Assert.Equal(-1, await LoadLatestTransationQtyAsync(conn, mlotCode, "MLOT_CONSUME"));
 
             var consumeToZeroResult = await mmsService.MLotConsumeAsync(new MmsMLotConsumeInputDto
             {
@@ -110,6 +114,7 @@ public class MmsLotIntegrationTests
             var finished = await LoadMlotAsync(conn, mlotCode);
             Assert.Equal(0, finished!.MLOT_QTY);
             Assert.Equal("Finished", finished.MLOT_STATUS_CODE);
+            Assert.Equal(-1, await LoadLatestTransationQtyAsync(conn, mlotCode, "MLOT_CONSUME"));
 
             var unconsumeResult = await mmsService.MLotUNConsumeAsync(new MmsMLotUNConsumeInputDto
             {
@@ -149,10 +154,82 @@ public class MmsLotIntegrationTests
         }
         finally
         {
-            if (!ShouldKeepTestData())
+            await CleanupAsync(connectionString, arrangement.WorkOrder, arrangement.PreviousReleaseQty, lotCode, mlotCode, arrangement.PartNo, originalPartNoCategory, restorePartNoCategory);
+        }
+    }
+
+    [Theory]
+    [InlineData(null, 9, -1)]
+    [InlineData("L1", 9, -1)]
+    [InlineData("L2", 10, -4)]
+    [Trait("Category", "Integration")]
+    public async Task MLotConsumeAsync_ShouldApplyPartNoCategoryRules(string? partNoCategory, decimal expectedMlotQty, decimal expectedTransationQty)
+    {
+        var connectionString = TestConfiguration.LoadConnectionString();
+        var arrangement = await LoadArrangementAsync(connectionString);
+        var timestamp = DateTime.UtcNow.ToString("yyyyMMddHHmmssfff");
+        var categorySuffix = partNoCategory ?? "NULL";
+        var lotCode = $"ITEST-MMS-L-C-{categorySuffix}-{timestamp}";
+        var mlotCode = $"ITEST-MMS-M-C-{categorySuffix}-{timestamp}";
+        var mmsService = CreateMmsService(connectionString, arrangement.AccountNo);
+        var lotService = CreateLotService(connectionString, arrangement.AccountNo);
+        string? originalPartNoCategory = null;
+        var restorePartNoCategory = false;
+
+        try
+        {
+            await EnsureMlotStatusesAsync(connectionString);
+            originalPartNoCategory = await SetPartNoCategoryAsync(connectionString, arrangement.PartNo, partNoCategory);
+            restorePartNoCategory = true;
+
+            await lotService.CreateLotAsync(new WipCreateLotInputDto
             {
-                await CleanupAsync(connectionString, arrangement.WorkOrder, arrangement.PreviousReleaseQty, lotCode, mlotCode);
-            }
+                DATA_LINK_SID = 900000003301m,
+                LOT = lotCode,
+                WO = arrangement.WorkOrder,
+                ROUTE_SID = arrangement.RouteSid,
+                LOT_QTY = 10,
+                REPORT_TIME = DateTime.Now,
+                ACCOUNT_NO = arrangement.AccountNo,
+                INPUT_FORM_NAME = "DcMateH5ApiTest"
+            });
+
+            await mmsService.CreateMLotAsync(new MmsCreateMLotInputDto
+            {
+                DATA_LINK_SID = 900000003302m,
+                MLOT = mlotCode,
+                PART_NO = arrangement.PartNo,
+                MLOT_QTY = 10,
+                REPORT_TIME = DateTime.Now,
+                ACCOUNT_NO = arrangement.AccountNo,
+                INPUT_FORM_NAME = "DcMateH5ApiTest"
+            });
+
+            var consumeResult = await mmsService.MLotConsumeAsync(new MmsMLotConsumeInputDto
+            {
+                DATA_LINK_SID = 900000003303m,
+                LOT = lotCode,
+                MLOT = mlotCode,
+                CONSUME_QTY = 4,
+                REPORT_TIME = DateTime.Now,
+                ACCOUNT_NO = arrangement.AccountNo,
+                INPUT_FORM_NAME = "DcMateH5ApiTest"
+            });
+
+            Assert.True(consumeResult.IsSuccess);
+
+            await using var conn = new SqlConnection(connectionString);
+            await conn.OpenAsync();
+
+            var consumed = await LoadMlotAsync(conn, mlotCode);
+            Assert.Equal(expectedMlotQty, consumed!.MLOT_QTY);
+            Assert.Equal("Wait", consumed.MLOT_STATUS_CODE);
+            Assert.Equal(1, await CountCurUsedAsync(conn, lotCode, mlotCode));
+            Assert.Equal(expectedTransationQty, await LoadLatestTransationQtyAsync(conn, mlotCode, "MLOT_CONSUME"));
+        }
+        finally
+        {
+            await CleanupAsync(connectionString, arrangement.WorkOrder, arrangement.PreviousReleaseQty, lotCode, mlotCode, arrangement.PartNo, originalPartNoCategory, restorePartNoCategory);
         }
     }
 
@@ -167,10 +244,14 @@ public class MmsLotIntegrationTests
         var mlotCode = $"ITEST-MMS-M-F-{timestamp}";
         var mmsService = CreateMmsService(connectionString, arrangement.AccountNo);
         var lotService = CreateLotService(connectionString, arrangement.AccountNo);
+        string? originalPartNoCategory = null;
+        var restorePartNoCategory = false;
 
         try
         {
             await EnsureMlotStatusesAsync(connectionString);
+            originalPartNoCategory = await SetPartNoCategoryAsync(connectionString, arrangement.PartNo, null);
+            restorePartNoCategory = true;
 
             await lotService.CreateLotAsync(new WipCreateLotInputDto
             {
@@ -195,10 +276,22 @@ public class MmsLotIntegrationTests
                 INPUT_FORM_NAME = "DcMateH5ApiTest"
             });
 
+            var firstConsumeResult = await mmsService.MLotConsumeAsync(new MmsMLotConsumeInputDto
+            {
+                DATA_LINK_SID = 900000003203m,
+                LOT = lotCode,
+                MLOT = mlotCode,
+                CONSUME_QTY = 2,
+                REPORT_TIME = DateTime.Now,
+                ACCOUNT_NO = arrangement.AccountNo,
+                INPUT_FORM_NAME = "DcMateH5ApiTest"
+            });
+            Assert.True(firstConsumeResult.IsSuccess);
+
             var ex = await Assert.ThrowsAsync<DcMateClassLibrary.Helper.HttpHelper.HttpStatusCodeException>(() =>
                 mmsService.MLotConsumeAsync(new MmsMLotConsumeInputDto
                 {
-                    DATA_LINK_SID = 900000003203m,
+                    DATA_LINK_SID = 900000003204m,
                     LOT = lotCode,
                     MLOT = mlotCode,
                     CONSUME_QTY = 2,
@@ -211,10 +304,71 @@ public class MmsLotIntegrationTests
         }
         finally
         {
-            if (!ShouldKeepTestData())
+            await CleanupAsync(connectionString, arrangement.WorkOrder, arrangement.PreviousReleaseQty, lotCode, mlotCode, arrangement.PartNo, originalPartNoCategory, restorePartNoCategory);
+        }
+    }
+
+    [Fact]
+    [Trait("Category", "Integration")]
+    public async Task MLotConsumeAsync_ShouldFail_WhenPartNoCategoryIsUnsupported()
+    {
+        var connectionString = TestConfiguration.LoadConnectionString();
+        var arrangement = await LoadArrangementAsync(connectionString);
+        var timestamp = DateTime.UtcNow.ToString("yyyyMMddHHmmssfff");
+        var lotCode = $"ITEST-MMS-L-U-{timestamp}";
+        var mlotCode = $"ITEST-MMS-M-U-{timestamp}";
+        var mmsService = CreateMmsService(connectionString, arrangement.AccountNo);
+        var lotService = CreateLotService(connectionString, arrangement.AccountNo);
+        string? originalPartNoCategory = null;
+        var restorePartNoCategory = false;
+
+        try
+        {
+            await EnsureMlotStatusesAsync(connectionString);
+            originalPartNoCategory = await SetPartNoCategoryAsync(connectionString, arrangement.PartNo, "OTHER");
+            restorePartNoCategory = true;
+
+            await lotService.CreateLotAsync(new WipCreateLotInputDto
             {
-                await CleanupAsync(connectionString, arrangement.WorkOrder, arrangement.PreviousReleaseQty, lotCode, mlotCode);
-            }
+                DATA_LINK_SID = 900000003401m,
+                LOT = lotCode,
+                WO = arrangement.WorkOrder,
+                ROUTE_SID = arrangement.RouteSid,
+                LOT_QTY = 10,
+                REPORT_TIME = DateTime.Now,
+                ACCOUNT_NO = arrangement.AccountNo,
+                INPUT_FORM_NAME = "DcMateH5ApiTest"
+            });
+
+            await mmsService.CreateMLotAsync(new MmsCreateMLotInputDto
+            {
+                DATA_LINK_SID = 900000003402m,
+                MLOT = mlotCode,
+                PART_NO = arrangement.PartNo,
+                MLOT_QTY = 10,
+                REPORT_TIME = DateTime.Now,
+                ACCOUNT_NO = arrangement.AccountNo,
+                INPUT_FORM_NAME = "DcMateH5ApiTest"
+            });
+
+            var ex = await Assert.ThrowsAsync<DcMateClassLibrary.Helper.HttpHelper.HttpStatusCodeException>(() =>
+                mmsService.MLotConsumeAsync(new MmsMLotConsumeInputDto
+                {
+                    DATA_LINK_SID = 900000003403m,
+                    LOT = lotCode,
+                    MLOT = mlotCode,
+                    CONSUME_QTY = 4,
+                    REPORT_TIME = DateTime.Now,
+                    ACCOUNT_NO = arrangement.AccountNo,
+                    INPUT_FORM_NAME = "DcMateH5ApiTest"
+                }));
+
+            Assert.Equal(System.Net.HttpStatusCode.BadRequest, ex.StatusCode);
+            Assert.Contains("Unsupported WIP_PARTNO.PARTNO_CATEGORY", ex.Message);
+        }
+        finally
+        {
+            await CleanupAsync(connectionString, arrangement.WorkOrder, arrangement.PreviousReleaseQty, lotCode, mlotCode, arrangement.PartNo, originalPartNoCategory, restorePartNoCategory);
         }
     }
 
@@ -307,6 +461,22 @@ public class MmsLotIntegrationTests
             """);
     }
 
+    private static async Task<string?> SetPartNoCategoryAsync(string connectionString, string partNo, string? partNoCategory)
+    {
+        await using var conn = new SqlConnection(connectionString);
+        await conn.OpenAsync();
+
+        var originalCategory = await conn.ExecuteScalarAsync<string?>(
+            "SELECT PARTNO_CATEGORY FROM WIP_PARTNO WHERE WIP_PARTNO_NO = @PartNo",
+            new { PartNo = partNo });
+
+        await conn.ExecuteAsync(
+            "UPDATE WIP_PARTNO SET PARTNO_CATEGORY = @PartNoCategory WHERE WIP_PARTNO_NO = @PartNo",
+            new { PartNoCategory = partNoCategory, PartNo = partNo });
+
+        return originalCategory;
+    }
+
     private static Task<MlotRow?> LoadMlotAsync(SqlConnection conn, string mlot)
         => conn.QuerySingleOrDefaultAsync<MlotRow>(
             "SELECT MLOT, MLOT_QTY, MLOT_STATUS_CODE FROM MMS_MLOT WHERE MLOT = @Mlot",
@@ -332,18 +502,37 @@ public class MmsLotIntegrationTests
             """,
             new { Mlot = mlot, ActionCode = actionCode });
 
-    private static async Task CleanupAsync(string connectionString, string workOrder, decimal? previousReleaseQty, string lotCode, string mlotCode)
+    private static async Task CleanupAsync(
+        string connectionString,
+        string workOrder,
+        decimal? previousReleaseQty,
+        string lotCode,
+        string mlotCode,
+        string? partNo = null,
+        string? originalPartNoCategory = null,
+        bool restorePartNoCategory = false)
     {
         await using var conn = new SqlConnection(connectionString);
         await conn.OpenAsync();
         await using var tx = await conn.BeginTransactionAsync();
 
-        await conn.ExecuteAsync("DELETE FROM WIP_LOT_KP_CUR_USED WHERE WIP_LOT = @Lot OR MLOT = @Mlot", new { Lot = lotCode, Mlot = mlotCode }, tx);
-        await conn.ExecuteAsync("DELETE FROM MMS_MLOT_HIST WHERE MLOT = @Mlot", new { Mlot = mlotCode }, tx);
-        await conn.ExecuteAsync("DELETE FROM MMS_MLOT WHERE MLOT = @Mlot", new { Mlot = mlotCode }, tx);
-        await conn.ExecuteAsync("DELETE FROM WIP_LOT_HIST WHERE LOT = @Lot", new { Lot = lotCode }, tx);
-        await conn.ExecuteAsync("DELETE FROM WIP_LOT WHERE LOT = @Lot", new { Lot = lotCode }, tx);
-        await conn.ExecuteAsync("UPDATE WIP_WO SET RELEASE_QTY = @ReleaseQty WHERE WO = @Wo", new { ReleaseQty = previousReleaseQty, Wo = workOrder }, tx);
+        if (!ShouldKeepTestData())
+        {
+            await conn.ExecuteAsync("DELETE FROM WIP_LOT_KP_CUR_USED WHERE WIP_LOT = @Lot OR MLOT = @Mlot", new { Lot = lotCode, Mlot = mlotCode }, tx);
+            await conn.ExecuteAsync("DELETE FROM MMS_MLOT_HIST WHERE MLOT = @Mlot", new { Mlot = mlotCode }, tx);
+            await conn.ExecuteAsync("DELETE FROM MMS_MLOT WHERE MLOT = @Mlot", new { Mlot = mlotCode }, tx);
+            await conn.ExecuteAsync("DELETE FROM WIP_LOT_HIST WHERE LOT = @Lot", new { Lot = lotCode }, tx);
+            await conn.ExecuteAsync("DELETE FROM WIP_LOT WHERE LOT = @Lot", new { Lot = lotCode }, tx);
+            await conn.ExecuteAsync("UPDATE WIP_WO SET RELEASE_QTY = @ReleaseQty WHERE WO = @Wo", new { ReleaseQty = previousReleaseQty, Wo = workOrder }, tx);
+        }
+
+        if (restorePartNoCategory && !string.IsNullOrWhiteSpace(partNo))
+        {
+            await conn.ExecuteAsync(
+                "UPDATE WIP_PARTNO SET PARTNO_CATEGORY = @PartNoCategory WHERE WIP_PARTNO_NO = @PartNo",
+                new { PartNoCategory = originalPartNoCategory, PartNo = partNo },
+                tx);
+        }
 
         await tx.CommitAsync();
     }
