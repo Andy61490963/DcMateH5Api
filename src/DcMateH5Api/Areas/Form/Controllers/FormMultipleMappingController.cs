@@ -123,7 +123,7 @@ public class FormMultipleMappingController : ControllerBase
     [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status400BadRequest)]
     public IActionResult GetMappingList(
         [FromRoute] Guid formMasterId,
-        [FromQuery] MappingListQuery query,
+        [FromBody] MappingListQuery? query,
         CancellationToken ct)
     {
         var badRequest = ValidateMappingListQuery(formMasterId, query);
@@ -136,12 +136,7 @@ public class FormMultipleMappingController : ControllerBase
         {
             var result = _service.GetMappingList(
                 formMasterId,
-                query.BaseId!,
-                query.Filters,
-                query.Type,
-                query.Page,
-                query.PageSize,
-                query.OrderBySeqAscending,
+                query!,
                 ct);
 
             return Ok(result);
@@ -295,11 +290,16 @@ public class FormMultipleMappingController : ControllerBase
         return null;
     }
 
-    private IActionResult? ValidateMappingListQuery(Guid formMasterId, MappingListQuery query)
+    private IActionResult? ValidateMappingListQuery(Guid formMasterId, MappingListQuery? query)
     {
         if (formMasterId == Guid.Empty)
         {
             return BadRequest("FormMasterId 不可為空");
+        }
+
+        if (query == null)
+        {
+            return BadRequest("請提供查詢請求內容。");
         }
 
         if (string.IsNullOrWhiteSpace(query.BaseId))

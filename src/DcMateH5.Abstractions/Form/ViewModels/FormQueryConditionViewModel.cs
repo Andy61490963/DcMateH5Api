@@ -47,8 +47,9 @@ public class MappingListQuery
     
     public MappingListType? Type { get; set; }
     
-    public Dictionary<string, string> Filters { get; set; }
-        = new(StringComparer.OrdinalIgnoreCase);
+    public List<FormQueryConditionViewModel>? DetailConditions { get; set; }
+
+    public List<FormQueryConditionViewModel>? MappingConditions { get; set; }
     
     public int? Page { get; set; }
 

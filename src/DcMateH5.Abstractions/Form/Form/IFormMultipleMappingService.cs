@@ -23,12 +23,7 @@ public interface IFormMultipleMappingService
     /// </summary>
     MultipleMappingListViewModel GetMappingList(
         Guid formMasterId,
-        string baseId,
-        Dictionary<string, string>? filters,
-        MappingListType? type,
-        int? page,
-        int? pageSize,
-        bool orderBySeqAscending = true,
+        MappingListQuery query,
         CancellationToken ct = default);
 
     /// <summary>

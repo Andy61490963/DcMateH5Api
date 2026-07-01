@@ -81,31 +81,31 @@ SELECT ID AS Id,
     /// <inheritdoc />
     public MultipleMappingListViewModel GetMappingList(
         Guid formMasterId,
-        string baseId,
-        Dictionary<string, string>? filters,
-        MappingListType? type,
-        int? page,
-        int? pageSize,
-        bool orderBySeqAscending = true,
+        MappingListQuery query,
         CancellationToken ct = default)
     {
         ct.ThrowIfCancellationRequested();
 
-        var usePaging = page.HasValue && pageSize.HasValue;
+        if (query == null)
+        {
+            throw new ArgumentNullException(nameof(query));
+        }
 
-        if (page.HasValue != pageSize.HasValue)
+        var usePaging = query.Page.HasValue && query.PageSize.HasValue;
+
+        if (query.Page.HasValue != query.PageSize.HasValue)
         {
             throw new InvalidOperationException("page 與 pageSize 必須同時提供，或同時為 null。");
         }
 
         if (usePaging)
         {
-            if (page!.Value <= 0)
+            if (query.Page!.Value <= 0)
             {
                 throw new InvalidOperationException("page 必須大於 0");
             }
 
-            if (pageSize!.Value <= 0)
+            if (query.PageSize!.Value <= 0)
             {
                 throw new InvalidOperationException("pageSize 必須大於 0");
             }
@@ -113,7 +113,7 @@ SELECT ID AS Id,
 
         var header = GetMappingHeader(formMasterId);
 
-        var (basePkName, _, basePkValue) = _schemaService.ResolvePk(header.BASE_TABLE_NAME!, baseId);
+        var (basePkName, _, basePkValue) = _schemaService.ResolvePk(header.BASE_TABLE_NAME!, query.BaseId);
         var (detailPkName, _, _) = _schemaService.ResolvePk(header.DETAIL_TABLE_NAME!, null);
 
         EnsureRowExists(header.BASE_TABLE_NAME!, basePkName, basePkValue!);
@@ -126,43 +126,111 @@ SELECT ID AS Id,
         var linkedTotalCount = 0;
         var unlinkedTotalCount = 0;
 
-        if (type == MappingListType.LinkedOnly)
+        if (query.Type == MappingListType.All)
+        {
+            var linkedResult = LoadLinkedDetailRowsPaged(
+                header,
+                detailPkName,
+                basePkValue!,
+                query.DetailConditions,
+                query.MappingConditions,
+                query.Page,
+                query.PageSize,
+                query.OrderBySeqAscending);
+
+            var unlinkedResult = LoadUnlinkedRowsPaged(
+                header,
+                detailPkName,
+                basePkValue!,
+                baseDisplayText,
+                query.DetailConditions,
+                query.Page,
+                query.PageSize);
+
+            linked = ToDictionaryByDetailPk(linkedResult.Items);
+            linkedTotalCount = linkedResult.TotalCount;
+            unlinked = ToDictionaryByDetailPk(unlinkedResult.Items);
+            unlinkedTotalCount = unlinkedResult.TotalCount;
+
+            return BuildListViewModel(
+                formMasterId,
+                header,
+                basePkName,
+                basePkValue,
+                detailPkName,
+                linked,
+                unlinked,
+                linkedTotalCount,
+                unlinkedTotalCount);
+        }
+
+        if (query.Type == MappingListType.LinkedOnly)
         {
             var result = LoadLinkedDetailRowsPaged(
                 header,
                 detailPkName,
                 basePkValue!,
-                filters,
-                page,
-                pageSize,
-                orderBySeqAscending);
+                query.DetailConditions,
+                query.MappingConditions,
+                query.Page,
+                query.PageSize,
+                query.OrderBySeqAscending);
 
             linked = ToDictionaryByDetailPk(result.Items);
             linkedTotalCount = result.TotalCount;
         }
-        else if (type == MappingListType.UnlinkedOnly)
+        else if (query.Type == MappingListType.UnlinkedOnly)
         {
+            EnsureNoMappingConditionsForUnlinked(query.MappingConditions);
+
             var result = LoadUnlinkedRowsPaged(
                 header,
                 detailPkName,
                 basePkValue!,
                 baseDisplayText,
-                filters,
-                page,
-                pageSize);
+                query.DetailConditions,
+                query.Page,
+                query.PageSize);
 
             unlinked = ToDictionaryByDetailPk(result.Items);
             unlinkedTotalCount = result.TotalCount;
-        }
-        else if (type == MappingListType.All)
-        {
-            throw new InvalidOperationException("使用分頁查詢時，Type 不可為 All，請改用 LinkedOnly 或 UnlinkedOnly。");
         }
         else
         {
             throw new InvalidOperationException("Type 不可為空，使用分頁查詢時請指定 LinkedOnly 或 UnlinkedOnly。");
         }
 
+        return new MultipleMappingListViewModel
+        {
+            FormMasterId = formMasterId,
+            BasePkColumn = basePkName,
+            BasePk = basePkValue?.ToString() ?? string.Empty,
+            DetailPkColumn = detailPkName,
+            MappingBaseFkColumn = header.MAPPING_BASE_FK_COLUMN!,
+            MappingDetailFkColumn = header.MAPPING_DETAIL_FK_COLUMN!,
+            MappingBaseColumnName = header.MAPPING_BASE_COLUMN_NAME,
+            MappingDetailColumnName = header.MAPPING_DETAIL_COLUMN_NAME,
+            TargetMappingColumnName = header.TARGET_MAPPING_COLUMN_NAME,
+            SourceDetailColumnCode = header.SOURCE_DETAIL_COLUMN_CODE,
+            TargetMappingColumnCode = header.TARGET_MAPPING_COLUMN_CODE,
+            LinkedTotalCount = linkedTotalCount,
+            UnlinkedTotalCount = unlinkedTotalCount,
+            Linked = linked,
+            Unlinked = unlinked
+        };
+    }
+
+    private static MultipleMappingListViewModel BuildListViewModel(
+        Guid formMasterId,
+        FormFieldMasterDto header,
+        string basePkName,
+        object? basePkValue,
+        string detailPkName,
+        Dictionary<string, MultipleMappingItemViewModel> linked,
+        Dictionary<string, MultipleMappingItemViewModel> unlinked,
+        int linkedTotalCount,
+        int unlinkedTotalCount)
+    {
         return new MultipleMappingListViewModel
         {
             FormMasterId = formMasterId,
@@ -235,6 +303,146 @@ SELECT ID AS Id,
             .Replace("%",  @"\%")
             .Replace("_",  @"\_")
             .Replace("[",  @"\[");
+    }
+
+    private static (string WhereSql, DynamicParameters Params) BuildConditionWhere(
+        IEnumerable<FormQueryConditionViewModel>? conditions,
+        IReadOnlyDictionary<string, string> columnTypes,
+        string tableAlias,
+        string paramPrefix)
+    {
+        var dp = new DynamicParameters();
+
+        if (conditions == null)
+        {
+            return (string.Empty, dp);
+        }
+
+        var andParts = new List<string>();
+        var pIndex = 0;
+
+        foreach (var condition in conditions)
+        {
+            var col = (condition.Column ?? string.Empty).Trim();
+            if (string.IsNullOrWhiteSpace(col))
+            {
+                continue;
+            }
+
+            ValidateColumnName(col);
+
+            if (!columnTypes.TryGetValue(col, out var dataType))
+            {
+                throw new InvalidOperationException($"不允許查詢欄位：{col}");
+            }
+
+            if (condition.ConditionType == null || condition.ConditionType == ConditionType.None)
+            {
+                continue;
+            }
+
+            var colSql = $"{tableAlias}.[{col}]";
+            var p1 = $"{paramPrefix}{pIndex++}";
+
+            switch (condition.ConditionType.Value)
+            {
+                case ConditionType.Equal:
+                    andParts.Add($"{colSql} = @{p1}");
+                    dp.Add(p1, ConvertToColumnTypeHelper.Convert(dataType, condition.Value));
+                    break;
+                case ConditionType.NotEqual:
+                    andParts.Add($"{colSql} <> @{p1}");
+                    dp.Add(p1, ConvertToColumnTypeHelper.Convert(dataType, condition.Value));
+                    break;
+                case ConditionType.Like:
+                    andParts.Add($"{colSql} LIKE @{p1} ESCAPE '\\'");
+                    dp.Add(p1, ConvertToColumnTypeHelper.Convert(dataType, ToLikeParameter(condition.Value)));
+                    break;
+                case ConditionType.Between:
+                    var p2 = $"{paramPrefix}{pIndex++}";
+                    andParts.Add($"{colSql} BETWEEN @{p1} AND @{p2}");
+                    dp.Add(p1, ConvertToColumnTypeHelper.Convert(dataType, condition.Value));
+                    dp.Add(p2, ConvertToColumnTypeHelper.Convert(dataType, condition.Value2));
+                    break;
+                case ConditionType.GreaterThan:
+                    andParts.Add($"{colSql} > @{p1}");
+                    dp.Add(p1, ConvertToColumnTypeHelper.Convert(dataType, condition.Value));
+                    break;
+                case ConditionType.GreaterThanOrEqual:
+                    andParts.Add($"{colSql} >= @{p1}");
+                    dp.Add(p1, ConvertToColumnTypeHelper.Convert(dataType, condition.Value));
+                    break;
+                case ConditionType.LessThan:
+                    andParts.Add($"{colSql} < @{p1}");
+                    dp.Add(p1, ConvertToColumnTypeHelper.Convert(dataType, condition.Value));
+                    break;
+                case ConditionType.LessThanOrEqual:
+                    andParts.Add($"{colSql} <= @{p1}");
+                    dp.Add(p1, ConvertToColumnTypeHelper.Convert(dataType, condition.Value));
+                    break;
+                case ConditionType.In:
+                    AppendConditionInClause(dp, andParts, colSql, dataType, condition.Values, isNotIn: false, paramPrefix, ref pIndex);
+                    break;
+                case ConditionType.NotIn:
+                    AppendConditionInClause(dp, andParts, colSql, dataType, condition.Values, isNotIn: true, paramPrefix, ref pIndex);
+                    break;
+                case ConditionType.IsNull:
+                    andParts.Add($"{colSql} IS NULL");
+                    break;
+                case ConditionType.IsNotNull:
+                    andParts.Add($"{colSql} IS NOT NULL");
+                    break;
+            }
+        }
+
+        if (andParts.Count == 0)
+        {
+            return (string.Empty, dp);
+        }
+
+        return ($" AND {string.Join(" AND ", andParts)}", dp);
+    }
+
+    private static void AppendConditionInClause(
+        DynamicParameters parameters,
+        List<string> whereParts,
+        string columnSql,
+        string dataType,
+        IReadOnlyList<object>? values,
+        bool isNotIn,
+        string paramPrefix,
+        ref int paramIndex)
+    {
+        if (values == null || values.Count == 0)
+        {
+            return;
+        }
+
+        var names = new List<string>(values.Count);
+
+        foreach (var value in values)
+        {
+            var paramName = $"{paramPrefix}{paramIndex++}";
+            names.Add($"@{paramName}");
+            parameters.Add(paramName, ConvertToColumnTypeHelper.Convert(dataType, value));
+        }
+
+        whereParts.Add($"{columnSql} {(isNotIn ? "NOT IN" : "IN")} ({string.Join(", ", names)})");
+    }
+
+    private static object? ToLikeParameter(object? value)
+    {
+        var raw = value?.ToString();
+        return raw == null ? null : $"%{EscapeLike(raw)}%";
+    }
+
+    private static void EnsureNoMappingConditionsForUnlinked(
+        IReadOnlyCollection<FormQueryConditionViewModel>? mappingConditions)
+    {
+        if (mappingConditions is { Count: > 0 })
+        {
+            throw new InvalidOperationException("Unlinked 查詢沒有 Mapping 資料列，不可使用 MappingConditions。");
+        }
     }
     
     /// <inheritdoc />
@@ -721,7 +929,8 @@ WHERE b.[{header.MAPPING_BASE_FK_COLUMN}] = @BaseId;";
         FormFieldMasterDto header,
         string detailPkName,
         object basePkValue,
-        Dictionary<string, string>? filters,
+        IReadOnlyList<FormQueryConditionViewModel>? detailConditions,
+        IReadOnlyList<FormQueryConditionViewModel>? mappingConditions,
         int? page,
         int? pageSize,
         bool orderBySeqAscending,
@@ -732,8 +941,10 @@ WHERE b.[{header.MAPPING_BASE_FK_COLUMN}] = @BaseId;";
             throw new InvalidOperationException("缺少 Base 顯示欄位設定");
         }
 
-        var mappingColumns = _schemaService.GetFormFieldMaster(header.MAPPING_TABLE_NAME!, tx).ToList();
-        var detailColumns = _schemaService.GetFormFieldMaster(header.DETAIL_TABLE_NAME!, tx).ToList();
+        var mappingColumnTypes = LoadColumnTypes(header.MAPPING_TABLE_NAME!, tx);
+        var detailColumnTypes = LoadColumnTypes(header.DETAIL_TABLE_NAME!, tx);
+        var mappingColumns = mappingColumnTypes.Keys.ToList();
+        var detailColumns = detailColumnTypes.Keys.ToList();
 
         if (!detailColumns.Contains(detailPkName, StringComparer.OrdinalIgnoreCase))
         {
@@ -755,7 +966,12 @@ WHERE b.[{header.MAPPING_BASE_FK_COLUMN}] = @BaseId;";
         var mappingSelect = string.Join(", ", mappingColumns.Select(c => $"m.[{c}] AS [m__{c}]"));
         var detailSelect = string.Join(", ", detailColumns.Select(c => $"d.[{c}] AS [d__{c}]"));
 
-        var (filterSql, param) = BuildLikeWhere(filters, mappingColumns, "m", "mLike");
+        var (detailWhereSql, detailParams) = BuildConditionWhere(detailConditions, detailColumnTypes, "d", "dWhere");
+        var (mappingWhereSql, mappingParams) = BuildConditionWhere(mappingConditions, mappingColumnTypes, "m", "mWhere");
+
+        var param = new DynamicParameters();
+        param.AddDynamicParams(detailParams);
+        param.AddDynamicParams(mappingParams);
         param.Add("BaseId", basePkValue);
 
         var countSql = $@"/**/
@@ -766,7 +982,8 @@ WHERE b.[{header.MAPPING_BASE_FK_COLUMN}] = @BaseId;";
     JOIN [{header.BASE_TABLE_NAME}] b
       ON m.[{header.MAPPING_BASE_FK_COLUMN}] = b.[{header.MAPPING_BASE_FK_COLUMN}]
     WHERE m.[{header.MAPPING_BASE_FK_COLUMN}] = @BaseId
-    {filterSql};";
+    {detailWhereSql}
+    {mappingWhereSql};";
 
         var totalCount = _con.ExecuteScalar<int>(countSql, param, transaction: tx);
 
@@ -784,7 +1001,8 @@ WHERE b.[{header.MAPPING_BASE_FK_COLUMN}] = @BaseId;";
     JOIN [{header.BASE_TABLE_NAME}] b
       ON m.[{header.MAPPING_BASE_FK_COLUMN}] = b.[{header.MAPPING_BASE_FK_COLUMN}]
     WHERE m.[{header.MAPPING_BASE_FK_COLUMN}] = @BaseId
-    {filterSql}
+    {detailWhereSql}
+    {mappingWhereSql}
     {orderBySql}
     {pagingSql};";
 
@@ -838,13 +1056,14 @@ WHERE b.[{header.MAPPING_BASE_FK_COLUMN}] = @BaseId;";
         string detailPkName,
         object basePkValue,
         string? baseDisplayText,
-        Dictionary<string, string>? filters,
+        IReadOnlyList<FormQueryConditionViewModel>? detailConditions,
         int? page,
         int? pageSize,
         SqlTransaction? tx = null)
     {
-        var detailColumns = _schemaService.GetFormFieldMaster(header.DETAIL_TABLE_NAME!, tx).ToList();
+        var detailColumnTypes = LoadColumnTypes(header.DETAIL_TABLE_NAME!, tx);
         var mappingColumns = _schemaService.GetFormFieldMaster(header.MAPPING_TABLE_NAME!, tx).ToList();
+        var detailColumns = detailColumnTypes.Keys.ToList();
 
         var defaultMap = GetDetailToRelationDefaultColumnMap(
             header.DETAIL_TABLE_ID,
@@ -853,7 +1072,7 @@ WHERE b.[{header.MAPPING_BASE_FK_COLUMN}] = @BaseId;";
 
         var detailSelect = string.Join(", ", detailColumns.Select(c => $"d.[{c}] AS [d__{c}]"));
 
-        var (filterSql, param) = BuildLikeWhere(filters, detailColumns, "d", "dLike");
+        var (filterSql, param) = BuildConditionWhere(detailConditions, detailColumnTypes, "d", "dWhere");
         param.Add("BaseId", basePkValue);
 
         var countSql = $@"/**/
