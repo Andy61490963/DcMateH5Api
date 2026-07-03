@@ -186,7 +186,7 @@ export interface MLotConsumeRequest {
 - `MLOT` 與 `LOT` 必須存在
 - `CONSUME_QTY > 0`
 - Backend reads `WIP_LOT.PART_NO -> WIP_PARTNO.PARTNO_CATEGORY` to decide stock deduction.
-- `PARTNO_CATEGORY = L1`, blank, or `NULL`: `MLOT_QTY` deducts `1`; history `TRANSATION_QTY` records `-1`.
+- `PARTNO_CATEGORY = L1`, blank, or `NULL`: `MLOT_QTY` deducts `CONSUME_QTY`; history `TRANSATION_QTY` records `-CONSUME_QTY`.
 - `PARTNO_CATEGORY = L2`: `MLOT_QTY` is not deducted; history `TRANSATION_QTY` records `-CONSUME_QTY`.
 - Other nonblank `PARTNO_CATEGORY` values return `400 BadRequest`.
 - After the category-based deduction, remaining quantity `0` changes MLOT status to `Finished`; otherwise status is `Wait`.

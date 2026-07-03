@@ -243,7 +243,7 @@ public class MmsLotService : IMmsLotService
             : partNoCategory.Trim();
 
         if (normalizedCategory is null || string.Equals(normalizedCategory, "L1", StringComparison.OrdinalIgnoreCase))
-            return new MLotConsumeQuantities(StockDeductQty: 1, HistoryTransationQty: -1);
+            return new MLotConsumeQuantities(StockDeductQty: inputConsumeQty, HistoryTransationQty: -inputConsumeQty);
 
         if (string.Equals(normalizedCategory, "L2", StringComparison.OrdinalIgnoreCase))
             return new MLotConsumeQuantities(StockDeductQty: 0, HistoryTransationQty: -inputConsumeQty);

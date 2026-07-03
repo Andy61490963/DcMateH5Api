@@ -60,7 +60,7 @@ public class MmsLotIntegrationTests
                 DATA_LINK_SID = 900000003101m,
                 MLOT = mlotCode,
                 PART_NO = arrangement.PartNo,
-                MLOT_QTY = 2,
+                MLOT_QTY = 10,
                 REPORT_TIME = DateTime.Now,
                 ACCOUNT_NO = arrangement.AccountNo,
                 INPUT_FORM_NAME = "DcMateH5ApiTest",
@@ -73,7 +73,7 @@ public class MmsLotIntegrationTests
 
             var created = await LoadMlotAsync(conn, mlotCode);
             Assert.NotNull(created);
-            Assert.Equal(2, created!.MLOT_QTY);
+            Assert.Equal(10, created!.MLOT_QTY);
             Assert.Equal("Wait", created.MLOT_STATUS_CODE);
 
             var createHistCount = await CountMlotHistAsync(conn, mlotCode, "MLOT_CREATE");
@@ -93,10 +93,10 @@ public class MmsLotIntegrationTests
             Assert.True(consumeResult.IsSuccess);
 
             var consumed = await LoadMlotAsync(conn, mlotCode);
-            Assert.Equal(1, consumed!.MLOT_QTY);
+            Assert.Equal(6, consumed!.MLOT_QTY);
             Assert.Equal("Wait", consumed.MLOT_STATUS_CODE);
             Assert.Equal(1, await CountCurUsedAsync(conn, lotCode, mlotCode));
-            Assert.Equal(-1, await LoadLatestTransationQtyAsync(conn, mlotCode, "MLOT_CONSUME"));
+            Assert.Equal(-4, await LoadLatestTransationQtyAsync(conn, mlotCode, "MLOT_CONSUME"));
 
             var consumeToZeroResult = await mmsService.MLotConsumeAsync(new MmsMLotConsumeInputDto
             {
@@ -114,7 +114,7 @@ public class MmsLotIntegrationTests
             var finished = await LoadMlotAsync(conn, mlotCode);
             Assert.Equal(0, finished!.MLOT_QTY);
             Assert.Equal("Finished", finished.MLOT_STATUS_CODE);
-            Assert.Equal(-1, await LoadLatestTransationQtyAsync(conn, mlotCode, "MLOT_CONSUME"));
+            Assert.Equal(-6, await LoadLatestTransationQtyAsync(conn, mlotCode, "MLOT_CONSUME"));
 
             var unconsumeResult = await mmsService.MLotUNConsumeAsync(new MmsMLotUNConsumeInputDto
             {
@@ -159,8 +159,8 @@ public class MmsLotIntegrationTests
     }
 
     [Theory]
-    [InlineData(null, 9, -1)]
-    [InlineData("L1", 9, -1)]
+    [InlineData(null, 6, -4)]
+    [InlineData("L1", 6, -4)]
     [InlineData("L2", 10, -4)]
     [Trait("Category", "Integration")]
     public async Task MLotConsumeAsync_ShouldApplyPartNoCategoryRules(string? partNoCategory, decimal expectedMlotQty, decimal expectedTransationQty)
@@ -270,7 +270,7 @@ public class MmsLotIntegrationTests
                 DATA_LINK_SID = 900000003202m,
                 MLOT = mlotCode,
                 PART_NO = arrangement.PartNo,
-                MLOT_QTY = 1,
+                MLOT_QTY = 2,
                 REPORT_TIME = DateTime.Now,
                 ACCOUNT_NO = arrangement.AccountNo,
                 INPUT_FORM_NAME = "DcMateH5ApiTest"
