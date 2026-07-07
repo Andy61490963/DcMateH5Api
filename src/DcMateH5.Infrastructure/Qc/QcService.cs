@@ -62,6 +62,7 @@ public class QcService : IQcService
                         QMM_INSPECTION_HEADER_SID, INSPECTION_NO, INSPECTION_TYPE,
                         MATERIAL_CHECK, CHECK_RESULT, STANDARD_WEIGHT, SAMPLING_QTY, CAVITY, MOLD_NO,
                         MOLD_TOL_NO, EQP_NO, WIP_OPI_WDOEACICO_HIST_SID, SOURCE_NO,
+                        LOT,
                         WORK_ORDER, ITEM_NO, INSPECTION_TIME, INSPECTION_RESULT, INSPECTOR,
                         APPROVE_USER, PRODUCTION_STATUS, COMMENT, CREATE_USER, EDIT_TIME, EDIT_USER
                     )
@@ -70,6 +71,7 @@ public class QcService : IQcService
                         @SID, @INSPECTION_NO, @INSPECTION_TYPE,
                         @MATERIAL_CHECK, @CHECK_RESULT, @STANDARD_WEIGHT, @SAMPLING_QTY, @CAVITY, @MOLD_NO,
                         @MOLD_TOL_NO, @EQP_NO, @WIP_OPI_WDOEACICO_HIST_SID, @SOURCE_NO,
+                        @LOT,
                         @WORK_ORDER, @ITEM_NO, @INSPECTION_TIME, @INSPECTION_RESULT, @INSPECTOR,
                         @APPROVE_USER, @PRODUCTION_STATUS, @COMMENT, @CREATE_USER, SYSDATETIME(), @EDIT_USER
                     );
@@ -89,6 +91,7 @@ public class QcService : IQcService
                         EQP_NO = header.EQP_NO,
                         WIP_OPI_WDOEACICO_HIST_SID = header.WIP_OPI_WDOEACICO_HIST_SID,
                         SOURCE_NO = header.SOURCE_NO,
+                        LOT = header.LOT,
                         WORK_ORDER = header.WORK_ORDER,
                         ITEM_NO = header.ITEM_NO,
                         INSPECTION_TIME = header.INSPECTION_TIME,

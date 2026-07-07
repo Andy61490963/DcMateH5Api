@@ -19,6 +19,7 @@ public class QcHeaderCreateRequest
     public string? EQP_NO { get; set; }
     public decimal? WIP_OPI_WDOEACICO_HIST_SID { get; set; }
     public string? SOURCE_NO { get; set; }
+    public string? LOT { get; set; }
     public string WORK_ORDER { get; set; } = string.Empty;
     public string ITEM_NO { get; set; } = string.Empty;
     public DateTime INSPECTION_TIME { get; set; }
