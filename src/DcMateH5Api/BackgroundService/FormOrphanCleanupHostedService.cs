@@ -1,4 +1,5 @@
 ﻿using DcMateH5.Abstractions.Form.Form;
+using Microsoft.Extensions.Options;
 
 namespace DcMateH5Api.BackgroundService;
 
@@ -6,15 +7,18 @@ public sealed class FormOrphanCleanupHostedService : Microsoft.Extensions.Hostin
 {
     private readonly IServiceScopeFactory _scopeFactory;
     private readonly ILogger<FormOrphanCleanupHostedService> _logger;
+    private readonly IOptionsMonitor<FormOrphanCleanupOptions> _options;
 
     private static readonly SemaphoreSlim _runLock = new(1, 1);
 
     public FormOrphanCleanupHostedService(
         IServiceScopeFactory scopeFactory,
-        ILogger<FormOrphanCleanupHostedService> logger)
+        ILogger<FormOrphanCleanupHostedService> logger,
+        IOptionsMonitor<FormOrphanCleanupOptions> options)
     {
         _scopeFactory = scopeFactory;
         _logger = logger;
+        _options = options;
     }
 
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
@@ -40,6 +44,12 @@ public sealed class FormOrphanCleanupHostedService : Microsoft.Extensions.Hostin
             catch (OperationCanceledException)
             {
                 return;
+            }
+
+            if (!_options.CurrentValue.Enabled)
+            {
+                _logger.LogInformation("OrphanCleanup skipped: FormOrphanCleanup:Enabled is false.");
+                continue;
             }
 
             if (!await _runLock.WaitAsync(TimeSpan.Zero, stoppingToken))

@@ -84,6 +84,7 @@ var redisConn = config.GetValue<string>("Redis:Connection");
 builder.Services.Configure<CacheOptions>(config.GetSection("Cache"));
 builder.Services.Configure<DbOptions>(config.GetSection("ConnectionStrings"));
 builder.Services.Configure<FormSettings>(config.GetSection("FormSettings"));
+builder.Services.Configure<FormOrphanCleanupOptions>(config.GetSection(FormOrphanCleanupOptions.SectionName));
 builder.Services.Configure<TokenOptions>(config.GetSection("TokenOptions"));
 builder.Services.Configure<EmailSettingOptions>(config.GetSection(EmailSettingOptions.SectionName));
 builder.Services.Configure<PasswordResetOptions>(config.GetSection(PasswordResetOptions.SectionName));
