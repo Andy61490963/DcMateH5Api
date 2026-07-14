@@ -1,5 +1,6 @@
 using System.Security.Cryptography;
 using System.Text;
+using System.Data;
 using ClassLibrary;
 using DbExtensions.DbExecutor.Interface;
 using DcMateClassLibrary.Helper;
@@ -103,6 +104,25 @@ VALUES
     SYSDATETIME(),
     @CreateIp
 );";
+
+        public const string SelectPasswordResetRequestLimit = @"
+SELECT CASE
+    WHEN EXISTS
+    (
+        SELECT 1
+        FROM ADM_PASSWORD_RESET_TOKEN WITH (UPDLOCK, HOLDLOCK)
+        WHERE USER_SID = @UserId
+          AND CREATE_TIME > DATEADD(SECOND, -60, SYSDATETIME())
+    ) THEN 1
+    WHEN
+    (
+        SELECT COUNT(1)
+        FROM ADM_PASSWORD_RESET_TOKEN WITH (UPDLOCK, HOLDLOCK)
+        WHERE USER_SID = @UserId
+          AND CREATE_TIME > DATEADD(HOUR, -1, SYSDATETIME())
+    ) >= 3 THEN 2
+    ELSE 0
+END;";
 
         public const string SelectPasswordResetToken = @"
 SELECT TOP (1)
@@ -307,17 +327,53 @@ WHERE USER_SID = @UserId;";
         string tokenHash = HashToken(token);
         DateTime expiredTime = DateTime.Now.AddMinutes(Math.Max(1, _passwordResetOptions.TokenMinutes));
 
-        await _db.ExecuteAsync(
-            SqlStatements.InsertPasswordResetToken,
-            new
+        int limitResult = await _db.TxAsync(
+            async (conn, tx, txCt) =>
             {
-                TokenId = Guid.NewGuid(),
-                user.UserId,
-                TokenHash = tokenHash,
-                ExpiredTime = expiredTime,
-                CreateIp = _httpContextAccessor.HttpContext?.Connection.RemoteIpAddress?.ToString()
+                int requestLimit = await _db.ExecuteScalarInTxAsync<int>(
+                    conn,
+                    tx,
+                    SqlStatements.SelectPasswordResetRequestLimit,
+                    new { user.UserId },
+                    ct: txCt);
+
+                if (requestLimit != (int)PasswordResetRequestLimit.None)
+                {
+                    return requestLimit;
+                }
+
+                await _db.ExecuteInTxAsync(
+                    conn,
+                    tx,
+                    SqlStatements.InsertPasswordResetToken,
+                    new
+                    {
+                        TokenId = Guid.NewGuid(),
+                        user.UserId,
+                        TokenHash = tokenHash,
+                        ExpiredTime = expiredTime,
+                        CreateIp = _httpContextAccessor.HttpContext?.Connection.RemoteIpAddress?.ToString()
+                    },
+                    ct: txCt);
+
+                return (int)PasswordResetRequestLimit.None;
             },
+            isolation: IsolationLevel.Serializable,
             ct: ct);
+
+        if (limitResult == (int)PasswordResetRequestLimit.Cooldown)
+        {
+            return Result<ForgotPasswordResponseViewModel>.Fail(
+                AccountErrorCode.PasswordResetRequestTooFrequent,
+                "請於 60 秒後再申請重設密碼。");
+        }
+
+        if (limitResult == (int)PasswordResetRequestLimit.HourlyLimit)
+        {
+            return Result<ForgotPasswordResponseViewModel>.Fail(
+                AccountErrorCode.PasswordResetHourlyLimitReached,
+                "一小時內最多申請 3 次重設密碼，請稍後再試。");
+        }
 
         try
         {
@@ -550,6 +606,15 @@ WHERE USER_SID = @UserId;";
         InvalidRequest,
         EmailNotBound,
         InvalidOrExpiredToken,
-        EmailSendFailed
+        EmailSendFailed,
+        PasswordResetRequestTooFrequent,
+        PasswordResetHourlyLimitReached
+    }
+
+    private enum PasswordResetRequestLimit
+    {
+        None,
+        Cooldown,
+        HourlyLimit
     }
 }

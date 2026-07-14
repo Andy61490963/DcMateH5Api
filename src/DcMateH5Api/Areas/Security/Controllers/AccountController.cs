@@ -57,6 +57,7 @@ public sealed class AccountController : BaseController
     [ProducesResponseType(typeof(Result<ForgotPasswordResponseViewModel>), StatusCodes.Status200OK)]
     [ProducesResponseType(typeof(Result<ForgotPasswordResponseViewModel>), StatusCodes.Status400BadRequest)]
     [ProducesResponseType(typeof(Result<ForgotPasswordResponseViewModel>), StatusCodes.Status404NotFound)]
+    [ProducesResponseType(typeof(Result<ForgotPasswordResponseViewModel>), StatusCodes.Status429TooManyRequests)]
     [ProducesResponseType(typeof(Result<ForgotPasswordResponseViewModel>), StatusCodes.Status500InternalServerError)]
     public async Task<IActionResult> ForgotPassword([FromBody] ForgotPasswordRequestViewModel request, CancellationToken ct)
     {
@@ -137,6 +138,12 @@ public sealed class AccountController : BaseController
             return StatusCode(StatusCodes.Status500InternalServerError, result);
         }
 
+        if (string.Equals(result.Code, AccountResultCodes.PasswordResetRequestTooFrequent, StringComparison.Ordinal)
+            || string.Equals(result.Code, AccountResultCodes.PasswordResetHourlyLimitReached, StringComparison.Ordinal))
+        {
+            return StatusCode(StatusCodes.Status429TooManyRequests, result);
+        }
+
         return BadRequest(result);
     }
 
@@ -153,5 +160,7 @@ public sealed class AccountController : BaseController
     private static class AccountResultCodes
     {
         public const string EmailSendFailed = "EmailSendFailed";
+        public const string PasswordResetRequestTooFrequent = "PasswordResetRequestTooFrequent";
+        public const string PasswordResetHourlyLimitReached = "PasswordResetHourlyLimitReached";
     }
 }
