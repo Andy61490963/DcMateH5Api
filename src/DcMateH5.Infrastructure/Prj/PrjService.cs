@@ -463,7 +463,7 @@ public sealed class PrjService : IPrjService
     {
         var current = _currentUser.Get();
         if (!current.IsAuthenticated || string.IsNullOrWhiteSpace(current.Account) || current.Account == CurrentUserSnapshot.NotLoginUser)
-            throw new HttpStatusCodeException(HttpStatusCode.Unauthorized, "尚未登入或 Token 無效。");
+            return CurrentUserSnapshot.NotLoginUser;
         return current.Account.Trim();
     }
 

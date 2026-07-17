@@ -45,7 +45,7 @@ public sealed class PrjControllerTests
         }.OrderBy(x => x).ToArray();
 
         Assert.Equal(expected, routes);
-        Assert.NotNull(typeof(PrjController).GetCustomAttribute<AuthorizeAttribute>());
+        Assert.Null(typeof(PrjController).GetCustomAttribute<AuthorizeAttribute>());
         var explorer = typeof(PrjController).GetCustomAttribute<ApiExplorerSettingsAttribute>();
         Assert.Equal(SwaggerGroups.Prj, explorer?.GroupName);
     }

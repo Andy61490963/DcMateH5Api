@@ -4,7 +4,6 @@ using DcMateClassLibrary.Helper.HttpHelper;
 using DcMateH5.Abstractions.Prj;
 using DcMateH5.Abstractions.Prj.Models;
 using DcMateH5Api.Models;
-using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 
 namespace DcMateH5Api.Areas.PRJ.Controllers;
@@ -16,9 +15,6 @@ namespace DcMateH5Api.Areas.PRJ.Controllers;
 [Route("api/PRJ")]
 [ApiExplorerSettings(GroupName = SwaggerGroups.Prj)]
 [ApiController]
-[Authorize]
-[ProducesResponseType(typeof(Result<object>), StatusCodes.Status401Unauthorized)]
-[ProducesResponseType(typeof(Result<object>), StatusCodes.Status403Forbidden)]
 [ProducesResponseType(typeof(Result<object>), StatusCodes.Status500InternalServerError)]
 public sealed class PrjController : ControllerBase
 {
@@ -35,8 +31,6 @@ public sealed class PrjController : ControllerBase
     [HttpGet("Projects")]
     [ProducesResponseType(typeof(Result<PagedResult<PrjProjectListItemDto>>), StatusCodes.Status200OK)]
     [ProducesResponseType(typeof(Result<object>), StatusCodes.Status400BadRequest)]
-    [ProducesResponseType(typeof(Result<object>), StatusCodes.Status401Unauthorized)]
-    [ProducesResponseType(typeof(Result<object>), StatusCodes.Status403Forbidden)]
     [ProducesResponseType(typeof(Result<object>), StatusCodes.Status500InternalServerError)]
     public Task<IActionResult> GetProjects([FromQuery] PrjProjectQuery query, CancellationToken ct) =>
         ExecuteAsync(() => _service.GetProjectsAsync(query, ct));
