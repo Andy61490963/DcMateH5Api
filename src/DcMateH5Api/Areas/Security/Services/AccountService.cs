@@ -200,11 +200,11 @@ WHERE USER_SID = @UserId;";
         string? email = NormalizeOptional(request.Email);
         int lv = request.Lv;
 
-        if (lv <= 0)
+        if (lv < 0)
         {
             return Result<RegisterResponseViewModel>.Fail(
                 AccountErrorCode.InvalidRequest,
-                "Lv must be greater than 0.");
+                "Lv must be greater than or equal to 0.");
         }
 
         if (await AccountExistsAsync(account, ct))

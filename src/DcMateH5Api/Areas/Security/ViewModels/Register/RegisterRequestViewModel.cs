@@ -28,6 +28,6 @@ public sealed record RegisterRequestViewModel
     /// <summary>
     /// User level.
     /// </summary>
-    [Range(1, int.MaxValue)]
+    [Range(0, int.MaxValue)]
     public int Lv { get; init; }
 }
