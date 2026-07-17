@@ -24,6 +24,7 @@ public static class SwaggerGroups
     public const string Eqm = nameof(Eqm);
     public const string Mms = nameof(Mms);
     public const string Qc = nameof(Qc);
+    public const string Prj = nameof(Prj);
     public const string Test = nameof(Test);
 
     public static readonly Dictionary<string, string> DisplayNames = new()
@@ -47,6 +48,7 @@ public static class SwaggerGroups
         { Eqm, "EQM" },
         { Mms, "MMS" },
         { Qc, "QC" },
+        { Prj, "專案管理" },
         { Test, "測試" }
     };
 
