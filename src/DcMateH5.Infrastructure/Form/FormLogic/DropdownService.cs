@@ -60,7 +60,7 @@ public class DropdownService : IDropdownService
         Dictionary<Guid, string> optionTextMap)
     {
         var dropdownColumns = fieldConfigs
-            .Where(f => (FormControlType)f.CONTROL_TYPE == FormControlType.Dropdown)
+            .Where(f => f.CONTROL_TYPE is FormControlType.Dropdown or FormControlType.Radio)
             .Select(f => (f.COLUMN_NAME, f.ID))
             .ToList();
 

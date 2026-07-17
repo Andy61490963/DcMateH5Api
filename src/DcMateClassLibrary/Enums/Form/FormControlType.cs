@@ -60,5 +60,12 @@ public enum FormControlType
     /// 適用於同時需要日期與時間的輸入。
     /// </summary>
     [Display(Name = "日期時間", Description = "input type=datetime-local")]
-    DateTime
+    DateTime,
+
+    /// <summary>
+    /// 單選按鈕群組（對應 input type="radio"）。
+    /// 適用於從少量固定選項中選擇單一值。
+    /// </summary>
+    [Display(Name = "單選按鈕", Description = "input type=radio")]
+    Radio = 8
 }
