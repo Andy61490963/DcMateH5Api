@@ -116,7 +116,7 @@ public class FormDesignerService : IFormDesignerService
                 ct);
 
         var mappingComponentConfigIds = await QueryIdsAsync(
-            "SELECT ID FROM dbo.FORM_MULTIPLE_MAPPING_COMPONENT_CONFIG WHERE FORM_FIELD_MASTER_ID IN @MasterIds ORDER BY FORM_FIELD_MASTER_ID, MAPPING_ROW_ID, ID",
+            "SELECT ID FROM dbo.FORM_FIELD_MULTIPLE_MAPPING_COMPONENT_CONFIG WHERE FORM_FIELD_MASTER_ID IN @MasterIds ORDER BY FORM_FIELD_MASTER_ID, MAPPING_ROW_ID, ID",
             new { MasterIds = masterIds },
             ct);
 
@@ -174,9 +174,9 @@ public class FormDesignerService : IFormDesignerService
         }
 
         sections.Add(new MigrationTableSection(
-            "FORM_MULTIPLE_MAPPING_COMPONENT_CONFIG",
+            "FORM_FIELD_MULTIPLE_MAPPING_COMPONENT_CONFIG",
             await QueryMigrationRowsAsync(
-                "FORM_MULTIPLE_MAPPING_COMPONENT_CONFIG",
+                "FORM_FIELD_MULTIPLE_MAPPING_COMPONENT_CONFIG",
                 "FORM_FIELD_MASTER_ID IN @MasterIds",
                 new { MasterIds = masterIds },
                 "FORM_FIELD_MASTER_ID, MAPPING_ROW_ID, ID",
@@ -185,9 +185,9 @@ public class FormDesignerService : IFormDesignerService
         if (mappingComponentConfigIds.Count > 0)
         {
             sections.Add(new MigrationTableSection(
-                "FORM_MULTIPLE_MAPPING_COMPONENT_OPTION",
+                "FORM_FIELD_MULTIPLE_MAPPING_COMPONENT_OPTION",
                 await QueryMigrationRowsAsync(
-                    "FORM_MULTIPLE_MAPPING_COMPONENT_OPTION",
+                    "FORM_FIELD_MULTIPLE_MAPPING_COMPONENT_OPTION",
                     "COMPONENT_CONFIG_ID IN @ComponentConfigIds",
                     new { ComponentConfigIds = mappingComponentConfigIds },
                     "COMPONENT_CONFIG_ID, OPTION_ORDER, ID",
@@ -634,13 +634,13 @@ UPDATE componentOption
    SET componentOption.IS_DELETE = 1,
        componentOption.EDIT_TIME = GETDATE(),
        componentOption.EDIT_USER = @Account
-  FROM dbo.FORM_MULTIPLE_MAPPING_COMPONENT_OPTION componentOption
-  JOIN dbo.FORM_MULTIPLE_MAPPING_COMPONENT_CONFIG componentConfig
+  FROM dbo.FORM_FIELD_MULTIPLE_MAPPING_COMPONENT_OPTION componentOption
+  JOIN dbo.FORM_FIELD_MULTIPLE_MAPPING_COMPONENT_CONFIG componentConfig
     ON componentConfig.ID = componentOption.COMPONENT_CONFIG_ID
  WHERE componentConfig.FORM_FIELD_MASTER_ID = @FormMasterId
    AND componentOption.IS_DELETE = 0;
 
-UPDATE dbo.FORM_MULTIPLE_MAPPING_COMPONENT_CONFIG
+UPDATE dbo.FORM_FIELD_MULTIPLE_MAPPING_COMPONENT_CONFIG
    SET IS_DELETE = 1,
        EDIT_TIME = GETDATE(),
        EDIT_USER = @Account
@@ -2959,7 +2959,7 @@ SELECT MAPPING_TABLE_NAME,
 
         var configCount = _con.ExecuteScalar<int>(@"/**/
 SELECT COUNT(1)
-  FROM dbo.FORM_MULTIPLE_MAPPING_COMPONENT_CONFIG
+  FROM dbo.FORM_FIELD_MULTIPLE_MAPPING_COMPONENT_CONFIG
  WHERE FORM_FIELD_MASTER_ID = @FormMasterId
    AND IS_DELETE = 0;",
             new { FormMasterId = model.ID });

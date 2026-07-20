@@ -19,6 +19,13 @@
 src/DcMateH5Api/docs/sql/20260720-multiple-mapping-component.sql
 ```
 
+逐 SID 元件設定使用以下資料表：
+
+- `FORM_FIELD_MULTIPLE_MAPPING_COMPONENT_CONFIG`：保存每個 `MappingRowId` 的元件類型、Dropdown 模式及 SQL。
+- `FORM_FIELD_MULTIPLE_MAPPING_COMPONENT_OPTION`：保存靜態選項或 SQL 同步後的選項快照。
+
+若環境中仍存在舊名稱 `FORM_MULTIPLE_MAPPING_COMPONENT_CONFIG`、`FORM_MULTIPLE_MAPPING_COMPONENT_OPTION`，部署 SQL 會保留資料並將資料表改成上述新名稱。
+
 表單 Header 必須具備以下設定：
 
 - `MAPPING_TABLE_NAME`
