@@ -1,4 +1,6 @@
-﻿namespace DcMateClassLibrary.Helper.FormHelper;
+﻿using System.Globalization;
+
+namespace DcMateClassLibrary.Helper.FormHelper;
 
 /// <summary>
 /// SQL 型別轉換集中 Helper
@@ -28,6 +30,196 @@
 /// </summary>
 public static class ConvertToColumnTypeHelper
 {
+    /// <summary>
+    /// 嚴格依 SQL Server 欄位型別轉換不可信任的輸入。
+    /// 轉換失敗時回傳 false，避免把錯誤值誤當成 NULL 或 false 寫入資料庫。
+    /// </summary>
+    public static bool TryConvertStrict(string? sqlType, object? value, out object? convertedValue)
+    {
+        convertedValue = null;
+
+        if (value is null)
+        {
+            return true;
+        }
+
+        if (string.IsNullOrWhiteSpace(sqlType))
+        {
+            return false;
+        }
+
+        var normalizedSqlType = sqlType
+            .Trim()
+            .Split('(', 2)[0]
+            .Trim()
+            .ToLowerInvariant();
+        var str = System.Convert.ToString(value, CultureInfo.InvariantCulture)?.Trim();
+
+        switch (normalizedSqlType)
+        {
+            case "tinyint":
+                if (byte.TryParse(str, NumberStyles.Integer, CultureInfo.InvariantCulture, out var tinyIntValue))
+                {
+                    convertedValue = tinyIntValue;
+                    return true;
+                }
+                return false;
+
+            case "smallint":
+                if (short.TryParse(str, NumberStyles.Integer, CultureInfo.InvariantCulture, out var smallIntValue))
+                {
+                    convertedValue = smallIntValue;
+                    return true;
+                }
+                return false;
+
+            case "int":
+                if (int.TryParse(str, NumberStyles.Integer, CultureInfo.InvariantCulture, out var intValue))
+                {
+                    convertedValue = intValue;
+                    return true;
+                }
+                return false;
+
+            case "bigint":
+                if (long.TryParse(str, NumberStyles.Integer, CultureInfo.InvariantCulture, out var longValue))
+                {
+                    convertedValue = longValue;
+                    return true;
+                }
+                return false;
+
+            case "decimal":
+            case "numeric":
+            case "money":
+            case "smallmoney":
+                if (decimal.TryParse(str, NumberStyles.Number, CultureInfo.InvariantCulture, out var decimalValue))
+                {
+                    convertedValue = decimalValue;
+                    return true;
+                }
+                return false;
+
+            case "float":
+                if (double.TryParse(str, NumberStyles.Float, CultureInfo.InvariantCulture, out var doubleValue))
+                {
+                    convertedValue = doubleValue;
+                    return true;
+                }
+                return false;
+
+            case "real":
+                if (float.TryParse(str, NumberStyles.Float, CultureInfo.InvariantCulture, out var floatValue))
+                {
+                    convertedValue = floatValue;
+                    return true;
+                }
+                return false;
+
+            case "bit":
+                if (value is bool boolValue)
+                {
+                    convertedValue = boolValue;
+                    return true;
+                }
+
+                if (string.Equals(str, "1", StringComparison.Ordinal) ||
+                    string.Equals(str, "true", StringComparison.OrdinalIgnoreCase))
+                {
+                    convertedValue = true;
+                    return true;
+                }
+
+                if (string.Equals(str, "0", StringComparison.Ordinal) ||
+                    string.Equals(str, "false", StringComparison.OrdinalIgnoreCase))
+                {
+                    convertedValue = false;
+                    return true;
+                }
+                return false;
+
+            case "date":
+            case "datetime":
+            case "datetime2":
+            case "smalldatetime":
+                if (value is DateTime dateTimeValue)
+                {
+                    convertedValue = dateTimeValue;
+                    return true;
+                }
+
+                if (DateTime.TryParse(
+                        str,
+                        CultureInfo.InvariantCulture,
+                        DateTimeStyles.AllowWhiteSpaces | DateTimeStyles.RoundtripKind,
+                        out var parsedDateTime))
+                {
+                    convertedValue = parsedDateTime;
+                    return true;
+                }
+                return false;
+
+            case "datetimeoffset":
+                if (value is DateTimeOffset dateTimeOffsetValue)
+                {
+                    convertedValue = dateTimeOffsetValue;
+                    return true;
+                }
+
+                if (DateTimeOffset.TryParse(
+                        str,
+                        CultureInfo.InvariantCulture,
+                        DateTimeStyles.AllowWhiteSpaces,
+                        out var parsedDateTimeOffset))
+                {
+                    convertedValue = parsedDateTimeOffset;
+                    return true;
+                }
+                return false;
+
+            case "time":
+                if (value is TimeSpan timeSpanValue)
+                {
+                    convertedValue = timeSpanValue;
+                    return true;
+                }
+
+                if (TimeSpan.TryParse(str, CultureInfo.InvariantCulture, out var parsedTimeSpan))
+                {
+                    convertedValue = parsedTimeSpan;
+                    return true;
+                }
+                return false;
+
+            case "uniqueidentifier":
+                if (value is Guid guidValue)
+                {
+                    convertedValue = guidValue;
+                    return true;
+                }
+
+                if (Guid.TryParse(str, out var parsedGuid))
+                {
+                    convertedValue = parsedGuid;
+                    return true;
+                }
+                return false;
+
+            case "nvarchar":
+            case "varchar":
+            case "nchar":
+            case "char":
+            case "text":
+            case "ntext":
+            case "xml":
+                convertedValue = System.Convert.ToString(value, CultureInfo.InvariantCulture);
+                return true;
+
+            default:
+                return false;
+        }
+    }
+
     /// <summary>
     /// 一般欄位用的型別轉換方法
     ///
@@ -71,7 +263,7 @@ public static class ConvertToColumnTypeHelper
                 return decimal.TryParse(str, out var d) ? d : null;
 
             case "bit":
-                return str == "1" || str.Equals("true", StringComparison.OrdinalIgnoreCase);
+                return str == "1" || string.Equals(str, "true", StringComparison.OrdinalIgnoreCase);
 
             case "datetime":
             case "smalldatetime":

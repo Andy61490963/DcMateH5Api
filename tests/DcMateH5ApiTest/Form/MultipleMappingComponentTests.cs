@@ -1,5 +1,8 @@
+using System.Data;
 using System.Reflection;
+using Dapper;
 using DcMateClassLibrary.Enums.Form;
+using DcMateClassLibrary.Helper.FormHelper;
 using DcMateH5.Abstractions.Form.Models;
 using DcMateH5.Abstractions.Form.ViewModels;
 using DcMateH5.Infrastructure.Form.Form;
@@ -146,6 +149,148 @@ public class MultipleMappingComponentTests
                 "IsConfigured"
             },
             properties);
+    }
+
+    [Fact]
+    public void MappingRowIdDbRow_MaterializesScalarMappingPk()
+    {
+        var rowType = typeof(FormMultipleMappingService).GetNestedType(
+            "MappingRowIdDbRow",
+            BindingFlags.NonPublic);
+        Assert.NotNull(rowType);
+
+        var table = new DataTable();
+        table.Columns.Add("MappingRowId", typeof(decimal));
+        table.Rows.Add(156202957262999m);
+
+        using var reader = table.CreateDataReader();
+        Assert.True(reader.Read());
+
+        var row = reader.GetRowParser(rowType)(reader);
+        var mappingRowId = rowType
+            .GetProperty("MappingRowId", BindingFlags.Instance | BindingFlags.Public)
+            ?.GetValue(row);
+
+        Assert.Equal(156202957262999m, mappingRowId);
+    }
+
+    [Fact]
+    public void ValidateAndConvertComponentValue_RejectsNullOptionValue()
+    {
+        var options = new List<MappingComponentOptionViewModel>
+        {
+            new() { Value = "A", Text = "Alpha" }
+        };
+
+        var exception = Assert.Throws<TargetInvocationException>(() =>
+            InvokePrivateStatic<object>(
+                "ValidateAndConvertComponentValue",
+                FormControlType.Dropdown,
+                options,
+                "VALUE",
+                "varchar",
+                null));
+
+        var innerException = Assert.IsType<InvalidOperationException>(exception.InnerException);
+        Assert.Contains("不可為 NULL", innerException.Message);
+    }
+
+    [Fact]
+    public void ValidateAndConvertComponentValue_RejectsValueOutsideOptions()
+    {
+        var options = new List<MappingComponentOptionViewModel>
+        {
+            new() { Value = "A", Text = "Alpha" }
+        };
+
+        var exception = Assert.Throws<TargetInvocationException>(() =>
+            InvokePrivateStatic<object>(
+                "ValidateAndConvertComponentValue",
+                FormControlType.Dropdown,
+                options,
+                "VALUE",
+                "varchar",
+                "B"));
+
+        var innerException = Assert.IsType<InvalidOperationException>(exception.InnerException);
+        Assert.Contains("有效選項", innerException.Message);
+    }
+
+    [Fact]
+    public void ValidateAndConvertComponentValue_AcceptsConfiguredOption()
+    {
+        var options = new List<MappingComponentOptionViewModel>
+        {
+            new() { Value = "1", Text = "Enabled" }
+        };
+
+        var convertedValue = InvokePrivateStatic<object>(
+            "ValidateAndConvertComponentValue",
+            FormControlType.Dropdown,
+            options,
+            "ENABLED",
+            "bit",
+            true);
+
+        Assert.Equal(true, convertedValue);
+    }
+
+    [Fact]
+    public void TryConvertStrict_RejectsInvalidBitInsteadOfConvertingToFalse()
+    {
+        var success = ConvertToColumnTypeHelper.TryConvertStrict(
+            "bit",
+            "not-a-boolean",
+            out var convertedValue);
+
+        Assert.False(success);
+        Assert.Null(convertedValue);
+    }
+
+    [Theory]
+    [InlineData("0", false)]
+    [InlineData("false", false)]
+    [InlineData("1", true)]
+    [InlineData("true", true)]
+    public void TryConvertStrict_ConvertsSupportedBitValues(string value, bool expected)
+    {
+        var success = ConvertToColumnTypeHelper.TryConvertStrict(
+            "bit",
+            value,
+            out var convertedValue);
+
+        Assert.True(success);
+        Assert.Equal(expected, convertedValue);
+    }
+
+    [Fact]
+    public void TryConvertStrict_RejectsIntOverflow()
+    {
+        var success = ConvertToColumnTypeHelper.TryConvertStrict(
+            "int",
+            ((long)int.MaxValue + 1).ToString(),
+            out var convertedValue);
+
+        Assert.False(success);
+        Assert.Null(convertedValue);
+    }
+
+    [Fact]
+    public void TryConvertStrict_ConvertsGuidAndDatetime2()
+    {
+        var guid = Guid.NewGuid();
+
+        Assert.True(ConvertToColumnTypeHelper.TryConvertStrict(
+            "uniqueidentifier",
+            guid.ToString(),
+            out var convertedGuid));
+        Assert.Equal(guid, convertedGuid);
+
+        Assert.True(ConvertToColumnTypeHelper.TryConvertStrict(
+            "datetime2",
+            "2026-07-20T13:45:30.1234567",
+            out var convertedDateTime));
+        Assert.IsType<DateTime>(convertedDateTime);
     }
 
     private static TResult InvokePrivateStatic<TResult>(string methodName, params object?[] arguments)

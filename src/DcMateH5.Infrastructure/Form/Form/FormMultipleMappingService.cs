@@ -348,12 +348,23 @@ SELECT ID AS Id,
                 }
             }
 
+            var convertedOptionValues = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
             foreach (var option in options)
             {
-                if (ConvertToColumnTypeHelper.Convert(context.TargetColumnType, option.Value) is null)
+                if (!ConvertToColumnTypeHelper.TryConvertStrict(
+                        context.TargetColumnType,
+                        option.Value,
+                        out var convertedOptionValue) ||
+                    convertedOptionValue is null)
                 {
                     throw new InvalidOperationException(
                         $"選項值 {option.Value} 無法轉換為目標欄位型別 {context.TargetColumnType}。");
+                }
+
+                if (!convertedOptionValues.Add(NormalizeScalarValue(convertedOptionValue)))
+                {
+                    throw new InvalidOperationException(
+                        $"選項值 {option.Value} 轉換為 {context.TargetColumnType} 後發生重複。");
                 }
             }
 
@@ -475,22 +486,12 @@ VALUES
                 throw new InvalidOperationException("此 Mapping Row 尚未設定動態元件。");
             }
 
-            if (IsOptionControl(config.ControlType) && request.Value is not null)
-            {
-                var submittedValue = NormalizeScalarValue(request.Value);
-                if (!config.Options.Any(option =>
-                        string.Equals(option.Value, submittedValue, StringComparison.OrdinalIgnoreCase)))
-                {
-                    throw new InvalidOperationException("輸入值不在此元件的有效選項中。");
-                }
-            }
-
-            var convertedValue = ConvertToColumnTypeHelper.Convert(context.TargetColumnType, request.Value);
-            if (request.Value is not null && convertedValue is null)
-            {
-                throw new InvalidOperationException(
-                    $"輸入值無法轉換為欄位 {context.TargetColumn} 的型別 {context.TargetColumnType}。");
-            }
+            var convertedValue = ValidateAndConvertComponentValue(
+                config.ControlType,
+                config.Options,
+                context.TargetColumn,
+                context.TargetColumnType,
+                request.Value);
 
             var columns = LoadColumnTypes(header.MAPPING_TABLE_NAME!, tx)
                 .Keys
@@ -899,15 +900,15 @@ UPDATE [{header.MAPPING_TABLE_NAME}]
             if (!string.IsNullOrWhiteSpace(header.MAPPING_PK_COLUMN))
             {
                 ValidateColumnName(header.MAPPING_PK_COLUMN);
-                var mappingRowIds = _con.Query<object>(
+                var mappingRowIds = _con.Query<MappingRowIdDbRow>(
                         $@"/**/
-SELECT [{header.MAPPING_PK_COLUMN}]
+SELECT [{header.MAPPING_PK_COLUMN}] AS MappingRowId
   FROM [{header.MAPPING_TABLE_NAME}]
  WHERE [{header.MAPPING_BASE_FK_COLUMN}] = @BaseId
    AND [{header.MAPPING_DETAIL_FK_COLUMN}] IN @DetailIds;",
                         new { BaseId = basePkValue, DetailIds = detailIds },
                         transaction: tx)
-                    .Select(NormalizeScalarValue)
+                    .Select(row => NormalizeScalarValue(row.MappingRowId))
                     .Distinct(StringComparer.OrdinalIgnoreCase)
                     .ToArray();
 
@@ -1053,6 +1054,20 @@ WHERE [{header.MAPPING_PK_COLUMN}] IN @Ids
             return 0;
         }
 
+        var mappingHeader = GetMappingHeader(formMasterId);
+        if (!string.IsNullOrWhiteSpace(mappingHeader.TARGET_MAPPING_COLUMN_NAME) &&
+            request.Fields.Keys.Any(column =>
+                string.Equals(
+                    column,
+                    mappingHeader.TARGET_MAPPING_COLUMN_NAME,
+                    StringComparison.OrdinalIgnoreCase)))
+        {
+            return await UpdateMappingTableDataWithComponentValidation(
+                formMasterId,
+                request,
+                ct);
+        }
+
         var mappingTableName = await GetMappingTableNameAsync(formMasterId, ct);
 
         // 1) 取得欄位白名單（無 tx）
@@ -1112,6 +1127,96 @@ WHERE [{header.MAPPING_PK_COLUMN}] IN @Ids
      WHERE [{pkName}] = @Pk;";
 
         return await _con.ExecuteAsync(sql, parameters);
+    }
+
+    private Task<int> UpdateMappingTableDataWithComponentValidation(
+        Guid formMasterId,
+        MappingTableUpdateRequest request,
+        CancellationToken ct)
+    {
+        return _txService.WithTransactionAsync(async (_, tx, txCt) =>
+        {
+            var header = GetMappingHeader(formMasterId, tx);
+            var context = ResolveComponentContext(header, request.MappingRowId, tx);
+            EnsureRowExists(
+                header.MAPPING_TABLE_NAME!,
+                context.MappingPkColumn,
+                context.MappingPkValue,
+                tx);
+
+            var tableColumns = _schemaService
+                .GetFormFieldMaster(header.MAPPING_TABLE_NAME!, tx);
+            if (tableColumns.Count == 0)
+            {
+                throw new InvalidOperationException(
+                    $"無法取得關聯表欄位資訊：{header.MAPPING_TABLE_NAME}");
+            }
+
+            var columnSet = tableColumns.ToHashSet(StringComparer.OrdinalIgnoreCase);
+            var columnTypes = LoadColumnTypes(header.MAPPING_TABLE_NAME!, tx);
+            var updatePairs = BuildUpdatePairs(
+                header.MAPPING_TABLE_NAME!,
+                context.MappingPkColumn,
+                request.Fields,
+                columnSet,
+                columnTypes,
+                tx);
+
+            var targetField = request.Fields.First(pair =>
+                string.Equals(
+                    pair.Key,
+                    context.TargetColumn,
+                    StringComparison.OrdinalIgnoreCase));
+            var configs = LoadComponentConfigs(
+                formMasterId,
+                new[] { context.NormalizedMappingRowId },
+                tx);
+            if (!configs.TryGetValue(context.NormalizedMappingRowId, out var config))
+            {
+                throw new InvalidOperationException("此 Mapping Row 尚未設定動態元件。");
+            }
+
+            var convertedTargetValue = ValidateAndConvertComponentValue(
+                config.ControlType,
+                config.Options,
+                context.TargetColumn,
+                context.TargetColumnType,
+                targetField.Value);
+            var targetPairIndex = updatePairs.FindIndex(pair =>
+                string.Equals(
+                    pair.Column,
+                    context.TargetColumn,
+                    StringComparison.OrdinalIgnoreCase));
+            updatePairs[targetPairIndex] = (context.TargetColumn, convertedTargetValue);
+
+            var parameters = new DynamicParameters();
+            var setFragments = new List<string>(capacity: updatePairs.Count);
+
+            for (var i = 0; i < updatePairs.Count; i++)
+            {
+                var parameterName = $"p{i}";
+                parameters.Add(parameterName, updatePairs[i].Value);
+                setFragments.Add($"[{updatePairs[i].Column}] = @{parameterName}");
+            }
+
+            FormAuditColumns.AddUpdateColumns(
+                columnSet,
+                setFragments,
+                parameters,
+                GetCurrentAccount());
+            parameters.Add("Pk", context.MappingPkValue);
+
+            var command = new CommandDefinition(
+                $@"/**/
+UPDATE [{header.MAPPING_TABLE_NAME}]
+   SET {string.Join(", ", setFragments)}
+ WHERE [{context.MappingPkColumn}] = @Pk;",
+                parameters,
+                transaction: tx,
+                cancellationToken: txCt);
+
+            return await _con.ExecuteAsync(command);
+        }, ct);
     }
 
     private FormFieldMasterDto GetMappingHeader(Guid formMasterId, SqlTransaction? tx = null)
@@ -1858,6 +1963,50 @@ UPDATE dbo.FORM_FIELD_MULTIPLE_MAPPING_COMPONENT_CONFIG
             transaction: tx);
     }
 
+    private static object? ValidateAndConvertComponentValue(
+        FormControlType controlType,
+        IReadOnlyList<MappingComponentOptionViewModel> options,
+        string targetColumn,
+        string targetColumnType,
+        object? value)
+    {
+        if (IsOptionControl(controlType) && value is null)
+        {
+            throw new InvalidOperationException("Dropdown 或 Radio 的輸入值不可為 NULL。");
+        }
+
+        if (!ConvertToColumnTypeHelper.TryConvertStrict(
+                targetColumnType,
+                value,
+                out var convertedValue))
+        {
+            throw new InvalidOperationException(
+                $"輸入值無法轉換為欄位 {targetColumn} 的型別 {targetColumnType}。");
+        }
+
+        if (IsOptionControl(controlType))
+        {
+            var normalizedValue = NormalizeScalarValue(convertedValue!);
+            var isValidOption = options.Any(option =>
+                ConvertToColumnTypeHelper.TryConvertStrict(
+                    targetColumnType,
+                    option.Value,
+                    out var convertedOptionValue) &&
+                convertedOptionValue is not null &&
+                string.Equals(
+                    NormalizeScalarValue(convertedOptionValue),
+                    normalizedValue,
+                    StringComparison.OrdinalIgnoreCase));
+
+            if (!isValidOption)
+            {
+                throw new InvalidOperationException("輸入值不在此元件的有效選項中。");
+            }
+        }
+
+        return convertedValue;
+    }
+
     private static bool IsOptionControl(FormControlType controlType) =>
         controlType is FormControlType.Dropdown or FormControlType.Radio;
 
@@ -1950,6 +2099,11 @@ UPDATE dbo.FORM_FIELD_MULTIPLE_MAPPING_COMPONENT_CONFIG
         public string Value { get; set; } = string.Empty;
         public string Text { get; set; } = string.Empty;
         public int Order { get; set; }
+    }
+
+    private sealed class MappingRowIdDbRow
+    {
+        public object MappingRowId { get; set; } = default!;
     }
 
     private sealed record ComponentContext(
@@ -2140,7 +2294,8 @@ UPDATE dbo.FORM_FIELD_MULTIPLE_MAPPING_COMPONENT_CONFIG
         string pkName,
         IDictionary<string, object?> fields,
         ISet<string> columnSet,
-        IReadOnlyDictionary<string, string> columnTypes)
+        IReadOnlyDictionary<string, string> columnTypes,
+        SqlTransaction? tx = null)
     {
         // 用 List 保持順序穩定；用 HashSet 防止重複欄位
         var result = new List<(string Column, object? Value)>(fields.Count);
@@ -2175,7 +2330,7 @@ UPDATE dbo.FORM_FIELD_MULTIPLE_MAPPING_COMPONENT_CONFIG
             }
 
             // 禁止更新 Identity（你原本就有）
-            if (_schemaService.IsIdentityColumn(tableName, column))
+            if (_schemaService.IsIdentityColumn(tableName, column, tx))
             {
                 throw new InvalidOperationException($"不可更新 Identity 欄位：{column}");
             }
