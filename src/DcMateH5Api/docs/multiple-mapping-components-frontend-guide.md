@@ -1,58 +1,81 @@
-# Mapping Table 逐 SID 動態元件－前端串接指南
+# Multiple Mapping 逐 SID 動態元件－前端串接指南
 
-## 1. 文件目的
+## 1. 這個功能在做什麼？
 
-本文件說明前端如何串接 Multiple Mapping 的逐 SID 動態元件功能。
+同一張 Mapping Table 的每一筆資料，都可以設定不同的輸入元件。
 
-此功能將元件設定綁定至 Mapping Table 的單一資料列。API 不固定使用名為 `SID` 的欄位，而是依表單 Header 的 `MAPPING_PK_COLUMN` 取得 Mapping Row 的識別值，並統一以 `MappingRowId` 對外提供。
+例如：
 
-主要使用情境分為：
+- SID `501` 使用 Dropdown，值只能選 `A` 或 `D`。
+- SID `502` 使用 Text，值由使用者自由輸入。
 
-1. Designer：查詢 Mapping Rows，並替每個 `MappingRowId` 設定元件。
-2. Runtime：依設定顯示元件，並將使用者輸入寫入 `TARGET_MAPPING_COLUMN_NAME`。
+後端不會寫死欄位名稱一定叫 `SID`。表單 Header 的 `MAPPING_PK_COLUMN` 是哪個欄位，該欄位的值就是 API 對外使用的 `MappingRowId`。
 
-## 2. 部署前置條件
+所有元件的值都寫入 Header 設定的 `TARGET_MAPPING_COLUMN_NAME`。
 
-後端 API 啟用前，資料庫必須先執行：
+## 2. 前端最短流程
 
-```text
-src/DcMateH5Api/docs/sql/20260720-multiple-mapping-component.sql
+### Designer 設定元件
+
+1. 查詢已建立的 Mapping Rows。
+2. 從查詢結果取得 `MappingRowId`。
+3. 替該 `MappingRowId` 設定 Text、Dropdown、Radio 等元件。
+
+### Runtime 顯示與更新
+
+1. 查詢 `items/query`。
+2. 從 `ComponentsByMappingRowId` 取得每筆 Mapping Row 的元件。
+3. `IsConfigured=true` 才顯示可輸入元件。
+4. 使用者輸入後，呼叫逐 SID Value API 更新值。
+
+```mermaid
+flowchart LR
+    A["建立關聯"] --> B["重新查詢取得 MappingRowId"]
+    B --> C["Designer 設定元件"]
+    C --> D["Runtime 依 ControlType 顯示"]
+    D --> E["呼叫 Value API 更新值"]
 ```
 
-逐 SID 元件設定使用以下資料表：
+## 3. 最重要的欄位
 
-- `FORM_FIELD_MULTIPLE_MAPPING_COMPONENT_CONFIG`：保存每個 `MappingRowId` 的元件類型、Dropdown 模式及 SQL。
-- `FORM_FIELD_MULTIPLE_MAPPING_COMPONENT_OPTION`：保存靜態選項或 SQL 同步後的選項快照。
+| 欄位 | 意義 | 前端用途 |
+|---|---|---|
+| `BaseId` | Base Table 的主鍵值 | 指定要查看哪一筆主資料的關聯 |
+| `DetailPk` | Detail Table 的主鍵值 | `Linked`／`Unlinked` Dictionary 的 key |
+| `MappingRowId` | Mapping Table 的識別值，通常就是 SID | `ComponentsByMappingRowId` 的 key，也是設定及更新元件時使用的 ID |
+| `IsConfigured` | 該 Mapping Row 是否已設定元件 | `false` 時不要顯示輸入元件 |
+| `CurrentValue` | `TARGET_MAPPING_COLUMN_NAME` 目前的值 | Runtime 顯示的初始值 |
+| `ControlType` | 要顯示的元件類型 | 決定前端要產生哪種 UI |
+| `Options` | Dropdown／Radio 的有效選項 | 顯示 `Text`，送出 `Value` |
 
-若環境中仍存在舊名稱 `FORM_MULTIPLE_MAPPING_COMPONENT_CONFIG`、`FORM_MULTIPLE_MAPPING_COMPONENT_OPTION`，部署 SQL 會保留資料並將資料表改成上述新名稱。
-
-表單 Header 必須具備以下設定：
-
-- `MAPPING_TABLE_NAME`
-- `MAPPING_PK_COLUMN`
-- `MAPPING_BASE_FK_COLUMN`
-- `MAPPING_DETAIL_FK_COLUMN`
-- `TARGET_MAPPING_COLUMN_NAME`
-
-其中 `MAPPING_PK_COLUMN` 必須是 Mapping Table 的非 null 單欄主鍵或唯一欄位。
-
-## 3. 重要契約規則
-
-### 3.1 JSON 命名
-
-API 使用 PascalCase，因此前端應讀取：
+`DetailPk` 和 `MappingRowId` 不可混用：
 
 ```ts
-response.ComponentsByMappingRowId;
-component.MappingRowId;
-component.CurrentValue;
+const linkedRow = response.Linked[detailPk];
+const component = response.ComponentsByMappingRowId[linkedRow.MappingRowId];
 ```
 
-不要假設回傳欄位為 camelCase。
+Unlinked 資料尚未建立 Mapping Row，因此沒有可用的 `MappingRowId`，也不會出現在 `ComponentsByMappingRowId`。
 
-### 3.2 Enum 格式
+## 4. API 一覽
 
-`FormControlType` 使用數字：
+| 用途 | Method | 路徑 |
+|---|---|---|
+| Designer 查詢元件設定 | `POST` | `/Form/FormDesignerMultipleMapping/{formMasterId}/mapping-components/query` |
+| Designer 新增或覆寫元件 | `PUT` | `/Form/FormDesignerMultipleMapping/{formMasterId}/mapping-components/{mappingRowId}` |
+| Designer 清除元件 | `DELETE` | `/Form/FormDesignerMultipleMapping/{formMasterId}/mapping-components/{mappingRowId}` |
+| Runtime 查詢關聯與元件 | `POST` | `/Form/FormMultipleMapping/{formMasterId}/items/query` |
+| Runtime 更新元件值 | `PUT` | `/Form/FormMultipleMapping/{formMasterId}/mapping-components/{mappingRowId}/value` |
+
+路徑中的 `mappingRowId` 請先編碼：
+
+```ts
+const encodedMappingRowId = encodeURIComponent(mappingRowId);
+```
+
+## 5. Enum 與基本型別
+
+API 使用數字 Enum，JSON 欄位名稱使用 PascalCase。
 
 ```ts
 export enum FormControlType {
@@ -66,53 +89,13 @@ export enum FormControlType {
   DateTime = 7,
   Radio = 8,
 }
-```
 
-`MappingListType`：
-
-```ts
 export enum MappingListType {
   All = 0,
   LinkedOnly = 1,
   UnlinkedOnly = 2,
 }
-```
 
-### 3.3 MappingRowId 與 DetailPk
-
-- `DetailPk`：Detail Table 的主鍵，也是既有 `Linked`／`Unlinked` Dictionary 的 key。
-- `MappingRowId`：Mapping Table 的主鍵，也是 `ComponentsByMappingRowId` 的 key。
-
-兩者不可混用。
-
-```ts
-const component = response.ComponentsByMappingRowId[mappingRowId];
-const detailRow = response.Linked[component.DetailPk];
-```
-
-若 `MappingRowId` 可能包含 URL 特殊字元，呼叫路由前必須使用：
-
-```ts
-encodeURIComponent(mappingRowId);
-```
-
-## 4. 整體流程
-
-```mermaid
-flowchart LR
-    A["新增 Mapping 關聯"] --> B["重新查詢 items/query"]
-    B --> C["取得 MappingRowId"]
-    C --> D["Designer 設定元件"]
-    D --> E["Runtime 查詢元件"]
-    E --> F["依 ControlType 顯示 UI"]
-    F --> G["送出元件值"]
-```
-
-尚未建立 Mapping Row 的 Unlinked 資料沒有 `MappingRowId`，因此必須先新增關聯，再進行元件設定。
-
-## 5. 前端 TypeScript 型別
-
-```ts
 export interface MappingComponentOption {
   Value: string;
   Text: string;
@@ -127,46 +110,15 @@ export interface RuntimeMappingComponent {
   Options: MappingComponentOption[];
   IsConfigured: boolean;
 }
-
-export interface DesignerMappingComponent extends RuntimeMappingComponent {
-  IsUseSql: boolean;
-  DropdownSql: string | null;
-}
-
-export interface MappingComponentDesignerResponse {
-  FormMasterId: string;
-  TotalCount: number;
-  ComponentsByMappingRowId: Record<string, DesignerMappingComponent>;
-}
-
-export interface MappingComponentUpsertRequest {
-  ControlType: FormControlType;
-  IsUseSql: boolean;
-  DropdownSql: string | null;
-  Options: MappingComponentOption[];
-}
-
-export interface MappingComponentValueUpdateRequest {
-  Value: unknown;
-}
 ```
 
-## 6. Designer API
+## 6. 查詢 Request 怎麼填？
 
-Designer API 的 Controller 基底路徑為：
+Designer 查詢和 Runtime 查詢共用 `MappingListQuery`。
 
-```text
-/Form/FormDesignerMultipleMapping
-```
+### 6.1 最簡單的 Designer 查詢
 
-### 6.1 查詢 Mapping Rows 與元件設定
-
-```http
-POST /Form/FormDesignerMultipleMapping/{formMasterId}/mapping-components/query
-Content-Type: application/json
-```
-
-Request：
+Designer 固定只查已關聯的 Mapping Rows，所以不用傳 `Type`：
 
 ```json
 {
@@ -177,12 +129,96 @@ Request：
 }
 ```
 
+### 6.2 最簡單的 Runtime 查詢
+
+只需要顯示已關聯資料及元件時，使用 `LinkedOnly`：
+
+```json
+{
+  "BaseId": "1001",
+  "Type": 1,
+  "Page": 1,
+  "PageSize": 20,
+  "OrderBySeqAscending": true
+}
+```
+
+若畫面同時需要左右兩側的 Linked／Unlinked 清單，將 `Type` 改成 `0`。
+
 規則：
 
 - `BaseId` 必填。
-- `Page` 與 `PageSize` 必須一起傳入或一起省略。
-- 後端固定查詢 Linked Rows，因此 `Type` 可以省略。
-- `DetailConditions`、`MappingConditions` 可沿用既有查詢條件契約。
+- `Page`、`PageSize` 必須一起傳，或一起省略。
+- `Page`、`PageSize` 必須大於 `0`。
+- Runtime 的 `Type` 請明確傳入。
+
+### 6.3 DetailConditions 與 MappingConditions
+
+這兩個欄位只是「額外篩選條件」，不需要篩選時可以省略或傳空陣列。
+
+| 欄位 | 查哪張表 | 例子 |
+|---|---|---|
+| `DetailConditions` | Detail Table | 用料號、名稱或狀態篩選明細資料 |
+| `MappingConditions` | Mapping Table | 用 Mapping 的 SEQ、建立時間或其他欄位篩選已關聯資料 |
+
+範例：Detail 的 `NAME` 包含「馬達」，且 Mapping 的 `SEQ` 大於等於 `10`：
+
+```json
+{
+  "BaseId": "1001",
+  "Type": 1,
+  "DetailConditions": [
+    {
+      "Column": "NAME",
+      "ConditionType": 2,
+      "Value": "馬達"
+    }
+  ],
+  "MappingConditions": [
+    {
+      "Column": "SEQ",
+      "ConditionType": 5,
+      "Value": "10"
+    }
+  ],
+  "Page": 1,
+  "PageSize": 20,
+  "OrderBySeqAscending": true
+}
+```
+
+常用的 `ConditionType`：
+
+| 數值 | 意義 | 使用欄位 |
+|---:|---|---|
+| `1` | 等於 | `Value` |
+| `2` | 包含／模糊查詢 | `Value` |
+| `3` | 區間 | `Value`、`Value2` |
+| `5` | 大於等於 | `Value` |
+| `8` | IN | `Values` |
+| `9` | 不等於 | `Value` |
+| `10` | NOT IN | `Values` |
+| `11` | IS NULL | 不用傳值 |
+| `12` | IS NOT NULL | 不用傳值 |
+
+注意：
+
+- `Column` 必須是對應資料表的真實欄位名稱。
+- 此 API 會從資料庫 Schema 取得型別，前端不需要自行判斷 `DataType`。
+- Unlinked 資料沒有 Mapping Row，因此 `Type=2` 時不可傳 `MappingConditions`。
+
+## 7. Designer：設定每筆 SID 的元件
+
+後端會依 Target Column 的 SQL 型別檢查可用的 `ControlType`。若設定不相容的元件，API 會回傳 `400`。
+
+要取消元件設定時請呼叫 DELETE，不要用 PUT 傳入 `ControlType=0`。
+
+### 7.1 查詢目前設定
+
+```http
+POST /Form/FormDesignerMultipleMapping/{formMasterId}/mapping-components/query
+Content-Type: application/json
+```
 
 Response 範例：
 
@@ -199,16 +235,8 @@ Response 範例：
       "IsUseSql": false,
       "DropdownSql": null,
       "Options": [
-        {
-          "Value": "A",
-          "Text": "啟用",
-          "Order": 1
-        },
-        {
-          "Value": "D",
-          "Text": "停用",
-          "Order": 2
-        }
+        { "Value": "A", "Text": "啟用", "Order": 1 },
+        { "Value": "D", "Text": "停用", "Order": 2 }
       ],
       "IsConfigured": true
     },
@@ -226,16 +254,12 @@ Response 範例：
 }
 ```
 
-`IsConfigured=false` 表示 Mapping Row 已存在，但尚未設定可輸入元件。
-
-### 6.2 設定一般輸入元件
+### 7.2 設定 Text
 
 ```http
 PUT /Form/FormDesignerMultipleMapping/{formMasterId}/mapping-components/{mappingRowId}
 Content-Type: application/json
 ```
-
-Text 範例：
 
 ```json
 {
@@ -246,13 +270,7 @@ Text 範例：
 }
 ```
 
-成功時回傳 `204 No Content`。
-
-一般輸入元件不可傳入 Dropdown SQL 或 Options。
-
-### 6.3 設定靜態 Dropdown 或 Radio
-
-Dropdown：
+### 7.3 設定靜態 Dropdown
 
 ```json
 {
@@ -260,25 +278,15 @@ Dropdown：
   "IsUseSql": false,
   "DropdownSql": null,
   "Options": [
-    {
-      "Value": "A",
-      "Text": "啟用",
-      "Order": 1
-    },
-    {
-      "Value": "D",
-      "Text": "停用",
-      "Order": 2
-    }
+    { "Value": "A", "Text": "啟用", "Order": 1 },
+    { "Value": "D", "Text": "停用", "Order": 2 }
   ]
 }
 ```
 
-Radio 使用相同契約，但 `ControlType` 改為 `8`。
+Radio 使用相同格式，只要把 `ControlType` 改成 `8`。
 
-靜態 Dropdown／Radio 至少需要一筆有效選項，且 `Value` 不可重複。
-
-### 6.4 設定 SQL Dropdown 或 Radio
+### 7.4 設定 SQL Dropdown
 
 ```json
 {
@@ -289,25 +297,26 @@ Radio 使用相同契約，但 `ControlType` 改為 `8`。
 }
 ```
 
-SQL 規則：
+SQL 必須符合以下規則：
 
-- 只能使用單一唯讀 `SELECT`。
-- 不允許堆疊多段 SQL。
-- 查詢結果必須包含 `ID` 與 `NAME` 欄位，欄位名稱不分大小寫。
+- 只能有一個唯讀 `SELECT`。
+- 結果必須包含 `ID`、`NAME` 欄位。
 - `ID`、`NAME` 不可為 null 或空字串。
-- `ID` 不可重複。
-- `ID` 必須可轉換成 `TARGET_MAPPING_COLUMN_NAME` 的 SQL 型別。
-- 儲存時後端會同步選項快照；Runtime 不會重新即時執行 SQL。
+- `ID` 不可重複，而且必須能轉成 Target Column 的 SQL 型別。
 
-### 6.5 清除元件設定
+儲存時，後端會執行 SQL 並保存選項快照。Runtime 查詢不會每次重新執行 Dropdown SQL。
+
+### 7.5 設定成功與清除設定
+
+新增、覆寫及刪除成功都回傳 `204 No Content`。
+
+清除元件：
 
 ```http
 DELETE /Form/FormDesignerMultipleMapping/{formMasterId}/mapping-components/{mappingRowId}
 ```
 
-成功時回傳 `204 No Content`。
-
-清除後 Mapping Row 仍然存在，但後續查詢會回傳：
+清除後 Mapping Row 還在，但會變成：
 
 ```json
 {
@@ -317,34 +326,16 @@ DELETE /Form/FormDesignerMultipleMapping/{formMasterId}/mapping-components/{mapp
 }
 ```
 
-## 7. Runtime API
+## 8. Runtime：顯示與更新元件
 
-Runtime API 的 Controller 基底路徑為：
-
-```text
-/Form/FormMultipleMapping
-```
-
-### 7.1 查詢 Linked／Unlinked 與動態元件
+### 8.1 查詢 Runtime 資料
 
 ```http
 POST /Form/FormMultipleMapping/{formMasterId}/items/query
 Content-Type: application/json
 ```
 
-Request：
-
-```json
-{
-  "BaseId": "1001",
-  "Type": 0,
-  "Page": 1,
-  "PageSize": 20,
-  "OrderBySeqAscending": true
-}
-```
-
-Response 會保留既有的 `Linked`、`Unlinked`，並額外提供 `ComponentsByMappingRowId`：
+Response 會保留原本的 `Linked`、`Unlinked`，並加入 `ComponentsByMappingRowId`：
 
 ```json
 {
@@ -365,11 +356,8 @@ Response 會保留既有的 `Linked`、`Unlinked`，並額外提供 `ComponentsB
       "ControlType": 6,
       "CurrentValue": "A",
       "Options": [
-        {
-          "Value": "A",
-          "Text": "啟用",
-          "Order": 1
-        }
+        { "Value": "A", "Text": "啟用", "Order": 1 },
+        { "Value": "D", "Text": "停用", "Order": 2 }
       ],
       "IsConfigured": true
     }
@@ -377,60 +365,40 @@ Response 會保留既有的 `Linked`、`Unlinked`，並額外提供 `ComponentsB
 }
 ```
 
-`CurrentValue` 一律來自 Header 設定的 `TARGET_MAPPING_COLUMN_NAME`。
-
-Unlinked 資料不會出現在 `ComponentsByMappingRowId`。
-
-### 7.2 Runtime 元件顯示規則
+### 8.2 產生 UI
 
 ```ts
-export function resolveInputType(
-  component: RuntimeMappingComponent,
-): string {
-  if (!component.IsConfigured) {
+function getInputKind(component: RuntimeMappingComponent): string {
+  if (!component.IsConfigured || component.ControlType === FormControlType.None) {
     return "none";
   }
 
   switch (component.ControlType) {
-    case FormControlType.Text:
-      return "text";
-    case FormControlType.Number:
-      return "number";
-    case FormControlType.Date:
-      return "date";
-    case FormControlType.Checkbox:
-      return "checkbox";
-    case FormControlType.Textarea:
-      return "textarea";
-    case FormControlType.Dropdown:
-      return "select";
-    case FormControlType.DateTime:
-      return "datetime-local";
-    case FormControlType.Radio:
-      return "radio";
-    default:
-      return "none";
+    case FormControlType.Text: return "text";
+    case FormControlType.Number: return "number";
+    case FormControlType.Date: return "date";
+    case FormControlType.Checkbox: return "checkbox";
+    case FormControlType.Textarea: return "textarea";
+    case FormControlType.Dropdown: return "select";
+    case FormControlType.DateTime: return "datetime-local";
+    case FormControlType.Radio: return "radio";
+    default: return "none";
   }
 }
 ```
 
-若符合下列任一條件，前端應保留資料列顯示，但不產生可輸入元件：
+Dropdown／Radio：
 
-```ts
-!component.IsConfigured ||
-component.ControlType === FormControlType.None;
-```
+- 畫面顯示 `Options[].Text`。
+- 送出時使用 `Options[].Value`。
+- 不要自行產生 Options 以外的值。
 
-Dropdown／Radio 顯示 `option.Text`，送出時使用 `option.Value`。
-
-### 7.3 更新單一 Mapping Row 的值
+### 8.3 更新值
 
 ```http
 PUT /Form/FormMultipleMapping/{formMasterId}/mapping-components/{mappingRowId}/value
 Content-Type: application/json
 ```
-
-Dropdown／Radio：
 
 ```json
 {
@@ -438,31 +406,7 @@ Dropdown／Radio：
 }
 ```
 
-Text：
-
-```json
-{
-  "Value": "使用者輸入的內容"
-}
-```
-
-Number：
-
-```json
-{
-  "Value": 123.45
-}
-```
-
-Checkbox：
-
-```json
-{
-  "Value": true
-}
-```
-
-成功 Response：
+成功時：
 
 ```json
 {
@@ -470,9 +414,18 @@ Checkbox：
 }
 ```
 
-Dropdown／Radio 必須送出 API 提供的 `Options[].Value`。不存在的選項、未設定元件或無法轉換成 SQL 欄位型別的值會收到 `400 Bad Request`。
+後端會檢查：
 
-### 7.4 Fetch 呼叫範例
+- 該 `MappingRowId` 必須已設定元件。
+- Dropdown／Radio 不接受 `null`。
+- Dropdown／Radio 的值必須存在於有效 `Options`。
+- 所有輸入都必須能轉成 Target Column 的 SQL 型別。
+
+Runtime 更新 `TARGET_MAPPING_COLUMN_NAME` 時，請使用這支 Value API。
+
+既有的 `/mapping-table` API 仍可更新其他 Mapping 欄位；若用它更新 Target Column，也會套用相同的元件與選項驗證，不能用來繞過限制。
+
+### 8.4 Fetch 範例
 
 ```ts
 export async function updateMappingComponentValue(
@@ -480,107 +433,58 @@ export async function updateMappingComponentValue(
   mappingRowId: string,
   value: unknown,
 ): Promise<{ Affected: number }> {
-  const encodedRowId = encodeURIComponent(mappingRowId);
   const response = await fetch(
     `/Form/FormMultipleMapping/${formMasterId}` +
-      `/mapping-components/${encodedRowId}/value`,
+      `/mapping-components/${encodeURIComponent(mappingRowId)}/value`,
     {
       method: "PUT",
-      headers: {
-        "Content-Type": "application/json",
-      },
+      headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ Value: value }),
     },
   );
 
   if (!response.ok) {
-    throw new Error(await response.text());
+    throw new Error(await readApiError(response));
   }
 
-  return response.json() as Promise<{ Affected: number }>;
+  return response.json();
 }
 ```
 
-更新成功後，前端可以先同步更新本機的 `CurrentValue`，並視畫面需求重新查詢 `items/query`。
+## 9. 新增與移除關聯
 
-## 8. 新增關聯後設定元件
+### 新增關聯
 
-Unlinked Row 沒有 `MappingRowId`。前端新增關聯時應依序執行：
+Unlinked Row 沒有 `MappingRowId`，請依照以下順序：
 
-### 8.1 新增 Mapping 關聯
+1. 呼叫 `POST /Form/FormMultipleMapping/{formMasterId}/items` 建立關聯。
+2. 重新呼叫 `items/query`。
+3. 從 `Linked[detailPk].MappingRowId` 取得新產生的 Mapping Row ID。
+4. 再呼叫 Designer API 設定元件。
 
-```http
-POST /Form/FormMultipleMapping/{formMasterId}/items
-Content-Type: application/json
-```
+剛建立的 Mapping Row 預設為 `IsConfigured=false`，Runtime 不應顯示可輸入元件。
 
-```json
-{
-  "BaseId": "1001",
-  "Items": [
-    {
-      "DetailId": "2003",
-      "ExtraFields": {}
-    }
-  ]
-}
-```
+### 移除關聯
 
-成功時回傳 `204 No Content`。
-
-### 8.2 重新取得 MappingRowId
-
-再次呼叫：
-
-```http
-POST /Form/FormMultipleMapping/{formMasterId}/items/query
-```
-
-從新的 `Linked[detailPk].MappingRowId` 取得 Mapping Row 識別值。
-
-### 8.3 Designer 設定元件
-
-取得 `MappingRowId` 後，再呼叫 Designer 的元件設定 API。
-
-新增關聯的初始狀態為：
-
-```json
-{
-  "ControlType": 0,
-  "Options": [],
-  "IsConfigured": false
-}
-```
-
-## 9. 移除關聯的影響
-
-呼叫既有移除 Mapping API 時：
+呼叫：
 
 ```http
 POST /Form/FormMultipleMapping/{formMasterId}/items/remove
 ```
 
-後端會在同一交易內：
+後端會在同一交易中移除 Mapping Row，並軟刪除對應的元件及選項。前端成功後重新查詢即可。
 
-1. 軟刪除該 Mapping Row 的元件選項。
-2. 軟刪除該 Mapping Row 的元件設定。
-3. 移除 Mapping Row。
+## 10. 錯誤處理
 
-移除後該設定不會再出現在查詢結果中。
-
-## 10. 錯誤處理建議
-
-前端至少應處理：
-
-| HTTP 狀態 | 常見原因 | 建議處理 |
+| HTTP 狀態 | 意義 | 前端處理 |
 |---|---|---|
-| `204` | Designer 設定或刪除成功 | 關閉編輯狀態並重新查詢 |
-| `200` | 查詢或 Runtime 值更新成功 | 更新畫面資料 |
-| `400` | 請求格式、選項、SQL 或型別驗證失敗 | 顯示 API 回傳訊息 |
-| `404` | 表單或 Mapping Row 不存在 | 重新載入清單或提示資料已移除 |
-| `409` | 有逐 SID 設定時變更 Mapping Table／PK／Target Column | 要求先清除逐 SID 設定 |
+| `200` | 查詢或 Runtime 更新成功 | 更新畫面資料 |
+| `204` | Designer 設定、清除或關聯操作成功 | 重新查詢 |
+| `400` | 請求、選項、SQL 或型別驗證失敗 | 顯示後端訊息，不更新本機值 |
+| `404` | 表單或 Mapping Row 不存在 | 重新載入或提示資料已移除 |
+| `409` | 尚有逐 SID 設定，不能更換 Mapping Table／PK／Target Column | 提示先清除逐 SID 設定 |
 
-目前部分錯誤 Response 為純文字內容，前端不要假設所有錯誤都一定是 JSON `ProblemDetails`。
+部分錯誤是純文字，部分是 JSON。可使用：
 
 ```ts
 async function readApiError(response: Response): Promise<string> {
@@ -595,23 +499,35 @@ async function readApiError(response: Response): Promise<string> {
 }
 ```
 
-## 11. 前端驗收檢查清單
+## 11. 前端檢查清單
 
-- [ ] API Response 使用 PascalCase 解析。
-- [ ] `FormControlType` 依數字 enum 判斷。
-- [ ] `Linked` 使用 `DetailPk` 作為 key。
-- [ ] `ComponentsByMappingRowId` 使用 Mapping PK／SID 作為 key。
-- [ ] `IsConfigured=false` 時不顯示可輸入元件。
-- [ ] Dropdown／Radio 顯示 `Text`、送出 `Value`。
-- [ ] 呼叫含 `MappingRowId` 的路由前使用 `encodeURIComponent`。
-- [ ] 新增關聯後重新查詢，取得新產生的 `MappingRowId`。
-- [ ] Runtime 更新只呼叫 `/mapping-components/{mappingRowId}/value`。
-- [ ] 值更新成功後同步 `CurrentValue` 或重新查詢。
-- [ ] 400、404、409 均顯示後端回傳訊息。
+- [ ] 使用 PascalCase 讀取 API 欄位。
+- [ ] `Linked`／`Unlinked` 使用 `DetailPk` 當 key。
+- [ ] `ComponentsByMappingRowId` 使用 Mapping PK／SID 當 key。
+- [ ] `IsConfigured=false` 時不顯示輸入元件。
+- [ ] Dropdown／Radio 顯示 `Text`，送出 `Value`。
+- [ ] Runtime 更新 Target Column 時呼叫逐 SID Value API。
+- [ ] `mappingRowId` 放入 URL 前使用 `encodeURIComponent`。
+- [ ] 新增關聯後重新查詢，不能把 `DetailPk` 當成 `MappingRowId`。
+- [ ] API 回 400 時保留原值並顯示訊息。
 
-## 12. 後端契約位置
+## 12. 後端部署提醒
 
-- `src/DcMateH5.Abstractions/Form/ViewModels/MultipleMappingComponentViewModels.cs`
-- `src/DcMateH5.Abstractions/Form/ViewModels/MultipleMappingOperationViewModels.cs`
-- `src/DcMateH5Api/Areas/Form/Controllers/FormDesignerMultipleMappingController.cs`
-- `src/DcMateH5Api/Areas/Form/Controllers/FormMultipleMappingController.cs`
+啟用功能前必須執行：
+
+```text
+src/DcMateH5Api/docs/sql/20260720-multiple-mapping-component.sql
+```
+
+設定資料表名稱：
+
+- `FORM_FIELD_MULTIPLE_MAPPING_COMPONENT_CONFIG`
+- `FORM_FIELD_MULTIPLE_MAPPING_COMPONENT_OPTION`
+
+表單 Header 必須設定：
+
+- `MAPPING_TABLE_NAME`
+- `MAPPING_PK_COLUMN`
+- `MAPPING_BASE_FK_COLUMN`
+- `MAPPING_DETAIL_FK_COLUMN`
+- `TARGET_MAPPING_COLUMN_NAME`
