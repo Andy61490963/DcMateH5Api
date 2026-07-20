@@ -67,6 +67,20 @@ public class LotBaseSettingControllerTests
     }
 
     [Fact]
+    public async Task LotCheckInCancel_ShouldReturnBadRequestResult_WhenServiceThrows()
+    {
+        var controller = new WipLotSettingController(new ThrowingLotBaseSettingService());
+
+        var actionResult = await controller.LotCheckInCancel(new WipLotCheckInCancelInputDto(), CancellationToken.None);
+
+        var badRequest = Assert.IsType<ObjectResult>(actionResult);
+        Assert.Equal((int)HttpStatusCode.BadRequest, badRequest.StatusCode);
+        var result = Assert.IsType<Result<bool>>(badRequest.Value);
+        Assert.False(result.IsSuccess);
+        Assert.Equal(WipLotErrorCode.BadRequest.ToString(), result.Code);
+    }
+
+    [Fact]
     public async Task LotCheckIn_ShouldReturnBadRequestResult_WhenNoLotsProvided()
     {
         var controller = new WipLotSettingController(new FakeLotBaseSettingService());

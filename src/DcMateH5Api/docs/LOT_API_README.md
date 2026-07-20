@@ -163,14 +163,25 @@ Endpoint:
 POST /api/Wip/WipLotSetting/LotCheckInCancel
 ```
 
-功能：取消進站，清除目前人員/設備，關閉未出站的人員履歷，狀態回到 `Wait`。
+功能：停止或取消進站，清除目前人員／設備，關閉未出站的人員履歷，狀態回到 `Wait`。
 
 限制：
 
 - LOT 必須已進站。
 - LOT 目前狀態通常需為 `Run`。
+- `REASON_CODE` 僅接受 `STOP` 或 `CANCEL`，不區分大小寫且會忽略前後空白。
+- 未傳或傳入空白的 `REASON_CODE` 時，預設為 `CANCEL`，以相容既有呼叫端。
 
-測試 payload:
+履歷對應：
+
+| `REASON_CODE` | `WIP_LOT_HIST.ACTION_CODE` | `WIP_LOT_REASON_HIST.REASON_CODE` |
+|---|---|---|
+| `STOP` | `CHECK_IN_STOP` | `STOP` |
+| `CANCEL` | `CHECK_IN_CANCEL` | `CANCEL` |
+
+兩種原因都執行相同的狀態回復與人機清理流程。原因履歷不依賴 `ADM_REASON`，`REASON_SID`、`REASON_TYPE` 與 `REASON_NAME` 皆為空值。
+
+STOP 測試 payload：
 
 ```json
 {
@@ -178,7 +189,8 @@ POST /api/Wip/WipLotSetting/LotCheckInCancel
   "DATA_LINK_SID": 900000000902,
   "REPORT_TIME": "2026-04-22T10:10:00",
   "ACCOUNT_NO": "TestAc1",
-  "COMMENT": "swagger lot check in cancel test",
+  "REASON_CODE": "STOP",
+  "COMMENT": "swagger lot check in stop test",
   "INPUT_FORM_NAME": "Swagger"
 }
 ```

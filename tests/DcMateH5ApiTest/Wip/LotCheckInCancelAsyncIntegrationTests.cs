@@ -3,6 +3,7 @@ using System.Text.Json;
 using Dapper;
 using DbExtensions;
 using DbExtensions.DbExecutor.Service;
+using DcMateClassLibrary.Helper.HttpHelper;
 using DcMateClassLibrary.Models;
 using DcMateH5.Abstractions.CurrentUser;
 using DcMateH5.Abstractions.Log;
@@ -12,6 +13,7 @@ using DcMateH5Api.Areas.Wip.Model;
 using Microsoft.AspNetCore.Http;
 using Microsoft.Data.SqlClient;
 using Microsoft.Extensions.Options;
+using System.Net;
 using Xunit;
 
 namespace DcMateH5ApiTest.Wip;
@@ -19,47 +21,26 @@ namespace DcMateH5ApiTest.Wip;
 [Collection(DatabaseIntegrationCollection.Name)]
 public class LotCheckInCancelAsyncIntegrationTests
 {
-    [Fact]
+    [Theory]
+    [InlineData("STOP", "CHECK_IN_STOP", "STOP")]
+    [InlineData("CANCEL", "CHECK_IN_CANCEL", "CANCEL")]
+    [InlineData(null, "CHECK_IN_CANCEL", "CANCEL")]
+    [InlineData("   ", "CHECK_IN_CANCEL", "CANCEL")]
+    [InlineData(" stop ", "CHECK_IN_STOP", "STOP")]
     [Trait("Category", "Integration")]
-    public async Task LotCheckInCancelAsync_ShouldRevertLotToWaitAndCleanupCurrentAssignments()
+    public async Task LotCheckInCancelAsync_ShouldRecordReasonAndCleanupCurrentAssignments(
+        string? reasonCode,
+        string expectedActionCode,
+        string expectedReasonCode)
     {
         var connectionString = TestConfiguration.LoadConnectionString();
         var arrangement = await LoadArrangementAsync(connectionString);
-        var lotCode = $"ITEST-CIC-{DateTime.UtcNow:yyyyMMddHHmmssfff}";
+        var lotCode = $"ITEST-CIC-{Guid.NewGuid():N}";
         var service = CreateService(connectionString, arrangement.AccountNo);
 
         try
         {
-            var createLotResult = await service.CreateLotAsync(
-                new WipCreateLotInputDto
-                {
-                    DATA_LINK_SID = 900000000401m,
-                    LOT = lotCode,
-                    ALIAS_LOT1 = $"{lotCode}-A1",
-                    ALIAS_LOT2 = $"{lotCode}-A2",
-                    WO = arrangement.WorkOrder,
-                    ROUTE_SID = arrangement.RouteSid,
-                    LOT_QTY = 2,
-                    REPORT_TIME = DateTime.Now,
-                    ACCOUNT_NO = arrangement.AccountNo,
-                    INPUT_FORM_NAME = "DcMateH5ApiTest",
-                    COMMENT = "LotCheckInCancelAsync integration test"
-                });
-            Assert.True(createLotResult.IsSuccess);
-
-            var checkInResult = await service.LotCheckInAsync(
-                new WipLotCheckInInputDto
-                {
-                    LOT = lotCode,
-                    DATA_LINK_SID = 900000000402m,
-                    ACCOUNT_NO = arrangement.AccountNo,
-                    EQP_NO = arrangement.EquipmentNo,
-                    SHIFT_SID = arrangement.ShiftSid,
-                    LOT_SUB_STATUS_CODE = "NORMAL",
-                    COMMENT = "LotCheckInCancelAsync integration test",
-                    INPUT_FORM_NAME = "DcMateH5ApiTest"
-                });
-            Assert.True(checkInResult.IsSuccess);
+            await CreateAndCheckInLotAsync(service, arrangement, lotCode);
 
             var result = await service.LotCheckInCancelAsync(
                 new WipLotCheckInCancelInputDto
@@ -67,6 +48,7 @@ public class LotCheckInCancelAsyncIntegrationTests
                     LOT = lotCode,
                     DATA_LINK_SID = 900000000403m,
                     ACCOUNT_NO = arrangement.AccountNo,
+                    REASON_CODE = reasonCode,
                     COMMENT = "LotCheckInCancelAsync integration test",
                     INPUT_FORM_NAME = "DcMateH5ApiTest"
                 });
@@ -91,16 +73,35 @@ public class LotCheckInCancelAsyncIntegrationTests
 
             var cancelHist = await conn.QuerySingleOrDefaultAsync<HistRow>(
                 """
-                SELECT TOP (1) ACTION_CODE, LOT_STATUS_CODE
-                FROM WIP_LOT_HIST
-                WHERE LOT = @Lot AND ACTION_CODE = 'CHECK_IN_CANCEL'
-                ORDER BY SEQ DESC
+                SELECT TOP (1)
+                    h.ACTION_CODE,
+                    h.LOT_STATUS_CODE,
+                    r.REASON_TYPE,
+                    r.REASON_SID,
+                    r.REASON_CODE,
+                    r.REASON_NAME,
+                    r.REASON_COMMENT,
+                    r.REASON_QTY,
+                    r.REASON_QTY1,
+                    r.REASON_QTY2
+                FROM WIP_LOT_HIST h
+                INNER JOIN WIP_LOT_REASON_HIST r ON r.WIP_LOT_HIST_SID = h.WIP_LOT_HIST_SID
+                WHERE h.LOT = @Lot AND h.ACTION_CODE = @ExpectedActionCode
+                ORDER BY h.SEQ DESC
                 """,
-                new { Lot = lotCode });
+                new { Lot = lotCode, ExpectedActionCode = expectedActionCode });
 
             Assert.NotNull(cancelHist);
-            Assert.Equal("CHECK_IN_CANCEL", cancelHist!.ACTION_CODE);
+            Assert.Equal(expectedActionCode, cancelHist!.ACTION_CODE);
             Assert.Equal("Wait", cancelHist.LOT_STATUS_CODE);
+            Assert.Null(cancelHist.REASON_TYPE);
+            Assert.Null(cancelHist.REASON_SID);
+            Assert.Equal(expectedReasonCode, cancelHist.REASON_CODE);
+            Assert.Null(cancelHist.REASON_NAME);
+            Assert.Equal("LotCheckInCancelAsync integration test", cancelHist.REASON_COMMENT);
+            Assert.Equal(0, cancelHist.REASON_QTY);
+            Assert.Null(cancelHist.REASON_QTY1);
+            Assert.Null(cancelHist.REASON_QTY2);
 
             var currentUserCount = await conn.ExecuteScalarAsync<int>(
                 "SELECT COUNT(1) FROM WIP_LOT_CUR_USER WHERE LOT = @Lot",
@@ -121,15 +122,122 @@ public class LotCheckInCancelAsyncIntegrationTests
                 WHERE inHist.LOT = @Lot
                   AND inHist.ACTION_CODE = 'CHECK_IN'
                   AND h.OUT_FLAG = 'Y'
-                  AND outHist.ACTION_CODE = 'CHECK_IN_CANCEL'
+                  AND outHist.ACTION_CODE = @ExpectedActionCode
                 """,
-                new { Lot = lotCode });
+                new { Lot = lotCode, ExpectedActionCode = expectedActionCode });
             Assert.Equal(1, closedUserHistCount);
         }
         finally
         {
             await CleanupAsync(connectionString, arrangement.WorkOrder, arrangement.PreviousReleaseQty, lotCode);
         }
+    }
+
+    [Fact]
+    [Trait("Category", "Integration")]
+    public async Task LotCheckInCancelAsync_ShouldRejectUnsupportedReasonWithoutChangingLot()
+    {
+        var connectionString = TestConfiguration.LoadConnectionString();
+        var arrangement = await LoadArrangementAsync(connectionString);
+        var lotCode = $"ITEST-CIC-{Guid.NewGuid():N}";
+        var service = CreateService(connectionString, arrangement.AccountNo);
+
+        try
+        {
+            await CreateAndCheckInLotAsync(service, arrangement, lotCode);
+
+            var exception = await Assert.ThrowsAsync<HttpStatusCodeException>(
+                () => service.LotCheckInCancelAsync(
+                    new WipLotCheckInCancelInputDto
+                    {
+                        LOT = lotCode,
+                        DATA_LINK_SID = 900000000403m,
+                        ACCOUNT_NO = arrangement.AccountNo,
+                        REASON_CODE = "PAUSE",
+                        COMMENT = "Unsupported reason integration test",
+                        INPUT_FORM_NAME = "DcMateH5ApiTest"
+                    }));
+
+            Assert.Equal(HttpStatusCode.BadRequest, exception.StatusCode);
+
+            await using var conn = new SqlConnection(connectionString);
+            await conn.OpenAsync();
+
+            var lotStatus = await conn.ExecuteScalarAsync<string>(
+                "SELECT LOT_STATUS_CODE FROM WIP_LOT WHERE LOT = @Lot",
+                new { Lot = lotCode });
+            Assert.Equal("Run", lotStatus);
+
+            var currentUserCount = await conn.ExecuteScalarAsync<int>(
+                "SELECT COUNT(1) FROM WIP_LOT_CUR_USER WHERE LOT = @Lot",
+                new { Lot = lotCode });
+            Assert.True(currentUserCount > 0);
+
+            var currentEqpCount = await conn.ExecuteScalarAsync<int>(
+                "SELECT COUNT(1) FROM WIP_LOT_CUR_EQP WHERE LOT = @Lot",
+                new { Lot = lotCode });
+            Assert.True(currentEqpCount > 0);
+
+            var cancelHistoryCount = await conn.ExecuteScalarAsync<int>(
+                """
+                SELECT COUNT(1)
+                FROM WIP_LOT_HIST
+                WHERE LOT = @Lot AND ACTION_CODE IN ('CHECK_IN_CANCEL', 'CHECK_IN_STOP')
+                """,
+                new { Lot = lotCode });
+            Assert.Equal(0, cancelHistoryCount);
+
+            var reasonHistoryCount = await conn.ExecuteScalarAsync<int>(
+                """
+                SELECT COUNT(1)
+                FROM WIP_LOT_REASON_HIST r
+                INNER JOIN WIP_LOT_HIST h ON h.WIP_LOT_HIST_SID = r.WIP_LOT_HIST_SID
+                WHERE h.LOT = @Lot
+                """,
+                new { Lot = lotCode });
+            Assert.Equal(0, reasonHistoryCount);
+        }
+        finally
+        {
+            await CleanupAsync(connectionString, arrangement.WorkOrder, arrangement.PreviousReleaseQty, lotCode);
+        }
+    }
+
+    private static async Task CreateAndCheckInLotAsync(
+        LotBaseSettingService service,
+        TestArrangement arrangement,
+        string lotCode)
+    {
+        var createLotResult = await service.CreateLotAsync(
+            new WipCreateLotInputDto
+            {
+                DATA_LINK_SID = 900000000401m,
+                LOT = lotCode,
+                ALIAS_LOT1 = $"{lotCode}-A1",
+                ALIAS_LOT2 = $"{lotCode}-A2",
+                WO = arrangement.WorkOrder,
+                ROUTE_SID = arrangement.RouteSid,
+                LOT_QTY = 2,
+                REPORT_TIME = DateTime.Now,
+                ACCOUNT_NO = arrangement.AccountNo,
+                INPUT_FORM_NAME = "DcMateH5ApiTest",
+                COMMENT = "LotCheckInCancelAsync integration test"
+            });
+        Assert.True(createLotResult.IsSuccess);
+
+        var checkInResult = await service.LotCheckInAsync(
+            new WipLotCheckInInputDto
+            {
+                LOT = lotCode,
+                DATA_LINK_SID = 900000000402m,
+                ACCOUNT_NO = arrangement.AccountNo,
+                EQP_NO = arrangement.EquipmentNo,
+                SHIFT_SID = arrangement.ShiftSid,
+                LOT_SUB_STATUS_CODE = "NORMAL",
+                COMMENT = "LotCheckInCancelAsync integration test",
+                INPUT_FORM_NAME = "DcMateH5ApiTest"
+            });
+        Assert.True(checkInResult.IsSuccess);
     }
 
     private static LotBaseSettingService CreateService(string connectionString, string accountNo)
@@ -185,6 +293,13 @@ public class LotCheckInCancelAsyncIntegrationTests
 
         await conn.ExecuteAsync(
             """
+            DELETE FROM WIP_LOT_REASON_HIST
+            WHERE WIP_LOT_HIST_SID IN (SELECT WIP_LOT_HIST_SID FROM WIP_LOT_HIST WHERE LOT = @Lot)
+            """,
+            new { Lot = lotCode },
+            tx);
+        await conn.ExecuteAsync(
+            """
             DELETE FROM WIP_LOT_EQP_HIST
             WHERE WIP_LOT_HIST_SID IN (SELECT WIP_LOT_HIST_SID FROM WIP_LOT_HIST WHERE LOT = @Lot)
             """,
@@ -229,6 +344,14 @@ public class LotCheckInCancelAsyncIntegrationTests
     {
         public string ACTION_CODE { get; init; } = null!;
         public string LOT_STATUS_CODE { get; init; } = null!;
+        public string? REASON_TYPE { get; init; }
+        public decimal? REASON_SID { get; init; }
+        public string REASON_CODE { get; init; } = null!;
+        public string? REASON_NAME { get; init; }
+        public string? REASON_COMMENT { get; init; }
+        public decimal REASON_QTY { get; init; }
+        public decimal? REASON_QTY1 { get; init; }
+        public decimal? REASON_QTY2 { get; init; }
     }
 
     private sealed class FakeCurrentUserAccessor(string accountNo) : ICurrentUserAccessor

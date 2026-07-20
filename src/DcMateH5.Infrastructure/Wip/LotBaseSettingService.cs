@@ -39,6 +39,9 @@ public class LotBaseSettingService : ILotBaseSettingService
     private static class LotCheckInCancelCodes
     {
         public const string CheckInCancel = "CHECK_IN_CANCEL";
+        public const string CheckInStop = "CHECK_IN_STOP";
+        public const string CancelReason = "CANCEL";
+        public const string StopReason = "STOP";
         public const string WaitStatus = "Wait";
     }
 
@@ -768,6 +771,8 @@ public class LotBaseSettingService : ILotBaseSettingService
     {
         ct.ThrowIfCancellationRequested();
 
+        var reasonCode = NormalizeLotCheckInCancelReasonCode(input.REASON_CODE);
+
         if (string.IsNullOrWhiteSpace(input.LOT))
             throw new HttpStatusCodeException(System.Net.HttpStatusCode.BadRequest, "LOT is required.");
 
@@ -793,6 +798,9 @@ public class LotBaseSettingService : ILotBaseSettingService
         if (activeUserHistories.Count == 0)
             throw new HttpStatusCodeException(System.Net.HttpStatusCode.BadRequest, $"No active lot check-in record found: {lot.LOT}");
 
+        var actionCode = string.Equals(reasonCode, LotCheckInCancelCodes.StopReason, StringComparison.Ordinal)
+            ? LotCheckInCancelCodes.CheckInStop
+            : LotCheckInCancelCodes.CheckInCancel;
         var cancelHist = BuildLotHistoryRecord(
             histSid: RandomHelper.GenerateRandomDecimal(),
             seq: await GetNextLotHistorySequenceInTxAsync(conn, tx, lot.LOT_SID, ct),
@@ -812,7 +820,7 @@ public class LotBaseSettingService : ILotBaseSettingService
             totalUserCount: activeUserHistories.Count,
             routeSid: lot.ROUTE_SID,
             factorySid: lot.FACTORY_SID,
-            actionCode: LotCheckInCancelCodes.CheckInCancel,
+            actionCode: actionCode,
             controlMode: LotCheckOutCodes.ControlModeOne,
             inputFormName: input.INPUT_FORM_NAME,
             createUser: input.ACCOUNT_NO,
@@ -828,12 +836,17 @@ public class LotBaseSettingService : ILotBaseSettingService
             workgroupSid: workgroupSid,
             lotSubStatusCode: string.Empty,
             comment: input.COMMENT ?? string.Empty);
+        var reasonHist = BuildLotCheckInCancelReasonHistoryRecord(
+            cancelHist.WIP_LOT_HIST_SID,
+            reasonCode,
+            input.COMMENT);
 
         var originalEnableAuditColumns = _sqlHelper.EnableAuditColumns;
         _sqlHelper.EnableAuditColumns = false;
         try
         {
             await _sqlHelper.InsertInTxAsync(conn, tx, cancelHist, ct: ct);
+            await _sqlHelper.InsertInTxAsync(conn, tx, reasonHist, ct: ct);
         }
         finally
         {
@@ -858,6 +871,18 @@ public class LotBaseSettingService : ILotBaseSettingService
             string.Empty,
             ct);
         await UpdateLotCheckInCancelStateInTxAsync(conn, tx, lot, waitStatus, input.ACCOUNT_NO, createTime, reportTime, ct);
+    }
+
+    private static string NormalizeLotCheckInCancelReasonCode(string? reasonCode)
+    {
+        if (string.IsNullOrWhiteSpace(reasonCode))
+            return LotCheckInCancelCodes.CancelReason;
+
+        var normalizedReasonCode = reasonCode.Trim().ToUpperInvariant();
+        if (normalizedReasonCode is not LotCheckInCancelCodes.StopReason and not LotCheckInCancelCodes.CancelReason)
+            throw new HttpStatusCodeException(System.Net.HttpStatusCode.BadRequest, "REASON_CODE must be STOP or CANCEL.");
+
+        return normalizedReasonCode;
     }
 
     private async Task LotCheckOutInTxAsync(
@@ -1948,6 +1973,26 @@ public class LotBaseSettingService : ILotBaseSettingService
             REASON_NAME = reason.REASON_NAME,
             REASON_COMMENT = comment,
             REASON_QTY = reasonQty,
+            REASON_QTY1 = null,
+            REASON_QTY2 = null
+        };
+    }
+
+    private static WipLotReasonHistDto BuildLotCheckInCancelReasonHistoryRecord(
+        decimal wipLotHistSid,
+        string reasonCode,
+        string? comment)
+    {
+        return new WipLotReasonHistDto
+        {
+            WIP_LOT_REASON_HIST_SID = RandomHelper.GenerateRandomDecimal(),
+            WIP_LOT_HIST_SID = wipLotHistSid,
+            REASON_TYPE = null,
+            REASON_SID = null,
+            REASON_CODE = reasonCode,
+            REASON_NAME = null,
+            REASON_COMMENT = comment,
+            REASON_QTY = 0,
             REASON_QTY1 = null,
             REASON_QTY2 = null
         };
