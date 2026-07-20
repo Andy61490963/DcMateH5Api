@@ -60,6 +60,11 @@ public class MultipleMappingConfigViewModel
 public class MultipleMappingItemViewModel
 {
     /// <summary>
+    /// Mapping Table 的設定主鍵值，欄位名稱由 MAPPING_PK_COLUMN 決定。
+    /// </summary>
+    public string MappingRowId { get; set; } = string.Empty;
+
+    /// <summary>
     /// 明細資料的主鍵值（字串化）。
     /// </summary>
     public string DetailPk { get; set; } = string.Empty;
@@ -171,6 +176,12 @@ public class MultipleMappingListViewModel
     /// 尚未建立對應關係的明細資料清單（右側）。
     /// </summary>
     public Dictionary<string, MultipleMappingItemViewModel> Unlinked { get; set; }
+        = new(StringComparer.OrdinalIgnoreCase);
+
+    /// <summary>
+    /// 已建立關聯的逐筆動態元件，以 Mapping PK 為 key。
+    /// </summary>
+    public Dictionary<string, MultipleMappingComponentViewModel> ComponentsByMappingRowId { get; set; }
         = new(StringComparer.OrdinalIgnoreCase);
 }
 

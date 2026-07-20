@@ -115,6 +115,11 @@ public class FormDesignerService : IFormDesignerService
                 new { FieldConfigIds = fieldConfigIds },
                 ct);
 
+        var mappingComponentConfigIds = await QueryIdsAsync(
+            "SELECT ID FROM dbo.FORM_MULTIPLE_MAPPING_COMPONENT_CONFIG WHERE FORM_FIELD_MASTER_ID IN @MasterIds ORDER BY FORM_FIELD_MASTER_ID, MAPPING_ROW_ID, ID",
+            new { MasterIds = masterIds },
+            ct);
+
         var sections = new List<MigrationTableSection>
         {
             new(
@@ -165,6 +170,27 @@ public class FormDesignerService : IFormDesignerService
                     "FORM_FIELD_DROPDOWN_ID IN @DropdownIds",
                     new { DropdownIds = dropdownIds },
                     "FORM_FIELD_DROPDOWN_ID, ID",
+                    ct)));
+        }
+
+        sections.Add(new MigrationTableSection(
+            "FORM_MULTIPLE_MAPPING_COMPONENT_CONFIG",
+            await QueryMigrationRowsAsync(
+                "FORM_MULTIPLE_MAPPING_COMPONENT_CONFIG",
+                "FORM_FIELD_MASTER_ID IN @MasterIds",
+                new { MasterIds = masterIds },
+                "FORM_FIELD_MASTER_ID, MAPPING_ROW_ID, ID",
+                ct)));
+
+        if (mappingComponentConfigIds.Count > 0)
+        {
+            sections.Add(new MigrationTableSection(
+                "FORM_MULTIPLE_MAPPING_COMPONENT_OPTION",
+                await QueryMigrationRowsAsync(
+                    "FORM_MULTIPLE_MAPPING_COMPONENT_OPTION",
+                    "COMPONENT_CONFIG_ID IN @ComponentConfigIds",
+                    new { ComponentConfigIds = mappingComponentConfigIds },
+                    "COMPONENT_CONFIG_ID, OPTION_ORDER, ID",
                     ct)));
         }
 
@@ -601,6 +627,29 @@ ORDER BY c.column_id;";
                 conn, tx, cfgWhere, timeoutSeconds: TimeoutSeconds, ct: txCt);
 
             var configIds = configs.Select(x => x.ID).Distinct().ToList();
+
+            var currentAccount = _currentUser.Get().Account;
+            await conn.ExecuteAsync(new CommandDefinition(@"/**/
+UPDATE componentOption
+   SET componentOption.IS_DELETE = 1,
+       componentOption.EDIT_TIME = GETDATE(),
+       componentOption.EDIT_USER = @Account
+  FROM dbo.FORM_MULTIPLE_MAPPING_COMPONENT_OPTION componentOption
+  JOIN dbo.FORM_MULTIPLE_MAPPING_COMPONENT_CONFIG componentConfig
+    ON componentConfig.ID = componentOption.COMPONENT_CONFIG_ID
+ WHERE componentConfig.FORM_FIELD_MASTER_ID = @FormMasterId
+   AND componentOption.IS_DELETE = 0;
+
+UPDATE dbo.FORM_MULTIPLE_MAPPING_COMPONENT_CONFIG
+   SET IS_DELETE = 1,
+       EDIT_TIME = GETDATE(),
+       EDIT_USER = @Account
+ WHERE FORM_FIELD_MASTER_ID = @FormMasterId
+   AND IS_DELETE = 0;",
+                new { FormMasterId = id, Account = currentAccount },
+                transaction: tx,
+                commandTimeout: TimeoutSeconds,
+                cancellationToken: txCt));
 
             // 沒有 config：直接刪 master
             if (configIds.Count == 0)
@@ -2491,9 +2540,12 @@ WHERE c.FORM_FIELD_MASTER_ID = @MasterId
     public async Task<Guid> SaveMultipleMappingFormHeader( MultipleMappingFormHeaderViewModel model, CancellationToken ct )
     {
         if (string.IsNullOrWhiteSpace(model.MAPPING_BASE_FK_COLUMN) ||
-            string.IsNullOrWhiteSpace(model.MAPPING_DETAIL_FK_COLUMN))
+            string.IsNullOrWhiteSpace(model.MAPPING_DETAIL_FK_COLUMN) ||
+            string.IsNullOrWhiteSpace(model.MAPPING_PK_COLUMN) ||
+            string.IsNullOrWhiteSpace(model.TARGET_MAPPING_COLUMN_NAME))
         {
-            throw new InvalidOperationException("必須設定對應的關聯欄位名稱");
+            throw new InvalidOperationException(
+                "必須設定 Mapping PK、目標值欄位及 Base／Detail 關聯欄位名稱。");
         }
 
         ValidateColumnName(model.MAPPING_PK_COLUMN);
@@ -2569,12 +2621,22 @@ WHERE c.FORM_FIELD_MASTER_ID = @MasterId
         if (!string.IsNullOrWhiteSpace(viewTableName) && GetTableSchema(viewTableName).Count == 0)
             throw new InvalidOperationException("檢視表名稱查無資料");
 
+        var actualMappingPk = _schemaService.GetPrimaryKeyColumn(mappingTableName);
+        if (!IsUniqueNonNullableColumn(mappingTableName, model.MAPPING_PK_COLUMN))
+        {
+            throw new InvalidOperationException(
+                $"MAPPING_PK_COLUMN 必須是 Mapping Table 的非 null 單欄主鍵或唯一欄位，目前主鍵為：{actualMappingPk ?? "未設定"}。");
+        }
+
         EnsureColumnExists(mappingTableName, model.MAPPING_PK_COLUMN, "關聯表缺少主鍵欄位");
         
         EnsureColumnExists(mappingTableName, model.MAPPING_BASE_FK_COLUMN, "關聯表缺少指向主表的外鍵欄位");
         EnsureColumnExists(mappingTableName, model.MAPPING_DETAIL_FK_COLUMN, "關聯表缺少指向明細表的外鍵欄位");
         EnsureColumnExists(baseTableName, model.MAPPING_BASE_FK_COLUMN, "主表缺少對應的主鍵欄位");
         EnsureColumnExists(detailTableName, model.MAPPING_DETAIL_FK_COLUMN, "目標表缺少對應的主鍵欄位");
+        EnsureColumnExists(mappingTableName, model.TARGET_MAPPING_COLUMN_NAME, "關聯表缺少動態元件目標值欄位");
+
+        EnsureMappingComponentHeaderCanChange(model, mappingTableName);
         
         if (!string.IsNullOrWhiteSpace(model.MAPPING_BASE_COLUMN_NAME))
         {
@@ -2813,6 +2875,100 @@ WHERE c.FORM_FIELD_MASTER_ID = @MasterId
         if (!columns.Contains(columnName))
         {
             throw new InvalidOperationException(errorMessage);
+        }
+    }
+
+    private bool IsUniqueNonNullableColumn(string tableName, string columnName)
+    {
+        var qualifiedTableName = tableName.Contains('.', StringComparison.Ordinal)
+            ? tableName
+            : $"dbo.{tableName}";
+
+        return _con.ExecuteScalar<bool>(@"/**/
+DECLARE @ObjectId int = OBJECT_ID(@QualifiedTableName);
+
+SELECT CONVERT(bit, CASE WHEN EXISTS
+(
+    SELECT 1
+      FROM sys.indexes indexInfo
+      JOIN sys.index_columns indexColumn
+        ON indexColumn.object_id = indexInfo.object_id
+       AND indexColumn.index_id = indexInfo.index_id
+      JOIN sys.columns columnInfo
+        ON columnInfo.object_id = indexColumn.object_id
+       AND columnInfo.column_id = indexColumn.column_id
+     WHERE indexInfo.object_id = @ObjectId
+       AND indexInfo.is_unique = 1
+       AND indexInfo.is_disabled = 0
+       AND indexInfo.has_filter = 0
+       AND indexColumn.is_included_column = 0
+     GROUP BY indexInfo.index_id
+    HAVING COUNT(1) = 1
+       AND MAX(CASE
+                   WHEN columnInfo.name = @ColumnName
+                    AND columnInfo.is_nullable = 0
+                   THEN 1 ELSE 0
+               END) = 1
+)
+THEN 1 ELSE 0 END);",
+            new
+            {
+                QualifiedTableName = qualifiedTableName,
+                ColumnName = columnName
+            });
+    }
+
+    /// <summary>
+    /// 已存在逐 SID 元件設定時，不允許更換其識別或值來源欄位。
+    /// </summary>
+    private void EnsureMappingComponentHeaderCanChange(
+        MultipleMappingFormHeaderViewModel model,
+        string mappingTableName)
+    {
+        if (model.ID == Guid.Empty)
+        {
+            return;
+        }
+
+        var existing = _con.QueryFirstOrDefault<FormFieldMasterDto>(@"/**/
+SELECT MAPPING_TABLE_NAME,
+       MAPPING_PK_COLUMN,
+       TARGET_MAPPING_COLUMN_NAME
+  FROM dbo.FORM_FIELD_MASTER
+ WHERE ID = @Id
+   AND IS_DELETE = 0;",
+            new { Id = model.ID });
+
+        if (existing == null)
+        {
+            return;
+        }
+
+        var changesComponentKey =
+            !string.Equals(existing.MAPPING_TABLE_NAME, mappingTableName, StringComparison.OrdinalIgnoreCase) ||
+            !string.Equals(existing.MAPPING_PK_COLUMN, model.MAPPING_PK_COLUMN, StringComparison.OrdinalIgnoreCase) ||
+            !string.Equals(
+                existing.TARGET_MAPPING_COLUMN_NAME,
+                model.TARGET_MAPPING_COLUMN_NAME,
+                StringComparison.OrdinalIgnoreCase);
+
+        if (!changesComponentKey)
+        {
+            return;
+        }
+
+        var configCount = _con.ExecuteScalar<int>(@"/**/
+SELECT COUNT(1)
+  FROM dbo.FORM_MULTIPLE_MAPPING_COMPONENT_CONFIG
+ WHERE FORM_FIELD_MASTER_ID = @FormMasterId
+   AND IS_DELETE = 0;",
+            new { FormMasterId = model.ID });
+
+        if (configCount > 0)
+        {
+            throw new DcMateClassLibrary.Helper.HttpHelper.HttpStatusCodeException(
+                System.Net.HttpStatusCode.Conflict,
+                "已有逐 SID 元件設定，請先清除設定後再更換 Mapping Table、Mapping PK 或目標值欄位。");
         }
     }
 

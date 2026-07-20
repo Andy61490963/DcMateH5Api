@@ -19,6 +19,7 @@ namespace DcMateH5Api.Areas.Form.Controllers;
 public class FormDesignerMultipleMappingController : ControllerBase
 {
     private readonly IFormDesignerService _formDesignerService;
+    private readonly IFormMultipleMappingService _formMultipleMappingService;
     private readonly FormFunctionType _funcType = FormFunctionType.MultipleMappingMaintenance;
 
     private static class Routes
@@ -41,13 +42,20 @@ public class FormDesignerMultipleMappingController : ControllerBase
         public const string ImportPreviousQueryValues = "dropdowns/{dropdownId:guid}/import-previous-query-values";
         public const string ReplaceDropdownOptions = "dropdowns/{dropdownId:guid}/options:replace";
 
+        // Mapping Row Components
+        public const string MappingComponentsQuery = "{formMasterId:guid}/mapping-components/query";
+        public const string MappingComponent = "{formMasterId:guid}/mapping-components/{mappingRowId}";
+
         // Header
         public const string Headers = "headers";
     }
 
-    public FormDesignerMultipleMappingController(IFormDesignerService formDesignerService)
+    public FormDesignerMultipleMappingController(
+        IFormDesignerService formDesignerService,
+        IFormMultipleMappingService formMultipleMappingService)
     {
         _formDesignerService = formDesignerService;
+        _formMultipleMappingService = formMultipleMappingService;
     }
 
     // ────────── Master ──────────
@@ -422,6 +430,10 @@ public class FormDesignerMultipleMappingController : ControllerBase
             var id = await _formDesignerService.SaveMultipleMappingFormHeader(model, ct);
             return Ok(new { id });
         }
+        catch (InvalidOperationException ex)
+        {
+            return BadRequest(ex.Message);
+        }
         catch (HttpStatusCodeException ex)
         {
             return StatusCode((int)ex.StatusCode, ex.Message);
@@ -430,7 +442,109 @@ public class FormDesignerMultipleMappingController : ControllerBase
 
     #endregion
 
-    // ────────── Private Helpers ──────────
+    // ────────── 逐筆 Mapping 元件 ──────────
+    #region Mapping Row Components
+
+    /// <summary>
+    /// 取得已建立 Mapping Row 的逐筆元件設定。
+    /// </summary>
+    [HttpPost(Routes.MappingComponentsQuery)]
+    [ProducesResponseType(typeof(MappingComponentDesignerListViewModel), StatusCodes.Status200OK)]
+    [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status400BadRequest)]
+    public IActionResult GetMappingComponents(
+        [FromRoute] Guid formMasterId,
+        [FromBody] MappingListQuery? query,
+        CancellationToken ct)
+    {
+        if (formMasterId == Guid.Empty)
+        {
+            return BadRequest("FormMasterId 不可為空。");
+        }
+
+        if (query == null || string.IsNullOrWhiteSpace(query.BaseId))
+        {
+            return BadRequest("請提供 BaseId 與查詢內容。");
+        }
+
+        try
+        {
+            return Ok(_formMultipleMappingService.GetMappingComponentConfigurations(formMasterId, query, ct));
+        }
+        catch (InvalidOperationException ex)
+        {
+            return BadRequest(ex.Message);
+        }
+        catch (HttpStatusCodeException ex)
+        {
+            return StatusCode((int)ex.StatusCode, ex.Message);
+        }
+    }
+
+    /// <summary>
+    /// 新增或覆寫單一 Mapping Row 的元件設定。
+    /// </summary>
+    [HttpPut(Routes.MappingComponent)]
+    [ProducesResponseType(StatusCodes.Status204NoContent)]
+    [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status400BadRequest)]
+    public IActionResult UpsertMappingComponent(
+        [FromRoute] Guid formMasterId,
+        [FromRoute] string mappingRowId,
+        [FromBody] MappingComponentUpsertViewModel? request,
+        CancellationToken ct)
+    {
+        if (formMasterId == Guid.Empty || string.IsNullOrWhiteSpace(mappingRowId) || request == null)
+        {
+            return BadRequest("FormMasterId、MappingRowId 與設定內容皆不可為空。");
+        }
+
+        try
+        {
+            _formMultipleMappingService.UpsertMappingComponent(formMasterId, mappingRowId, request, ct);
+            return NoContent();
+        }
+        catch (InvalidOperationException ex)
+        {
+            return BadRequest(ex.Message);
+        }
+        catch (HttpStatusCodeException ex)
+        {
+            return StatusCode((int)ex.StatusCode, ex.Message);
+        }
+    }
+
+    /// <summary>
+    /// 清除單一 Mapping Row 的元件設定。
+    /// </summary>
+    [HttpDelete(Routes.MappingComponent)]
+    [ProducesResponseType(StatusCodes.Status204NoContent)]
+    [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status400BadRequest)]
+    public IActionResult DeleteMappingComponent(
+        [FromRoute] Guid formMasterId,
+        [FromRoute] string mappingRowId,
+        CancellationToken ct)
+    {
+        if (formMasterId == Guid.Empty || string.IsNullOrWhiteSpace(mappingRowId))
+        {
+            return BadRequest("FormMasterId 與 MappingRowId 皆不可為空。");
+        }
+
+        try
+        {
+            _formMultipleMappingService.DeleteMappingComponent(formMasterId, mappingRowId, ct);
+            return NoContent();
+        }
+        catch (InvalidOperationException ex)
+        {
+            return BadRequest(ex.Message);
+        }
+        catch (HttpStatusCodeException ex)
+        {
+            return StatusCode((int)ex.StatusCode, ex.Message);
+        }
+    }
+
+    #endregion
+
     #region Private Helpers
 
     private IActionResult? ValidateUpsertField(FormFieldViewModel model)

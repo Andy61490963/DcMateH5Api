@@ -27,6 +27,40 @@ public interface IFormMultipleMappingService
         CancellationToken ct = default);
 
     /// <summary>
+    /// 取得 Designer 使用的逐 Mapping Row 元件設定。
+    /// </summary>
+    MappingComponentDesignerListViewModel GetMappingComponentConfigurations(
+        Guid formMasterId,
+        MappingListQuery query,
+        CancellationToken ct = default);
+
+    /// <summary>
+    /// 新增或覆寫單一 Mapping Row 的元件設定。
+    /// </summary>
+    void UpsertMappingComponent(
+        Guid formMasterId,
+        string mappingRowId,
+        MappingComponentUpsertViewModel request,
+        CancellationToken ct = default);
+
+    /// <summary>
+    /// 清除單一 Mapping Row 的元件設定。
+    /// </summary>
+    void DeleteMappingComponent(
+        Guid formMasterId,
+        string mappingRowId,
+        CancellationToken ct = default);
+
+    /// <summary>
+    /// 依逐筆元件設定更新 Mapping Row 的目標值。
+    /// </summary>
+    Task<int> UpdateMappingComponentValue(
+        Guid formMasterId,
+        string mappingRowId,
+        MappingComponentValueUpdateViewModel request,
+        CancellationToken ct = default);
+
+    /// <summary>
     /// 批次新增對應關係（右 → 左）。
     /// </summary>
     void AddMappings(Guid formMasterId, MultipleMappingUpsertViewModel request, bool isSeq, CancellationToken ct = default);

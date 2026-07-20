@@ -35,6 +35,8 @@ public class FormMultipleMappingController : ControllerBase
         public const string SequenceReorder = "sequence/reorder";
 
         public const string UpdateMappingTable = "{formMasterId:guid}/mapping-table";
+        public const string UpdateMappingComponentValue =
+            "{formMasterId:guid}/mapping-components/{mappingRowId}/value";
     }
 
     public FormMultipleMappingController(IFormService formService, IFormMultipleMappingService service)
@@ -264,6 +266,42 @@ public class FormMultipleMappingController : ControllerBase
         try
         {
             var affected = await _service.UpdateMappingTableData(formMasterId, request!, ct);
+            return Ok(new { Affected = affected });
+        }
+        catch (InvalidOperationException ex)
+        {
+            return BadRequest(ex.Message);
+        }
+        catch (HttpStatusCodeException ex)
+        {
+            return StatusCode((int)ex.StatusCode, ex.Message);
+        }
+    }
+
+    /// <summary>
+    /// 依逐筆元件設定更新 Mapping Row 的目標值。
+    /// </summary>
+    [HttpPut(Routes.UpdateMappingComponentValue)]
+    [ProducesResponseType(typeof(object), StatusCodes.Status200OK)]
+    [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status400BadRequest)]
+    public async Task<IActionResult> UpdateMappingComponentValue(
+        [FromRoute] Guid formMasterId,
+        [FromRoute] string mappingRowId,
+        [FromBody] MappingComponentValueUpdateViewModel? request,
+        CancellationToken ct)
+    {
+        if (formMasterId == Guid.Empty || string.IsNullOrWhiteSpace(mappingRowId) || request == null)
+        {
+            return BadRequest("FormMasterId、MappingRowId 與更新內容皆不可為空。");
+        }
+
+        try
+        {
+            var affected = await _service.UpdateMappingComponentValue(
+                formMasterId,
+                mappingRowId,
+                request,
+                ct);
             return Ok(new { Affected = affected });
         }
         catch (InvalidOperationException ex)

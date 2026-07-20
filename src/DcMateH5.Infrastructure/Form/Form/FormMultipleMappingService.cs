@@ -1,3 +1,5 @@
+using System.Data.Common;
+using System.Globalization;
 using System.Text.RegularExpressions;
 using Dapper;
 using DbExtensions;
@@ -152,7 +154,7 @@ SELECT ID AS Id,
             unlinked = ToDictionaryByDetailPk(unlinkedResult.Items);
             unlinkedTotalCount = unlinkedResult.TotalCount;
 
-            return BuildListViewModel(
+            var allResult = BuildListViewModel(
                 formMasterId,
                 header,
                 basePkName,
@@ -162,6 +164,9 @@ SELECT ID AS Id,
                 unlinked,
                 linkedTotalCount,
                 unlinkedTotalCount);
+
+            allResult.ComponentsByMappingRowId = BuildRuntimeComponents(formMasterId, header, linked.Values);
+            return allResult;
         }
 
         if (query.Type == MappingListType.LinkedOnly)
@@ -200,7 +205,7 @@ SELECT ID AS Id,
             throw new InvalidOperationException("Type 不可為空，使用分頁查詢時請指定 LinkedOnly 或 UnlinkedOnly。");
         }
 
-        return new MultipleMappingListViewModel
+        var response = new MultipleMappingListViewModel
         {
             FormMasterId = formMasterId,
             BasePkColumn = basePkName,
@@ -218,6 +223,296 @@ SELECT ID AS Id,
             Linked = linked,
             Unlinked = unlinked
         };
+
+        response.ComponentsByMappingRowId = BuildRuntimeComponents(formMasterId, header, linked.Values);
+        return response;
+    }
+
+    /// <inheritdoc />
+    public MappingComponentDesignerListViewModel GetMappingComponentConfigurations(
+        Guid formMasterId,
+        MappingListQuery query,
+        CancellationToken ct = default)
+    {
+        ArgumentNullException.ThrowIfNull(query);
+        ct.ThrowIfCancellationRequested();
+
+        var linkedQuery = new MappingListQuery
+        {
+            BaseId = query.BaseId,
+            Type = MappingListType.LinkedOnly,
+            DetailConditions = query.DetailConditions,
+            MappingConditions = query.MappingConditions,
+            Page = query.Page,
+            PageSize = query.PageSize,
+            OrderBySeqAscending = query.OrderBySeqAscending
+        };
+
+        var runtime = GetMappingList(formMasterId, linkedQuery, ct);
+        var configs = LoadComponentConfigs(
+            formMasterId,
+            runtime.ComponentsByMappingRowId.Keys.ToArray());
+
+        var result = new MappingComponentDesignerListViewModel
+        {
+            FormMasterId = formMasterId,
+            TotalCount = runtime.LinkedTotalCount
+        };
+
+        foreach (var component in runtime.ComponentsByMappingRowId.Values)
+        {
+            configs.TryGetValue(component.MappingRowId, out var config);
+
+            result.ComponentsByMappingRowId.Add(component.MappingRowId, new MappingComponentDesignerItemViewModel
+            {
+                MappingRowId = component.MappingRowId,
+                DetailPk = component.DetailPk,
+                ControlType = component.ControlType,
+                CurrentValue = component.CurrentValue,
+                IsUseSql = config?.IsUseSql ?? false,
+                DropdownSql = config?.DropdownSql,
+                Options = component.Options,
+                IsConfigured = component.IsConfigured
+            });
+        }
+
+        return result;
+    }
+
+    /// <inheritdoc />
+    public void UpsertMappingComponent(
+        Guid formMasterId,
+        string mappingRowId,
+        MappingComponentUpsertViewModel request,
+        CancellationToken ct = default)
+    {
+        ArgumentNullException.ThrowIfNull(request);
+        ct.ThrowIfCancellationRequested();
+
+        if (!Enum.IsDefined(request.ControlType))
+        {
+            throw new InvalidOperationException("ControlType 不在支援範圍內。");
+        }
+
+        if (request.ControlType == FormControlType.None)
+        {
+            DeleteMappingComponent(formMasterId, mappingRowId, ct);
+            return;
+        }
+
+        var requestedOptions = request.Options ?? new List<MappingComponentOptionViewModel>();
+
+        _txService.WithTransaction(tx =>
+        {
+            var header = GetMappingHeader(formMasterId, tx);
+            var context = ResolveComponentContext(header, mappingRowId, tx);
+            EnsureRowExists(header.MAPPING_TABLE_NAME!, context.MappingPkColumn, context.MappingPkValue, tx);
+
+            var allowedControlTypes = FormFieldHelper.GetControlTypeWhitelist(context.TargetColumnType);
+            if (!allowedControlTypes.Contains(request.ControlType))
+            {
+                throw new InvalidOperationException(
+                    $"元件 {request.ControlType} 不適用於欄位 {context.TargetColumn} ({context.TargetColumnType})。");
+            }
+
+            var isOptionControl = IsOptionControl(request.ControlType);
+            if (!isOptionControl &&
+                (request.IsUseSql || !string.IsNullOrWhiteSpace(request.DropdownSql) || requestedOptions.Count > 0))
+            {
+                throw new InvalidOperationException("只有 Dropdown 或 Radio 可以設定選項。");
+            }
+
+            IReadOnlyList<MappingComponentOptionViewModel> options;
+            string? dropdownSql = null;
+
+            if (!isOptionControl)
+            {
+                options = Array.Empty<MappingComponentOptionViewModel>();
+            }
+            else if (request.IsUseSql)
+            {
+                dropdownSql = request.DropdownSql?.Trim();
+                if (string.IsNullOrWhiteSpace(dropdownSql))
+                {
+                    throw new InvalidOperationException("SQL Dropdown 必須提供 DropdownSql。");
+                }
+
+                options = LoadMappingComponentOptionsFromSql(dropdownSql, tx);
+            }
+            else
+            {
+                options = NormalizeComponentOptions(requestedOptions);
+                if (options.Count == 0)
+                {
+                    throw new InvalidOperationException("Dropdown 或 Radio 至少需要一個選項。");
+                }
+            }
+
+            foreach (var option in options)
+            {
+                if (ConvertToColumnTypeHelper.Convert(context.TargetColumnType, option.Value) is null)
+                {
+                    throw new InvalidOperationException(
+                        $"選項值 {option.Value} 無法轉換為目標欄位型別 {context.TargetColumnType}。");
+                }
+            }
+
+            var account = GetCurrentAccount();
+            var configId = _con.ExecuteScalar<Guid>(@"/**/
+MERGE dbo.FORM_MULTIPLE_MAPPING_COMPONENT_CONFIG WITH (HOLDLOCK) AS target
+USING (SELECT @FormMasterId AS FORM_FIELD_MASTER_ID, @MappingRowId AS MAPPING_ROW_ID) AS source
+   ON target.FORM_FIELD_MASTER_ID = source.FORM_FIELD_MASTER_ID
+  AND target.MAPPING_ROW_ID = source.MAPPING_ROW_ID
+  AND target.IS_DELETE = 0
+WHEN MATCHED THEN
+    UPDATE SET
+        CONTROL_TYPE = @ControlType,
+        IS_USE_SQL = @IsUseSql,
+        DROPDOWN_SQL = @DropdownSql,
+        EDIT_TIME = GETDATE(),
+        EDIT_USER = @Account
+WHEN NOT MATCHED THEN
+    INSERT
+    (
+        ID, FORM_FIELD_MASTER_ID, MAPPING_ROW_ID, CONTROL_TYPE,
+        IS_USE_SQL, DROPDOWN_SQL, CREATE_TIME, CREATE_USER, IS_DELETE
+    )
+    VALUES
+    (
+        NEWID(), @FormMasterId, @MappingRowId, @ControlType,
+        @IsUseSql, @DropdownSql, GETDATE(), @Account, 0
+    )
+OUTPUT inserted.ID;",
+                new
+                {
+                    FormMasterId = formMasterId,
+                    MappingRowId = context.NormalizedMappingRowId,
+                    ControlType = (int)request.ControlType,
+                    IsUseSql = isOptionControl && request.IsUseSql,
+                    DropdownSql = dropdownSql,
+                    Account = account
+                },
+                transaction: tx);
+
+            _con.Execute(@"/**/
+UPDATE dbo.FORM_MULTIPLE_MAPPING_COMPONENT_OPTION
+   SET IS_DELETE = 1,
+       EDIT_TIME = GETDATE(),
+       EDIT_USER = @Account
+ WHERE COMPONENT_CONFIG_ID = @ConfigId
+   AND IS_DELETE = 0;",
+                new { ConfigId = configId, Account = account },
+                transaction: tx);
+
+            foreach (var option in options)
+            {
+                _con.Execute(@"/**/
+INSERT INTO dbo.FORM_MULTIPLE_MAPPING_COMPONENT_OPTION
+(
+    ID, COMPONENT_CONFIG_ID, OPTION_VALUE, OPTION_TEXT, OPTION_ORDER,
+    CREATE_TIME, CREATE_USER, IS_DELETE
+)
+VALUES
+(
+    NEWID(), @ConfigId, @Value, @Text, @Order,
+    GETDATE(), @Account, 0
+);",
+                    new
+                    {
+                        ConfigId = configId,
+                        option.Value,
+                        option.Text,
+                        option.Order,
+                        Account = account
+                    },
+                    transaction: tx);
+            }
+        });
+    }
+
+    /// <inheritdoc />
+    public void DeleteMappingComponent(
+        Guid formMasterId,
+        string mappingRowId,
+        CancellationToken ct = default)
+    {
+        ct.ThrowIfCancellationRequested();
+
+        _txService.WithTransaction(tx =>
+        {
+            var header = GetMappingHeader(formMasterId, tx);
+            var context = ResolveComponentContext(header, mappingRowId, tx);
+            SoftDeleteComponentConfigs(
+                formMasterId,
+                new[] { context.NormalizedMappingRowId },
+                GetCurrentAccount(),
+                tx);
+        });
+    }
+
+    /// <inheritdoc />
+    public Task<int> UpdateMappingComponentValue(
+        Guid formMasterId,
+        string mappingRowId,
+        MappingComponentValueUpdateViewModel request,
+        CancellationToken ct = default)
+    {
+        ArgumentNullException.ThrowIfNull(request);
+
+        return _txService.WithTransactionAsync(async (_, tx, txCt) =>
+        {
+            var header = GetMappingHeader(formMasterId, tx);
+            var context = ResolveComponentContext(header, mappingRowId, tx);
+            EnsureRowExists(header.MAPPING_TABLE_NAME!, context.MappingPkColumn, context.MappingPkValue, tx);
+
+            var configs = LoadComponentConfigs(
+                formMasterId,
+                new[] { context.NormalizedMappingRowId },
+                tx);
+
+            if (!configs.TryGetValue(context.NormalizedMappingRowId, out var config))
+            {
+                throw new InvalidOperationException("此 Mapping Row 尚未設定動態元件。");
+            }
+
+            if (IsOptionControl(config.ControlType) && request.Value is not null)
+            {
+                var submittedValue = NormalizeScalarValue(request.Value);
+                if (!config.Options.Any(option =>
+                        string.Equals(option.Value, submittedValue, StringComparison.OrdinalIgnoreCase)))
+                {
+                    throw new InvalidOperationException("輸入值不在此元件的有效選項中。");
+                }
+            }
+
+            var convertedValue = ConvertToColumnTypeHelper.Convert(context.TargetColumnType, request.Value);
+            if (request.Value is not null && convertedValue is null)
+            {
+                throw new InvalidOperationException(
+                    $"輸入值無法轉換為欄位 {context.TargetColumn} 的型別 {context.TargetColumnType}。");
+            }
+
+            var columns = LoadColumnTypes(header.MAPPING_TABLE_NAME!, tx)
+                .Keys
+                .ToHashSet(StringComparer.OrdinalIgnoreCase);
+            var parameters = new DynamicParameters();
+            parameters.Add("Value", convertedValue);
+            parameters.Add("MappingPk", context.MappingPkValue);
+
+            var setFragments = new List<string> { $"[{context.TargetColumn}] = @Value" };
+            FormAuditColumns.AddUpdateColumns(columns, setFragments, parameters, GetCurrentAccount());
+
+            var command = new CommandDefinition(
+                $@"/**/
+UPDATE [{header.MAPPING_TABLE_NAME}]
+   SET {string.Join(", ", setFragments)}
+ WHERE [{context.MappingPkColumn}] = @MappingPk;",
+                parameters,
+                transaction: tx,
+                cancellationToken: txCt);
+
+            return await _con.ExecuteAsync(command);
+        }, ct);
     }
 
     private static MultipleMappingListViewModel BuildListViewModel(
@@ -600,6 +895,28 @@ SELECT ID AS Id,
             var detailIds = request.Items
                 .Select(item => ConvertToColumnTypeHelper.ConvertPkType(item.DetailId, detailPkType))
                 .ToList();
+
+            if (!string.IsNullOrWhiteSpace(header.MAPPING_PK_COLUMN))
+            {
+                ValidateColumnName(header.MAPPING_PK_COLUMN);
+                var mappingRowIds = _con.Query<object>(
+                        $@"/**/
+SELECT [{header.MAPPING_PK_COLUMN}]
+  FROM [{header.MAPPING_TABLE_NAME}]
+ WHERE [{header.MAPPING_BASE_FK_COLUMN}] = @BaseId
+   AND [{header.MAPPING_DETAIL_FK_COLUMN}] IN @DetailIds;",
+                        new { BaseId = basePkValue, DetailIds = detailIds },
+                        transaction: tx)
+                    .Select(NormalizeScalarValue)
+                    .Distinct(StringComparer.OrdinalIgnoreCase)
+                    .ToArray();
+
+                SoftDeleteComponentConfigs(
+                    formMasterId,
+                    mappingRowIds,
+                    GetCurrentAccount(),
+                    tx);
+            }
 
             foreach (var detailId in detailIds)
             {
@@ -1033,8 +1350,11 @@ WHERE b.[{header.MAPPING_BASE_FK_COLUMN}] = @BaseId;";
                 ? pkVal?.ToString() ?? string.Empty
                 : string.Empty;
 
+            var mappingRowId = ResolveMappingRowId(header, mappingRaw);
+
             items.Add(new MultipleMappingItemViewModel
             {
+                MappingRowId = mappingRowId,
                 DetailPk = pkText,
                 BaseDisplayText = row["BaseText"]?.ToString(),
                 DetailDisplayText = pkText,
@@ -1242,6 +1562,402 @@ WHERE b.[{header.MAPPING_BASE_FK_COLUMN}] = @BaseId;";
                 },
                 StringComparer.OrdinalIgnoreCase);
     }
+
+    private Dictionary<string, MultipleMappingComponentViewModel> BuildRuntimeComponents(
+        Guid formMasterId,
+        FormFieldMasterDto header,
+        IEnumerable<MultipleMappingItemViewModel> linkedItems)
+    {
+        var items = linkedItems
+            .Where(item => !string.IsNullOrWhiteSpace(item.MappingRowId))
+            .ToList();
+
+        var rowIds = items
+            .Select(item => item.MappingRowId)
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToArray();
+
+        var configs = LoadComponentConfigs(formMasterId, rowIds);
+        var result = new Dictionary<string, MultipleMappingComponentViewModel>(StringComparer.OrdinalIgnoreCase);
+
+        foreach (var item in items)
+        {
+            if (result.ContainsKey(item.MappingRowId))
+            {
+                throw new InvalidOperationException($"Mapping PK 重複，無法作為元件 key：{item.MappingRowId}");
+            }
+
+            configs.TryGetValue(item.MappingRowId, out var config);
+
+            object? currentValue = null;
+            if (!string.IsNullOrWhiteSpace(header.TARGET_MAPPING_COLUMN_NAME) &&
+                item.MappingFields.TryGetValue(header.TARGET_MAPPING_COLUMN_NAME, out var fieldValue))
+            {
+                currentValue = fieldValue.Value;
+            }
+
+            result[item.MappingRowId] = new MultipleMappingComponentViewModel
+            {
+                MappingRowId = item.MappingRowId,
+                DetailPk = item.DetailPk,
+                ControlType = config?.ControlType ?? FormControlType.None,
+                CurrentValue = currentValue,
+                Options = config?.Options
+                    .Select(CloneComponentOption)
+                    .ToList() ?? new List<MappingComponentOptionViewModel>(),
+                IsConfigured = config != null
+            };
+        }
+
+        return result;
+    }
+
+    private Dictionary<string, ComponentConfigAggregate> LoadComponentConfigs(
+        Guid formMasterId,
+        IReadOnlyCollection<string> mappingRowIds,
+        SqlTransaction? tx = null)
+    {
+        if (mappingRowIds.Count == 0)
+        {
+            return new Dictionary<string, ComponentConfigAggregate>(StringComparer.OrdinalIgnoreCase);
+        }
+
+        const string configSql = @"/**/
+SELECT ID AS Id,
+       MAPPING_ROW_ID AS MappingRowId,
+       CONTROL_TYPE AS ControlType,
+       IS_USE_SQL AS IsUseSql,
+       DROPDOWN_SQL AS DropdownSql
+  FROM dbo.FORM_MULTIPLE_MAPPING_COMPONENT_CONFIG
+ WHERE FORM_FIELD_MASTER_ID = @FormMasterId
+   AND MAPPING_ROW_ID IN @MappingRowIds
+   AND IS_DELETE = 0;";
+
+        var configs = _con.Query<ComponentConfigAggregate>(
+                configSql,
+                new { FormMasterId = formMasterId, MappingRowIds = mappingRowIds },
+                transaction: tx)
+            .ToList();
+
+        if (configs.Count == 0)
+        {
+            return new Dictionary<string, ComponentConfigAggregate>(StringComparer.OrdinalIgnoreCase);
+        }
+
+        const string optionSql = @"/**/
+SELECT COMPONENT_CONFIG_ID AS ComponentConfigId,
+       OPTION_VALUE AS Value,
+       OPTION_TEXT AS Text,
+       OPTION_ORDER AS [Order]
+  FROM dbo.FORM_MULTIPLE_MAPPING_COMPONENT_OPTION
+ WHERE COMPONENT_CONFIG_ID IN @ConfigIds
+   AND IS_DELETE = 0
+ ORDER BY COMPONENT_CONFIG_ID, OPTION_ORDER, ID;";
+
+        var options = _con.Query<ComponentOptionDbRow>(
+                optionSql,
+                new { ConfigIds = configs.Select(config => config.Id).ToArray() },
+                transaction: tx)
+            .ToList();
+
+        var optionsByConfigId = options
+            .GroupBy(option => option.ComponentConfigId)
+            .ToDictionary(
+                group => group.Key,
+                group => group.Select(option => new MappingComponentOptionViewModel
+                {
+                    Value = option.Value,
+                    Text = option.Text,
+                    Order = option.Order
+                }).ToList());
+
+        foreach (var config in configs)
+        {
+            if (optionsByConfigId.TryGetValue(config.Id, out var configOptions))
+            {
+                config.Options = configOptions;
+            }
+        }
+
+        return configs.ToDictionary(
+            config => config.MappingRowId,
+            StringComparer.OrdinalIgnoreCase);
+    }
+
+    private static string ResolveMappingRowId(
+        FormFieldMasterDto header,
+        IReadOnlyDictionary<string, object?> mappingRaw)
+    {
+        if (string.IsNullOrWhiteSpace(header.MAPPING_PK_COLUMN) ||
+            !mappingRaw.TryGetValue(header.MAPPING_PK_COLUMN, out var mappingPk) ||
+            mappingPk is null)
+        {
+            return string.Empty;
+        }
+
+        return NormalizeScalarValue(mappingPk);
+    }
+
+    private ComponentContext ResolveComponentContext(
+        FormFieldMasterDto header,
+        string mappingRowId,
+        SqlTransaction? tx = null)
+    {
+        if (string.IsNullOrWhiteSpace(mappingRowId))
+        {
+            throw new InvalidOperationException("MappingRowId 不可為空。");
+        }
+
+        if (string.IsNullOrWhiteSpace(header.MAPPING_PK_COLUMN))
+        {
+            throw new InvalidOperationException("設定檔缺少 MAPPING_PK_COLUMN。");
+        }
+
+        if (string.IsNullOrWhiteSpace(header.TARGET_MAPPING_COLUMN_NAME))
+        {
+            throw new InvalidOperationException("設定檔缺少 TARGET_MAPPING_COLUMN_NAME。");
+        }
+
+        ValidateColumnName(header.MAPPING_PK_COLUMN);
+        ValidateColumnName(header.TARGET_MAPPING_COLUMN_NAME);
+
+        var columnTypes = LoadColumnTypes(header.MAPPING_TABLE_NAME!, tx);
+        if (!columnTypes.TryGetValue(header.MAPPING_PK_COLUMN, out var mappingPkType))
+        {
+            throw new InvalidOperationException($"Mapping Table 缺少主鍵欄位：{header.MAPPING_PK_COLUMN}");
+        }
+
+        if (!columnTypes.TryGetValue(header.TARGET_MAPPING_COLUMN_NAME, out var targetColumnType))
+        {
+            throw new InvalidOperationException($"Mapping Table 缺少目標值欄位：{header.TARGET_MAPPING_COLUMN_NAME}");
+        }
+
+        var mappingPkValue = ConvertToColumnTypeHelper.ConvertPkType(mappingRowId.Trim(), mappingPkType);
+
+        return new ComponentContext(
+            header.MAPPING_PK_COLUMN,
+            mappingPkValue,
+            NormalizeScalarValue(mappingPkValue),
+            header.TARGET_MAPPING_COLUMN_NAME,
+            targetColumnType);
+    }
+
+    private IReadOnlyList<MappingComponentOptionViewModel> LoadMappingComponentOptionsFromSql(
+        string sql,
+        SqlTransaction tx)
+    {
+        if (!IsReadOnlyComponentOptionSql(sql))
+        {
+            throw new InvalidOperationException("DropdownSql 僅允許 SELECT 查詢。");
+        }
+
+        using var command = _con.CreateCommand();
+        command.CommandText = sql;
+        command.Transaction = tx;
+
+        using var reader = command.ExecuteReader();
+        var schema = reader.GetColumnSchema();
+        var idColumn = FindColumn(schema, "ID")
+                       ?? throw new InvalidOperationException("DropdownSql 必須回傳 ID 欄位。");
+        var nameColumn = FindColumn(schema, "NAME")
+                         ?? throw new InvalidOperationException("DropdownSql 必須回傳 NAME 欄位。");
+
+        var result = new List<MappingComponentOptionViewModel>();
+        var values = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+
+        while (reader.Read())
+        {
+            var value = ReadRequiredOptionValue(reader, idColumn, "ID");
+            var text = ReadRequiredOptionValue(reader, nameColumn, "NAME");
+            if (!values.Add(value))
+            {
+                throw new InvalidOperationException($"DropdownSql 回傳重複的 ID：{value}");
+            }
+
+            result.Add(new MappingComponentOptionViewModel
+            {
+                Value = value,
+                Text = text,
+                Order = result.Count + 1
+            });
+        }
+
+        return result;
+    }
+
+    private static IReadOnlyList<MappingComponentOptionViewModel> NormalizeComponentOptions(
+        IReadOnlyList<MappingComponentOptionViewModel> options)
+    {
+        var result = new List<MappingComponentOptionViewModel>(options.Count);
+        var values = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+
+        for (var index = 0; index < options.Count; index++)
+        {
+            var value = options[index].Value?.Trim();
+            var text = options[index].Text?.Trim();
+            if (string.IsNullOrWhiteSpace(value) || string.IsNullOrWhiteSpace(text))
+            {
+                throw new InvalidOperationException("Dropdown 選項的 Value 與 Text 不可為空。");
+            }
+
+            if (!values.Add(value))
+            {
+                throw new InvalidOperationException($"Dropdown 選項 Value 重複：{value}");
+            }
+
+            result.Add(new MappingComponentOptionViewModel
+            {
+                Value = value,
+                Text = text,
+                Order = options[index].Order > 0 ? options[index].Order : index + 1
+            });
+        }
+
+        return result
+            .OrderBy(option => option.Order)
+            .ThenBy(option => option.Value, StringComparer.OrdinalIgnoreCase)
+            .ToList();
+    }
+
+    private void SoftDeleteComponentConfigs(
+        Guid formMasterId,
+        IReadOnlyCollection<string> mappingRowIds,
+        string account,
+        SqlTransaction tx)
+    {
+        if (mappingRowIds.Count == 0)
+        {
+            return;
+        }
+
+        _con.Execute(@"/**/
+UPDATE componentOption
+   SET componentOption.IS_DELETE = 1,
+       componentOption.EDIT_TIME = GETDATE(),
+       componentOption.EDIT_USER = @Account
+  FROM dbo.FORM_MULTIPLE_MAPPING_COMPONENT_OPTION componentOption
+  JOIN dbo.FORM_MULTIPLE_MAPPING_COMPONENT_CONFIG componentConfig
+    ON componentConfig.ID = componentOption.COMPONENT_CONFIG_ID
+ WHERE componentConfig.FORM_FIELD_MASTER_ID = @FormMasterId
+   AND componentConfig.MAPPING_ROW_ID IN @MappingRowIds
+   AND componentOption.IS_DELETE = 0;
+
+UPDATE dbo.FORM_MULTIPLE_MAPPING_COMPONENT_CONFIG
+   SET IS_DELETE = 1,
+       EDIT_TIME = GETDATE(),
+       EDIT_USER = @Account
+ WHERE FORM_FIELD_MASTER_ID = @FormMasterId
+   AND MAPPING_ROW_ID IN @MappingRowIds
+   AND IS_DELETE = 0;",
+            new
+            {
+                FormMasterId = formMasterId,
+                MappingRowIds = mappingRowIds,
+                Account = account
+            },
+            transaction: tx);
+    }
+
+    private static bool IsOptionControl(FormControlType controlType) =>
+        controlType is FormControlType.Dropdown or FormControlType.Radio;
+
+    private static bool IsReadOnlyComponentOptionSql(string sql)
+    {
+        if (!FormDesignerPureLogic.IsSelectSql(sql))
+        {
+            return false;
+        }
+
+        var statement = sql.Trim();
+        if (statement.EndsWith(';'))
+        {
+            statement = statement[..^1].TrimEnd();
+        }
+
+        if (statement.Contains(';'))
+        {
+            return false;
+        }
+
+        return !Regex.IsMatch(
+            statement,
+            @"\b(into|create|grant|revoke|deny|backup|restore|dbcc|waitfor|shutdown|use)\b",
+            RegexOptions.IgnoreCase | RegexOptions.CultureInvariant);
+    }
+
+    private static MappingComponentOptionViewModel CloneComponentOption(
+        MappingComponentOptionViewModel option) =>
+        new()
+        {
+            Value = option.Value,
+            Text = option.Text,
+            Order = option.Order
+        };
+
+    private static string NormalizeScalarValue(object value)
+    {
+        var normalized = value switch
+        {
+            decimal decimalValue => decimalValue.ToString("G29", CultureInfo.InvariantCulture),
+            double doubleValue => doubleValue.ToString("R", CultureInfo.InvariantCulture),
+            float floatValue => floatValue.ToString("R", CultureInfo.InvariantCulture),
+            IFormattable formattable => formattable.ToString(null, CultureInfo.InvariantCulture),
+            _ => value.ToString()
+        };
+
+        return normalized?.Trim()
+               ?? throw new InvalidOperationException("Mapping PK 無法轉換為字串。");
+    }
+
+    private static DbColumn? FindColumn(IReadOnlyList<DbColumn> columns, string name) =>
+        columns.FirstOrDefault(column =>
+            string.Equals(column.ColumnName, name, StringComparison.OrdinalIgnoreCase));
+
+    private static string ReadRequiredOptionValue(
+        SqlDataReader reader,
+        DbColumn column,
+        string columnName)
+    {
+        var ordinal = column.ColumnOrdinal
+                      ?? throw new InvalidOperationException($"DropdownSql 的 {columnName} 欄位沒有 ordinal。");
+        if (reader.IsDBNull(ordinal))
+        {
+            throw new InvalidOperationException($"DropdownSql 的 {columnName} 不可為 NULL。");
+        }
+
+        var value = Convert.ToString(reader.GetValue(ordinal), CultureInfo.InvariantCulture)?.Trim();
+        if (string.IsNullOrWhiteSpace(value))
+        {
+            throw new InvalidOperationException($"DropdownSql 的 {columnName} 不可為空。");
+        }
+
+        return value;
+    }
+
+    private sealed class ComponentConfigAggregate
+    {
+        public Guid Id { get; set; }
+        public string MappingRowId { get; set; } = string.Empty;
+        public FormControlType ControlType { get; set; }
+        public bool IsUseSql { get; set; }
+        public string? DropdownSql { get; set; }
+        public List<MappingComponentOptionViewModel> Options { get; set; } = new();
+    }
+
+    private sealed class ComponentOptionDbRow
+    {
+        public Guid ComponentConfigId { get; set; }
+        public string Value { get; set; } = string.Empty;
+        public string Text { get; set; } = string.Empty;
+        public int Order { get; set; }
+    }
+
+    private sealed record ComponentContext(
+        string MappingPkColumn,
+        object MappingPkValue,
+        string NormalizedMappingRowId,
+        string TargetColumn,
+        string TargetColumnType);
 
     private static void ValidateUpsertRequest(MultipleMappingUpsertViewModel request)
     {
