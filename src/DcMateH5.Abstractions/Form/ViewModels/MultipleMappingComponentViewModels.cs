@@ -65,6 +65,7 @@ public sealed class MappingComponentDesignerItemViewModel
 public sealed class MappingComponentDesignerListViewModel
 {
     public Guid FormMasterId { get; set; }
+    public string? MappingComponentTargetColumnName { get; set; }
     public int TotalCount { get; set; }
     public Dictionary<string, MappingComponentDesignerItemViewModel> ComponentsByMappingRowId { get; set; }
         = new(StringComparer.OrdinalIgnoreCase);

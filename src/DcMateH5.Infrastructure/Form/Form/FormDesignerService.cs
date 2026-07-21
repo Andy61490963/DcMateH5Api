@@ -2566,6 +2566,11 @@ WHERE c.FORM_FIELD_MASTER_ID = @MasterId
         {
             ValidateColumnName(model.TARGET_MAPPING_COLUMN_NAME);
         }
+
+        if (!string.IsNullOrWhiteSpace(model.MAPPING_COMPONENT_TARGET_COLUMN_NAME))
+        {
+            ValidateColumnName(model.MAPPING_COMPONENT_TARGET_COLUMN_NAME);
+        }
         
         if (!string.IsNullOrWhiteSpace(model.SOURCE_DETAIL_COLUMN_CODE))
         {
@@ -2635,7 +2640,14 @@ WHERE c.FORM_FIELD_MASTER_ID = @MasterId
         EnsureColumnExists(detailTableName, model.MAPPING_DETAIL_FK_COLUMN, "目標表缺少對應的主鍵欄位");
         if (!string.IsNullOrWhiteSpace(model.TARGET_MAPPING_COLUMN_NAME))
         {
-            EnsureColumnExists(mappingTableName, model.TARGET_MAPPING_COLUMN_NAME, "關聯表缺少動態元件目標值欄位");
+            EnsureColumnExists(mappingTableName, model.TARGET_MAPPING_COLUMN_NAME, "關聯表缺少目標欄位");
+        }
+        if (!string.IsNullOrWhiteSpace(model.MAPPING_COMPONENT_TARGET_COLUMN_NAME))
+        {
+            EnsureColumnExists(
+                mappingTableName,
+                model.MAPPING_COMPONENT_TARGET_COLUMN_NAME,
+                "關聯表缺少逐 SID 元件目標值欄位");
         }
 
         EnsureMappingComponentHeaderCanChange(model, mappingTableName);
@@ -2682,6 +2694,7 @@ WHERE c.FORM_FIELD_MASTER_ID = @MasterId
             model.MAPPING_DETAIL_COLUMN_NAME,
             
             model.TARGET_MAPPING_COLUMN_NAME,
+            model.MAPPING_COMPONENT_TARGET_COLUMN_NAME,
             
             model.SOURCE_DETAIL_COLUMN_CODE,
             model.TARGET_MAPPING_COLUMN_CODE,
@@ -2935,7 +2948,7 @@ THEN 1 ELSE 0 END);",
         var existing = _con.QueryFirstOrDefault<FormFieldMasterDto>(@"/**/
 SELECT MAPPING_TABLE_NAME,
        MAPPING_PK_COLUMN,
-       TARGET_MAPPING_COLUMN_NAME
+       MAPPING_COMPONENT_TARGET_COLUMN_NAME
   FROM dbo.FORM_FIELD_MASTER
  WHERE ID = @Id
    AND IS_DELETE = 0;",
@@ -2950,8 +2963,8 @@ SELECT MAPPING_TABLE_NAME,
             !string.Equals(existing.MAPPING_TABLE_NAME, mappingTableName, StringComparison.OrdinalIgnoreCase) ||
             !string.Equals(existing.MAPPING_PK_COLUMN, model.MAPPING_PK_COLUMN, StringComparison.OrdinalIgnoreCase) ||
             !string.Equals(
-                existing.TARGET_MAPPING_COLUMN_NAME,
-                model.TARGET_MAPPING_COLUMN_NAME,
+                existing.MAPPING_COMPONENT_TARGET_COLUMN_NAME,
+                model.MAPPING_COMPONENT_TARGET_COLUMN_NAME,
                 StringComparison.OrdinalIgnoreCase);
 
         if (!changesComponentKey)
@@ -2970,7 +2983,7 @@ SELECT COUNT(1)
         {
             throw new DcMateClassLibrary.Helper.HttpHelper.HttpStatusCodeException(
                 System.Net.HttpStatusCode.Conflict,
-                "已有逐 SID 元件設定，請先清除設定後再更換 Mapping Table、Mapping PK 或目標值欄位。");
+                "已有逐 SID 元件設定，請先清除設定後再更換 Mapping Table、Mapping PK 或元件目標值欄位。");
         }
     }
 
@@ -3238,6 +3251,7 @@ WHEN MATCHED THEN
         MAPPING_BASE_COLUMN_NAME= @MAPPING_BASE_COLUMN_NAME,
         MAPPING_DETAIL_COLUMN_NAME=@MAPPING_DETAIL_COLUMN_NAME,
         TARGET_MAPPING_COLUMN_NAME = @TARGET_MAPPING_COLUMN_NAME,
+        MAPPING_COMPONENT_TARGET_COLUMN_NAME = @MAPPING_COMPONENT_TARGET_COLUMN_NAME,
         SOURCE_DETAIL_COLUMN_CODE    = @SOURCE_DETAIL_COLUMN_CODE,
         TARGET_MAPPING_COLUMN_CODE   = @TARGET_MAPPING_COLUMN_CODE,
         STATUS                  = @STATUS,
@@ -3251,7 +3265,8 @@ WHEN NOT MATCHED THEN
         BASE_TABLE_ID, DETAIL_TABLE_ID, MAPPING_TABLE_ID, VIEW_TABLE_ID,
         FORM_FIELD_MASTER_BUTTON_LINK_ID, FORM_FIELD_MASTER1_BUTTON_LINK_ID,
         MAPPING_PK_COLUMN,
-        TARGET_MAPPING_COLUMN_NAME, SOURCE_DETAIL_COLUMN_CODE, TARGET_MAPPING_COLUMN_CODE,
+        TARGET_MAPPING_COLUMN_NAME, MAPPING_COMPONENT_TARGET_COLUMN_NAME,
+        SOURCE_DETAIL_COLUMN_CODE, TARGET_MAPPING_COLUMN_CODE,
         STATUS, SCHEMA_TYPE, FUNCTION_TYPE, IS_DELETE,
         MAPPING_BASE_FK_COLUMN, MAPPING_DETAIL_FK_COLUMN, MAPPING_BASE_COLUMN_NAME, MAPPING_DETAIL_COLUMN_NAME,
         CREATE_TIME, EDIT_TIME
@@ -3262,7 +3277,8 @@ WHEN NOT MATCHED THEN
         @BASE_TABLE_ID, @DETAIL_TABLE_ID, @MAPPING_TABLE_ID, @VIEW_TABLE_ID,
         @FORM_FIELD_MASTER_BUTTON_LINK_ID, @FORM_FIELD_MASTER1_BUTTON_LINK_ID,
         @MAPPING_PK_COLUMN,
-        @TARGET_MAPPING_COLUMN_NAME, @SOURCE_DETAIL_COLUMN_CODE, @TARGET_MAPPING_COLUMN_CODE,
+        @TARGET_MAPPING_COLUMN_NAME, @MAPPING_COMPONENT_TARGET_COLUMN_NAME,
+        @SOURCE_DETAIL_COLUMN_CODE, @TARGET_MAPPING_COLUMN_CODE,
         @STATUS, @SCHEMA_TYPE, @FUNCTION_TYPE, 0,
         @MAPPING_BASE_FK_COLUMN, @MAPPING_DETAIL_FK_COLUMN, @MAPPING_BASE_COLUMN_NAME, @MAPPING_DETAIL_COLUMN_NAME,
         GETDATE(), GETDATE()

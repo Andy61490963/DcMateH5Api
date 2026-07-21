@@ -151,6 +151,11 @@ public class MultipleMappingListViewModel
 
     
     public string? TargetMappingColumnName { get; set; }
+
+    /// <summary>
+    /// 逐 Mapping Row 動態元件目前讀寫的 Mapping Table 欄位。
+    /// </summary>
+    public string? MappingComponentTargetColumnName { get; set; }
     
     public string? SourceDetailColumnCode { get; set; }
 

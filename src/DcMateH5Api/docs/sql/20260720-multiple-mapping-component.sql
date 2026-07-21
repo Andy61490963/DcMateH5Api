@@ -2,6 +2,16 @@ SET XACT_ABORT ON;
 BEGIN TRANSACTION;
 
 /*
+    逐 Mapping Row 動態元件使用獨立的目標值欄位設定。
+    此欄位為選填，未啟用動態元件的 Multiple Mapping 表單不必設定。
+*/
+IF COL_LENGTH(N'dbo.FORM_FIELD_MASTER', N'MAPPING_COMPONENT_TARGET_COLUMN_NAME') IS NULL
+BEGIN
+    ALTER TABLE dbo.FORM_FIELD_MASTER
+        ADD MAPPING_COMPONENT_TARGET_COLUMN_NAME nvarchar(128) NULL;
+END;
+
+/*
     多對多 Mapping Row 逐筆動態元件設定。
     MAPPING_ROW_ID 保存 MAPPING_PK_COLUMN 實際值的標準化字串。
 
@@ -103,5 +113,22 @@ BEGIN
             OPTION_ORDER
         );
 END;
+
+/*
+    僅搬移已存在逐 Mapping Row 元件設定的表單，保留升級前的讀寫行為。
+    新欄位已有設定時不覆寫。
+*/
+UPDATE formMaster
+   SET MAPPING_COMPONENT_TARGET_COLUMN_NAME = formMaster.TARGET_MAPPING_COLUMN_NAME
+  FROM dbo.FORM_FIELD_MASTER AS formMaster
+ WHERE NULLIF(LTRIM(RTRIM(formMaster.MAPPING_COMPONENT_TARGET_COLUMN_NAME)), N'') IS NULL
+   AND NULLIF(LTRIM(RTRIM(formMaster.TARGET_MAPPING_COLUMN_NAME)), N'') IS NOT NULL
+   AND EXISTS
+       (
+           SELECT 1
+             FROM dbo.FORM_FIELD_MULTIPLE_MAPPING_COMPONENT_CONFIG AS componentConfig
+            WHERE componentConfig.FORM_FIELD_MASTER_ID = formMaster.ID
+              AND componentConfig.IS_DELETE = 0
+       );
 
 COMMIT TRANSACTION;

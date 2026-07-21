@@ -313,3 +313,8 @@ app.MapControllers();
 app.MapHealthChecks("/healthz");
 
 app.Run();
+
+/// <summary>
+/// 提供 ASP.NET Core 整合測試使用的應用程式進入點。
+/// </summary>
+public partial class Program;

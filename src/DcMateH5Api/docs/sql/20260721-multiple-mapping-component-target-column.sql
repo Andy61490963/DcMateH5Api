@@ -1,0 +1,34 @@
+SET XACT_ABORT ON;
+BEGIN TRANSACTION;
+
+/*
+    將逐 Mapping Row 動態元件的目標值欄位從既有用途分離。
+    欄位為選填；只有使用動態元件時才需要設定。
+*/
+IF COL_LENGTH(N'dbo.FORM_FIELD_MASTER', N'MAPPING_COMPONENT_TARGET_COLUMN_NAME') IS NULL
+BEGIN
+    ALTER TABLE dbo.FORM_FIELD_MASTER
+        ADD MAPPING_COMPONENT_TARGET_COLUMN_NAME nvarchar(128) NULL;
+END;
+
+/*
+    已建立元件設定的舊資料沿用原 TARGET_MAPPING_COLUMN_NAME，
+    讓部署 Migration 後可維持原本的元件讀寫行為。
+*/
+IF OBJECT_ID(N'dbo.FORM_FIELD_MULTIPLE_MAPPING_COMPONENT_CONFIG', N'U') IS NOT NULL
+BEGIN
+    UPDATE formMaster
+       SET MAPPING_COMPONENT_TARGET_COLUMN_NAME = formMaster.TARGET_MAPPING_COLUMN_NAME
+      FROM dbo.FORM_FIELD_MASTER AS formMaster
+     WHERE NULLIF(LTRIM(RTRIM(formMaster.MAPPING_COMPONENT_TARGET_COLUMN_NAME)), N'') IS NULL
+       AND NULLIF(LTRIM(RTRIM(formMaster.TARGET_MAPPING_COLUMN_NAME)), N'') IS NOT NULL
+       AND EXISTS
+           (
+               SELECT 1
+                 FROM dbo.FORM_FIELD_MULTIPLE_MAPPING_COMPONENT_CONFIG AS componentConfig
+                WHERE componentConfig.FORM_FIELD_MASTER_ID = formMaster.ID
+                  AND componentConfig.IS_DELETE = 0
+           );
+END;
+
+COMMIT TRANSACTION;

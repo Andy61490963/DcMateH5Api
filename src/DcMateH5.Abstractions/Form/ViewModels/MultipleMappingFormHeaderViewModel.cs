@@ -84,6 +84,11 @@ public class MultipleMappingFormHeaderViewModel
     /// 明細表更新關聯表用的欄位
     /// </summary>
     public string? TARGET_MAPPING_COLUMN_NAME { get; set; }
+
+    /// <summary>
+    /// 逐 Mapping Row 動態元件共用的 Mapping Table 目標值欄位；未使用動態元件時可不設定。
+    /// </summary>
+    public string? MAPPING_COMPONENT_TARGET_COLUMN_NAME { get; set; }
     
     /// <summary>
     /// 明細表更新關聯表用的欄位

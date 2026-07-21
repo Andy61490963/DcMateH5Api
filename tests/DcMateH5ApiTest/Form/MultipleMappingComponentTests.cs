@@ -127,7 +127,32 @@ public class MultipleMappingComponentTests
 
         Assert.Contains("Linked", properties);
         Assert.Contains("Unlinked", properties);
+        Assert.Contains("TargetMappingColumnName", properties);
+        Assert.Contains("MappingComponentTargetColumnName", properties);
         Assert.Contains("ComponentsByMappingRowId", properties);
+    }
+
+    [Fact]
+    public void DesignerComponentList_ExposesSharedTargetColumnMetadata()
+    {
+        var properties = typeof(MappingComponentDesignerListViewModel)
+            .GetProperties(BindingFlags.Instance | BindingFlags.Public)
+            .Select(property => property.Name)
+            .ToHashSet(StringComparer.Ordinal);
+
+        Assert.Contains("MappingComponentTargetColumnName", properties);
+    }
+
+    [Fact]
+    public void FormHeader_SeparatesLegacyAndComponentTargetColumns()
+    {
+        var properties = typeof(MultipleMappingFormHeaderViewModel)
+            .GetProperties(BindingFlags.Instance | BindingFlags.Public)
+            .Select(property => property.Name)
+            .ToHashSet(StringComparer.Ordinal);
+
+        Assert.Contains("TARGET_MAPPING_COLUMN_NAME", properties);
+        Assert.Contains("MAPPING_COMPONENT_TARGET_COLUMN_NAME", properties);
     }
 
     [Fact]

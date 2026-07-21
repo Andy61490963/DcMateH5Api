@@ -118,7 +118,8 @@ public class FormMultipleMappingController : ControllerBase
     }
 
     /// <summary>
-    /// 依設定檔與主表主鍵取得清單（已關聯 / 未關聯），查詢欄位前端動態解析。
+    /// 依設定檔與主表主鍵取得清單（已關聯 / 未關聯）及逐 Mapping Row 元件。
+    /// 回應的 MappingComponentTargetColumnName 說明元件 CurrentValue 的來源欄位。
     /// </summary>
     [HttpPost(Routes.MappingItemsQuery)]
     [ProducesResponseType(typeof(MultipleMappingListViewModel), StatusCodes.Status200OK)]

@@ -87,6 +87,9 @@ public class FormFieldMasterDto
     
     [Column("TARGET_MAPPING_COLUMN_NAME")]
     public string? TARGET_MAPPING_COLUMN_NAME { get; set; }
+
+    [Column("MAPPING_COMPONENT_TARGET_COLUMN_NAME")]
+    public string? MAPPING_COMPONENT_TARGET_COLUMN_NAME { get; set; }
     
     
     

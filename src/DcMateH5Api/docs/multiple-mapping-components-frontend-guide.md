@@ -1,32 +1,50 @@
-# Multiple Mapping 逐 SID 動態元件－前端串接指南
+# Multiple Mapping 逐 SID 動態元件－前端串接手冊（白話版）
 
 ## 1. 這個功能在做什麼？
 
-同一張 Mapping Table 的每一筆資料，都可以設定不同的輸入元件。
+一句話說完：**Mapping Table 的每一筆資料，都可以有自己的輸入元件。**
 
-例如：
+例如同一張表裡：
 
 - SID `501` 使用 Dropdown，值只能選 `A` 或 `D`。
 - SID `502` 使用 Text，值由使用者自由輸入。
 
-後端不會寫死欄位名稱一定叫 `SID`。表單 Header 的 `MAPPING_PK_COLUMN` 是哪個欄位，該欄位的值就是 API 對外使用的 `MappingRowId`。
+這裡說的 SID 不一定真的叫 `SID`。Header 的 `MAPPING_PK_COLUMN` 設哪一欄，後端就用那一欄的值當 `MappingRowId`。
 
-所有元件的值都寫入 Header 設定的 `TARGET_MAPPING_COLUMN_NAME`。
+每一筆可以有不同元件，但它們的值都寫到 Header 指定的同一個 Mapping Table 欄位，也就是 `MAPPING_COMPONENT_TARGET_COLUMN_NAME`。
+
+最容易搞混的是下面兩個欄位：
+
+| 欄位 | 現在是做什麼的 |
+|---|---|
+| `MAPPING_COMPONENT_TARGET_COLUMN_NAME` | 逐 SID 元件真正讀值、寫值的欄位 |
+| `TARGET_MAPPING_COLUMN_NAME` | 舊功能繼續使用；逐 SID 元件不再看這個欄位 |
+
+資料分工也很簡單：
+
+| 設定位置 | 負責的事情 |
+|---|---|
+| `FORM_FIELD_MASTER.MAPPING_COMPONENT_TARGET_COLUMN_NAME` | 告訴後端元件值要放到 Mapping Table 哪一欄 |
+| `FORM_FIELD_MULTIPLE_MAPPING_COMPONENT_CONFIG` | 記錄每個 `MappingRowId` 要顯示 Text、Dropdown、Radio 等哪一種元件 |
+| `FORM_FIELD_MULTIPLE_MAPPING_COMPONENT_OPTION` | 記錄 Dropdown／Radio 可以選哪些值 |
+
+所以 Config、Option 兩張表已經能支援「不同 SID 使用不同元件」；Header 新欄位只是補上「元件值到底要寫回 Mapping Table 哪一欄」。
 
 ## 2. 前端最短流程
 
 ### Designer 設定元件
 
-1. 查詢已建立的 Mapping Rows。
-2. 從查詢結果取得 `MappingRowId`。
-3. 替該 `MappingRowId` 設定 Text、Dropdown、Radio 等元件。
+1. 儲存 Header，設定 `MAPPING_COMPONENT_TARGET_COLUMN_NAME`。
+2. 查詢已建立的 Mapping Rows。
+3. 從查詢結果拿到 `MappingRowId`。
+4. 替這個 `MappingRowId` 設定 Text、Dropdown、Radio 等元件。
 
 ### Runtime 顯示與更新
 
-1. 查詢 `items/query`。
-2. 從 `ComponentsByMappingRowId` 取得每筆 Mapping Row 的元件。
-3. `IsConfigured=true` 才顯示可輸入元件。
-4. 使用者輸入後，呼叫逐 SID Value API 更新值。
+1. 呼叫 `items/query`。
+2. 從 `ComponentsByMappingRowId` 找到每一筆要顯示的元件。
+3. 只有 `IsConfigured=true` 才顯示輸入框。
+4. 使用者改值後，呼叫 Value API；前端只要傳 `Value`。
 
 ```mermaid
 flowchart LR
@@ -38,24 +56,25 @@ flowchart LR
 
 ## 3. 最重要的欄位
 
-| 欄位 | 意義 | 前端用途 |
+| 欄位 | 白話意思 | 前端怎麼用 |
 |---|---|---|
 | `BaseId` | Base Table 的主鍵值 | 指定要查看哪一筆主資料的關聯 |
 | `DetailPk` | Detail Table 的主鍵值 | `Linked`／`Unlinked` Dictionary 的 key |
 | `MappingRowId` | Mapping Table 的識別值，通常就是 SID | `ComponentsByMappingRowId` 的 key，也是設定及更新元件時使用的 ID |
 | `IsConfigured` | 該 Mapping Row 是否已設定元件 | `false` 時不要顯示輸入元件 |
-| `CurrentValue` | `TARGET_MAPPING_COLUMN_NAME` 目前的值 | Runtime 顯示的初始值 |
+| `MappingComponentTargetColumnName` | 後端目前把元件值放在哪一欄 | 讓前端知道 `CurrentValue` 的來源；不用再傳回後端 |
+| `CurrentValue` | 這一筆元件目前存的值 | 畫面一開始顯示的值 |
 | `ControlType` | 要顯示的元件類型 | 決定前端要產生哪種 UI |
 | `Options` | Dropdown／Radio 的有效選項 | 顯示 `Text`，送出 `Value` |
 
-`DetailPk` 和 `MappingRowId` 不可混用：
+請特別注意：`DetailPk` 是明細資料 ID，`MappingRowId` 才是元件設定和更新值要用的 ID，兩個不能混用。
 
 ```ts
 const linkedRow = response.Linked[detailPk];
 const component = response.ComponentsByMappingRowId[linkedRow.MappingRowId];
 ```
 
-Unlinked 資料尚未建立 Mapping Row，因此沒有可用的 `MappingRowId`，也不會出現在 `ComponentsByMappingRowId`。
+Unlinked 資料還沒有 Mapping Row，所以也還沒有 `MappingRowId`。要先建立關聯、重新查詢，才可以替它設定元件。
 
 ## 4. API 一覽
 
@@ -209,9 +228,21 @@ Designer 固定只查已關聯的 Mapping Rows，所以不用傳 `Type`：
 
 ## 7. Designer：設定每筆 SID 的元件
 
-後端會依 Target Column 的 SQL 型別檢查可用的 `ControlType`。若設定不相容的元件，API 會回傳 `400`。
+後端會自己檢查目標欄位的資料型別。例如文字欄位可以用 Text，Dropdown 的選項也必須能存進該欄位；不合規則就回 `400`。
 
 要取消元件設定時請呼叫 DELETE，不要用 PUT 傳入 `ControlType=0`。
+
+建立元件前，先把 `MAPPING_COMPONENT_TARGET_COLUMN_NAME` 加進原本完整的 Header Request，再呼叫 `POST /Form/FormDesignerMultipleMapping/headers`。下面只列出和這個功能有關的部分，不是完整 Header Request：
+
+```json
+{
+  "ID": "9b31e6b1-5b3f-4ef2-beb0-63954e3d21aa",
+  "TARGET_MAPPING_COLUMN_NAME": null,
+  "MAPPING_COMPONENT_TARGET_COLUMN_NAME": "STATUS_CODE"
+}
+```
+
+這個欄位不是所有 Multiple Mapping 表單都必填。沒用逐 SID 元件時可以留空；要建立或更新逐 SID 元件時才一定要設定。
 
 ### 7.1 查詢目前設定
 
@@ -225,6 +256,7 @@ Response 範例：
 ```json
 {
   "FormMasterId": "9b31e6b1-5b3f-4ef2-beb0-63954e3d21aa",
+  "MappingComponentTargetColumnName": "STATUS_CODE",
   "TotalCount": 2,
   "ComponentsByMappingRowId": {
     "501": {
@@ -339,7 +371,8 @@ Response 會保留原本的 `Linked`、`Unlinked`，並加入 `ComponentsByMappi
 
 ```json
 {
-  "TargetMappingColumnName": "STATUS_CODE",
+  "TargetMappingColumnName": null,
+  "MappingComponentTargetColumnName": "STATUS_CODE",
   "Linked": {
     "2001": {
       "MappingRowId": "501",
@@ -364,6 +397,60 @@ Response 會保留原本的 `Linked`、`Unlinked`，並加入 `ComponentsByMappi
   }
 }
 ```
+
+`MappingComponentTargetColumnName` 是後端順便告訴前端：「這批元件的值目前放在 Mapping Table 的哪一欄」。前端可以拿來檢查設定是否正確，但更新時不用把欄位名稱傳回去；Value API 只收 `Value`，真正要更新哪一欄由後端決定。
+
+### 8.1.1 實際整合測試案例
+
+下面不是假資料範例，而是 2026-07-21 實際拿開發資料庫跑過的結果：
+
+| 項目 | 實測值 |
+|---|---|
+| `FormMasterId` | `837CAD09-413D-4D35-AAD2-3A865B233B54` |
+| `BaseId` | `202601211451707` |
+| `MappingRowId` | `156202957262999` |
+| `MAPPING_COMPONENT_TARGET_COLUMN_NAME` | `DESC` |
+| `ControlType` | `6`（Dropdown） |
+| 有效選項 | `DEMO-A`、`DEMO-B` |
+
+Runtime 查詢：
+
+```http
+POST /Form/FormMultipleMapping/837CAD09-413D-4D35-AAD2-3A865B233B54/items/query
+Content-Type: application/json
+```
+
+```json
+{
+  "BaseId": "202601211451707",
+  "Type": 1,
+  "OrderBySeqAscending": true
+}
+```
+
+實際回應的關鍵內容：
+
+```json
+{
+  "MappingComponentTargetColumnName": "DESC",
+  "ComponentsByMappingRowId": {
+    "156202957262999": {
+      "MappingRowId": "156202957262999",
+      "ControlType": 6,
+      "CurrentValue": "DEMO-A",
+      "Options": [
+        { "Value": "DEMO-A", "Text": "Demo option A", "Order": 1 },
+        { "Value": "DEMO-B", "Text": "Demo option B", "Order": 2 }
+      ],
+      "IsConfigured": true
+    }
+  }
+}
+```
+
+同一組條件呼叫 Designer 的 `mapping-components/query`，也確實會拿到 `MappingComponentTargetColumnName: "DESC"`。
+
+接著真的呼叫 Value API，把值從 `DEMO-A` 改成 `DEMO-B`，再改回 `DEMO-A`。兩次更新都回傳 `Affected: 1`。測試結束後資料值和稽核欄位都已還原；Header 的 `MAPPING_COMPONENT_TARGET_COLUMN_NAME=DESC` 是正式設定，所以保留。
 
 ### 8.2 產生 UI
 
@@ -414,14 +501,14 @@ Content-Type: application/json
 }
 ```
 
-後端會檢查：
+前端只要送 `Value`，後端會幫忙檢查：
 
 - 該 `MappingRowId` 必須已設定元件。
 - Dropdown／Radio 不接受 `null`。
 - Dropdown／Radio 的值必須存在於有效 `Options`。
-- 所有輸入都必須能轉成 Target Column 的 SQL 型別。
+- 所有輸入都必須能轉成 `MAPPING_COMPONENT_TARGET_COLUMN_NAME` 對應欄位的 SQL 型別。
 
-Runtime 更新 `TARGET_MAPPING_COLUMN_NAME` 時，請使用這支 Value API。
+不要把欄位名稱塞進 Request，也不要自己猜要更新哪一欄。呼叫這支 Value API 並傳 `Value` 就可以。
 
 既有的 `/mapping-table` API 仍可更新其他 Mapping 欄位；若用它更新 Target Column，也會套用相同的元件與選項驗證，不能用來繞過限制。
 
@@ -482,7 +569,7 @@ POST /Form/FormMultipleMapping/{formMasterId}/items/remove
 | `204` | Designer 設定、清除或關聯操作成功 | 重新查詢 |
 | `400` | 請求、選項、SQL 或型別驗證失敗 | 顯示後端訊息，不更新本機值 |
 | `404` | 表單或 Mapping Row 不存在 | 重新載入或提示資料已移除 |
-| `409` | 尚有逐 SID 設定，不能更換 Mapping Table／PK／Target Column | 提示先清除逐 SID 設定 |
+| `409` | 還有逐 SID 設定，不能直接更換 Mapping Table、Mapping PK 或元件目標欄位 | 提示使用者先清除逐 SID 設定 |
 
 部分錯誤是純文字，部分是 JSON。可使用：
 
@@ -506,28 +593,41 @@ async function readApiError(response: Response): Promise<string> {
 - [ ] `ComponentsByMappingRowId` 使用 Mapping PK／SID 當 key。
 - [ ] `IsConfigured=false` 時不顯示輸入元件。
 - [ ] Dropdown／Radio 顯示 `Text`，送出 `Value`。
-- [ ] Runtime 更新 Target Column 時呼叫逐 SID Value API。
+- [ ] 從查詢結果讀取 `MappingComponentTargetColumnName`，不要與舊的 `TargetMappingColumnName` 混用。
+- [ ] Runtime 更新元件值時只傳 `Value`，並呼叫逐 SID Value API。
 - [ ] `mappingRowId` 放入 URL 前使用 `encodeURIComponent`。
 - [ ] 新增關聯後重新查詢，不能把 `DetailPk` 當成 `MappingRowId`。
 - [ ] API 回 400 時保留原值並顯示訊息。
 
 ## 12. 後端部署提醒
 
-啟用功能前必須執行：
+如果環境從來沒有建立過逐 SID 元件資料表，執行：
 
 ```text
 src/DcMateH5Api/docs/sql/20260720-multiple-mapping-component.sql
 ```
+
+如果環境以前已經跑過 `20260720`，這次只要再執行：
+
+```text
+src/DcMateH5Api/docs/sql/20260721-multiple-mapping-component-target-column.sql
+```
+
+升級腳本會把「已經有逐 SID 元件設定」的表單，從舊欄位搬到新欄位。新欄位如果已經有值，不會被蓋掉。
 
 設定資料表名稱：
 
 - `FORM_FIELD_MULTIPLE_MAPPING_COMPONENT_CONFIG`
 - `FORM_FIELD_MULTIPLE_MAPPING_COMPONENT_OPTION`
 
-表單 Header 必須設定：
+表單 Header 的基本必填設定：
 
 - `MAPPING_TABLE_NAME`
 - `MAPPING_PK_COLUMN`
 - `MAPPING_BASE_FK_COLUMN`
 - `MAPPING_DETAIL_FK_COLUMN`
-- `TARGET_MAPPING_COLUMN_NAME`
+
+逐 SID 元件另外使用：
+
+- `MAPPING_COMPONENT_TARGET_COLUMN_NAME`：一般儲存 Header 時可留空；真的要用逐 SID 元件前必須設定。
+- `TARGET_MAPPING_COLUMN_NAME`：保留給舊功能，逐 SID 元件不使用它。

@@ -216,6 +216,7 @@ SELECT ID AS Id,
             MappingBaseColumnName = header.MAPPING_BASE_COLUMN_NAME,
             MappingDetailColumnName = header.MAPPING_DETAIL_COLUMN_NAME,
             TargetMappingColumnName = header.TARGET_MAPPING_COLUMN_NAME,
+            MappingComponentTargetColumnName = header.MAPPING_COMPONENT_TARGET_COLUMN_NAME,
             SourceDetailColumnCode = header.SOURCE_DETAIL_COLUMN_CODE,
             TargetMappingColumnCode = header.TARGET_MAPPING_COLUMN_CODE,
             LinkedTotalCount = linkedTotalCount,
@@ -256,6 +257,7 @@ SELECT ID AS Id,
         var result = new MappingComponentDesignerListViewModel
         {
             FormMasterId = formMasterId,
+            MappingComponentTargetColumnName = runtime.MappingComponentTargetColumnName,
             TotalCount = runtime.LinkedTotalCount
         };
 
@@ -538,6 +540,7 @@ UPDATE [{header.MAPPING_TABLE_NAME}]
             MappingBaseColumnName = header.MAPPING_BASE_COLUMN_NAME,
             MappingDetailColumnName = header.MAPPING_DETAIL_COLUMN_NAME,
             TargetMappingColumnName = header.TARGET_MAPPING_COLUMN_NAME,
+            MappingComponentTargetColumnName = header.MAPPING_COMPONENT_TARGET_COLUMN_NAME,
             SourceDetailColumnCode = header.SOURCE_DETAIL_COLUMN_CODE,
             TargetMappingColumnCode = header.TARGET_MAPPING_COLUMN_CODE,
             LinkedTotalCount = linkedTotalCount,
@@ -1055,11 +1058,11 @@ WHERE [{header.MAPPING_PK_COLUMN}] IN @Ids
         }
 
         var mappingHeader = GetMappingHeader(formMasterId);
-        if (!string.IsNullOrWhiteSpace(mappingHeader.TARGET_MAPPING_COLUMN_NAME) &&
+        if (!string.IsNullOrWhiteSpace(mappingHeader.MAPPING_COMPONENT_TARGET_COLUMN_NAME) &&
             request.Fields.Keys.Any(column =>
                 string.Equals(
                     column,
-                    mappingHeader.TARGET_MAPPING_COLUMN_NAME,
+                    mappingHeader.MAPPING_COMPONENT_TARGET_COLUMN_NAME,
                     StringComparison.OrdinalIgnoreCase)))
         {
             return await UpdateMappingTableDataWithComponentValidation(
@@ -1695,8 +1698,8 @@ WHERE b.[{header.MAPPING_BASE_FK_COLUMN}] = @BaseId;";
             configs.TryGetValue(item.MappingRowId, out var config);
 
             object? currentValue = null;
-            if (!string.IsNullOrWhiteSpace(header.TARGET_MAPPING_COLUMN_NAME) &&
-                item.MappingFields.TryGetValue(header.TARGET_MAPPING_COLUMN_NAME, out var fieldValue))
+            if (!string.IsNullOrWhiteSpace(header.MAPPING_COMPONENT_TARGET_COLUMN_NAME) &&
+                item.MappingFields.TryGetValue(header.MAPPING_COMPONENT_TARGET_COLUMN_NAME, out var fieldValue))
             {
                 currentValue = fieldValue.Value;
             }
@@ -1818,13 +1821,13 @@ SELECT COMPONENT_CONFIG_ID AS ComponentConfigId,
             throw new InvalidOperationException("設定檔缺少 MAPPING_PK_COLUMN。");
         }
 
-        if (string.IsNullOrWhiteSpace(header.TARGET_MAPPING_COLUMN_NAME))
+        if (string.IsNullOrWhiteSpace(header.MAPPING_COMPONENT_TARGET_COLUMN_NAME))
         {
-            throw new InvalidOperationException("設定檔缺少 TARGET_MAPPING_COLUMN_NAME。");
+            throw new InvalidOperationException("設定檔缺少 MAPPING_COMPONENT_TARGET_COLUMN_NAME。");
         }
 
         ValidateColumnName(header.MAPPING_PK_COLUMN);
-        ValidateColumnName(header.TARGET_MAPPING_COLUMN_NAME);
+        ValidateColumnName(header.MAPPING_COMPONENT_TARGET_COLUMN_NAME);
 
         var columnTypes = LoadColumnTypes(header.MAPPING_TABLE_NAME!, tx);
         if (!columnTypes.TryGetValue(header.MAPPING_PK_COLUMN, out var mappingPkType))
@@ -1832,9 +1835,10 @@ SELECT COMPONENT_CONFIG_ID AS ComponentConfigId,
             throw new InvalidOperationException($"Mapping Table 缺少主鍵欄位：{header.MAPPING_PK_COLUMN}");
         }
 
-        if (!columnTypes.TryGetValue(header.TARGET_MAPPING_COLUMN_NAME, out var targetColumnType))
+        if (!columnTypes.TryGetValue(header.MAPPING_COMPONENT_TARGET_COLUMN_NAME, out var targetColumnType))
         {
-            throw new InvalidOperationException($"Mapping Table 缺少目標值欄位：{header.TARGET_MAPPING_COLUMN_NAME}");
+            throw new InvalidOperationException(
+                $"Mapping Table 缺少逐 SID 元件目標值欄位：{header.MAPPING_COMPONENT_TARGET_COLUMN_NAME}");
         }
 
         var mappingPkValue = ConvertToColumnTypeHelper.ConvertPkType(mappingRowId.Trim(), mappingPkType);
@@ -1843,7 +1847,7 @@ SELECT COMPONENT_CONFIG_ID AS ComponentConfigId,
             header.MAPPING_PK_COLUMN,
             mappingPkValue,
             NormalizeScalarValue(mappingPkValue),
-            header.TARGET_MAPPING_COLUMN_NAME,
+            header.MAPPING_COMPONENT_TARGET_COLUMN_NAME,
             targetColumnType);
     }
 
