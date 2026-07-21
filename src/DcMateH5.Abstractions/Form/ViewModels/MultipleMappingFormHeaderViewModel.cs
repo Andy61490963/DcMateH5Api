@@ -83,7 +83,7 @@ public class MultipleMappingFormHeaderViewModel
     /// <summary>
     /// 明細表更新關聯表用的欄位
     /// </summary>
-    public string TARGET_MAPPING_COLUMN_NAME { get; set; }
+    public string? TARGET_MAPPING_COLUMN_NAME { get; set; }
     
     /// <summary>
     /// 明細表更新關聯表用的欄位

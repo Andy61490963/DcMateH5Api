@@ -2541,11 +2541,10 @@ WHERE c.FORM_FIELD_MASTER_ID = @MasterId
     {
         if (string.IsNullOrWhiteSpace(model.MAPPING_BASE_FK_COLUMN) ||
             string.IsNullOrWhiteSpace(model.MAPPING_DETAIL_FK_COLUMN) ||
-            string.IsNullOrWhiteSpace(model.MAPPING_PK_COLUMN) ||
-            string.IsNullOrWhiteSpace(model.TARGET_MAPPING_COLUMN_NAME))
+            string.IsNullOrWhiteSpace(model.MAPPING_PK_COLUMN))
         {
             throw new InvalidOperationException(
-                "必須設定 Mapping PK、目標值欄位及 Base／Detail 關聯欄位名稱。");
+                "必須設定 Mapping PK 及 Base／Detail 關聯欄位名稱。");
         }
 
         ValidateColumnName(model.MAPPING_PK_COLUMN);
@@ -2634,7 +2633,10 @@ WHERE c.FORM_FIELD_MASTER_ID = @MasterId
         EnsureColumnExists(mappingTableName, model.MAPPING_DETAIL_FK_COLUMN, "關聯表缺少指向明細表的外鍵欄位");
         EnsureColumnExists(baseTableName, model.MAPPING_BASE_FK_COLUMN, "主表缺少對應的主鍵欄位");
         EnsureColumnExists(detailTableName, model.MAPPING_DETAIL_FK_COLUMN, "目標表缺少對應的主鍵欄位");
-        EnsureColumnExists(mappingTableName, model.TARGET_MAPPING_COLUMN_NAME, "關聯表缺少動態元件目標值欄位");
+        if (!string.IsNullOrWhiteSpace(model.TARGET_MAPPING_COLUMN_NAME))
+        {
+            EnsureColumnExists(mappingTableName, model.TARGET_MAPPING_COLUMN_NAME, "關聯表缺少動態元件目標值欄位");
+        }
 
         EnsureMappingComponentHeaderCanChange(model, mappingTableName);
         
