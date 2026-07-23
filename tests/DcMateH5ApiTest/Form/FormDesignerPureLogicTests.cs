@@ -8,15 +8,41 @@ namespace DcMateH5ApiTest.Form;
 public class FormDesignerPureLogicTests
 {
     [Fact]
-    public void NormalizeAndValidateOptions_TrimsTextAndValue()
+    public void NormalizeAndValidateOptions_TrimsTextValueAndType()
     {
         var result = FormDesignerPureLogic.NormalizeAndValidateOptions(
         [
-            new DropdownOptionItemViewModel { OptionText = "  Enabled  ", OptionValue = "  Y  " },
+            new DropdownOptionItemViewModel
+            {
+                OptionText = "  Enabled  ",
+                OptionValue = "  Y  ",
+                OptionType = "  Status  "
+            },
             new DropdownOptionItemViewModel { OptionText = "Disabled", OptionValue = "N" }
         ]);
 
-        Assert.Equal([("Enabled", "Y"), ("Disabled", "N")], result);
+        Assert.Equal("Enabled", result[0].Text);
+        Assert.Equal("Y", result[0].Value);
+        Assert.Equal("Status", result[0].Type);
+        Assert.Equal("Disabled", result[1].Text);
+        Assert.Equal("N", result[1].Value);
+        Assert.Null(result[1].Type);
+    }
+
+    [Fact]
+    public void NormalizeAndValidateOptions_ConvertsBlankTypeToNull()
+    {
+        var result = FormDesignerPureLogic.NormalizeAndValidateOptions(
+        [
+            new DropdownOptionItemViewModel
+            {
+                OptionText = "Enabled",
+                OptionValue = "Y",
+                OptionType = "   "
+            }
+        ]);
+
+        Assert.Null(result[0].Type);
     }
 
     [Fact]
@@ -35,8 +61,23 @@ public class FormDesignerPureLogicTests
         Assert.Throws<InvalidOperationException>(() =>
             FormDesignerPureLogic.NormalizeAndValidateOptions(
             [
-                new DropdownOptionItemViewModel { OptionText = "Enabled", OptionValue = "Y" },
-                new DropdownOptionItemViewModel { OptionText = "Yes", OptionValue = "y" }
+                new DropdownOptionItemViewModel { OptionText = "Enabled", OptionValue = "Y", OptionType = "A" },
+                new DropdownOptionItemViewModel { OptionText = "Yes", OptionValue = "y", OptionType = "B" }
+            ]));
+    }
+
+    [Fact]
+    public void NormalizeAndValidateOptions_RejectsTypeLongerThan255Characters()
+    {
+        Assert.Throws<InvalidOperationException>(() =>
+            FormDesignerPureLogic.NormalizeAndValidateOptions(
+            [
+                new DropdownOptionItemViewModel
+                {
+                    OptionText = "Enabled",
+                    OptionValue = "Y",
+                    OptionType = new string('T', 256)
+                }
             ]));
     }
 

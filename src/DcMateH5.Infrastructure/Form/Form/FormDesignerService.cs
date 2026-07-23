@@ -2283,7 +2283,7 @@ WHERE c.FORM_FIELD_MASTER_ID = @MasterId
         if (options is null) throw new ArgumentNullException(nameof(options));
 
         // 1) 正規化 & 驗證（避免 DB 裡出現髒資料）
-        var normalized = NormalizeAndValidateOptions(options);
+        var normalized = FormDesignerPureLogic.NormalizeAndValidateOptions(options);
 
         // 2) 整組替換：Tx 確保原子性
         await _sqlHelper.TxAsync(async (conn, tx, innerCt) =>
@@ -2295,38 +2295,6 @@ WHERE c.FORM_FIELD_MASTER_ID = @MasterId
             await BulkInsertOptionsAsync(conn, tx, dropdownId, normalized, innerCt);
 
         }, ct: ct);
-    }
-
-    /// <summary>
-    /// 正規化與驗證：Trim、必填檢查、重複檢查（避免同一組資料互打）
-    /// </summary>
-    private static IReadOnlyList<(string Text, string Value)> NormalizeAndValidateOptions(
-        IReadOnlyList<DropdownOptionItemViewModel> options)
-    {
-        // Trim + 過濾空白
-        var list = options
-            .Select(x => (
-                Text: x.OptionText?.Trim(),
-                Value: x.OptionValue?.Trim()
-            ))
-            .ToList();
-
-        // 必填檢查
-        if (list.Any(x => string.IsNullOrWhiteSpace(x.Text) || string.IsNullOrWhiteSpace(x.Value)))
-            throw new InvalidOperationException("OptionText / OptionValue 不可空白");
-
-        // 重複檢查（建議至少 Value 不能重複；要不要 Text 也不能重複看你規格）
-        // 這裡用 Value 當 key（最常見）
-        var dupValue = list
-            .GroupBy(x => x.Value!, StringComparer.OrdinalIgnoreCase)
-            .FirstOrDefault(g => g.Count() > 1);
-
-        if (dupValue is not null)
-            throw new InvalidOperationException($"OptionValue 重複：{dupValue.Key}");
-
-        return list
-            .Select(x => (x.Text!, x.Value!))
-            .ToList();
     }
 
     /// <summary>
@@ -2359,7 +2327,7 @@ WHERE c.FORM_FIELD_MASTER_ID = @MasterId
         SqlConnection conn,
         SqlTransaction tx,
         Guid dropdownId,
-        IReadOnlyList<(string Text, string Value)> normalized,
+        IReadOnlyList<(string Text, string Value, string? Type)> normalized,
         CancellationToken ct)
     {
         const string sql = @"
@@ -2369,6 +2337,7 @@ WHERE c.FORM_FIELD_MASTER_ID = @MasterId
         FORM_FIELD_DROPDOWN_ID,
         OPTION_TEXT,
         OPTION_VALUE,
+        OPTION_TYPE,
         IS_DELETE,
         CREATE_TIME,
         EDIT_TIME
@@ -2379,6 +2348,7 @@ WHERE c.FORM_FIELD_MASTER_ID = @MasterId
         @DropdownId,
         @Text,
         @Value,
+        @Type,
         0,
         SYSDATETIME(),
         SYSDATETIME()
@@ -2390,7 +2360,8 @@ WHERE c.FORM_FIELD_MASTER_ID = @MasterId
             Id = Guid.NewGuid(),
             DropdownId = dropdownId,
             Text = x.Text,
-            Value = x.Value
+            Value = x.Value,
+            Type = x.Type
         });
 
         await conn.ExecuteAsync(

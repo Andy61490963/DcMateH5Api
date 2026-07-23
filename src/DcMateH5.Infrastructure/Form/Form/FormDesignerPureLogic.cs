@@ -7,7 +7,9 @@ namespace DcMateH5.Infrastructure.Form.Form;
 
 internal static class FormDesignerPureLogic
 {
-    public static IReadOnlyList<(string Text, string Value)> NormalizeAndValidateOptions(
+    private const int MaxOptionTypeLength = 255;
+
+    public static IReadOnlyList<(string Text, string Value, string? Type)> NormalizeAndValidateOptions(
         IReadOnlyList<DropdownOptionItemViewModel> options)
     {
         ArgumentNullException.ThrowIfNull(options);
@@ -15,13 +17,19 @@ internal static class FormDesignerPureLogic
         var list = options
             .Select(x => (
                 Text: x.OptionText?.Trim(),
-                Value: x.OptionValue?.Trim()
+                Value: x.OptionValue?.Trim(),
+                Type: string.IsNullOrWhiteSpace(x.OptionType) ? null : x.OptionType.Trim()
             ))
             .ToList();
 
         if (list.Any(x => string.IsNullOrWhiteSpace(x.Text) || string.IsNullOrWhiteSpace(x.Value)))
         {
             throw new InvalidOperationException("OptionText / OptionValue 不可空白");
+        }
+
+        if (list.Any(x => x.Type?.Length > MaxOptionTypeLength))
+        {
+            throw new InvalidOperationException($"OptionType 長度不可超過 {MaxOptionTypeLength} 個字元");
         }
 
         var duplicateValue = list
@@ -34,7 +42,7 @@ internal static class FormDesignerPureLogic
         }
 
         return list
-            .Select(x => (x.Text!, x.Value!))
+            .Select(x => (x.Text!, x.Value!, x.Type))
             .ToList();
     }
 

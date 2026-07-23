@@ -18,5 +18,8 @@ public class DropdownOptionItemViewModel
 
     [Required(ErrorMessage = "選項值不可為空")]
     public string OptionValue { get; set; } = "";
+
+    [StringLength(255, ErrorMessage = "選項類型長度不可超過 255 個字元")]
+    public string? OptionType { get; set; }
 }
 

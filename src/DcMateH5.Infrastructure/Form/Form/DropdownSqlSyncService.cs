@@ -14,10 +14,12 @@ namespace DcMateH5.Infrastructure.Form.Form;
 /// </summary>
 public class DropdownSqlSyncService : IDropdownSqlSyncService
 {
+    private const int MaxOptionTypeLength = 255;
+
     private readonly SqlConnection _con;
 
     private const string ExistingOptionsSql =
-        "SELECT ID, OPTION_VALUE, OPTION_TEXT, OPTION_TABLE, IS_DELETE FROM FORM_FIELD_DROPDOWN_OPTIONS WHERE FORM_FIELD_DROPDOWN_ID = @DropdownId";
+        "SELECT ID, OPTION_VALUE, OPTION_TEXT, OPTION_TYPE, OPTION_TABLE, IS_DELETE FROM FORM_FIELD_DROPDOWN_OPTIONS WHERE FORM_FIELD_DROPDOWN_ID = @DropdownId";
 
     public const string UpsertDropdownOption = @"/**/
 MERGE dbo.FORM_FIELD_DROPDOWN_OPTIONS AS target
@@ -27,6 +29,7 @@ USING (
         @DropdownId     AS FORM_FIELD_DROPDOWN_ID,
         @OptionText     AS OPTION_TEXT,
         @OptionValue    AS OPTION_VALUE,
+        @OptionType     AS OPTION_TYPE,
         @OptionTable    AS OPTION_TABLE
 ) AS source
 ON target.ID = source.ID                     -- 只比對 PK
@@ -34,14 +37,16 @@ WHEN MATCHED THEN
     UPDATE SET
         OPTION_TEXT  = source.OPTION_TEXT,
         OPTION_VALUE = source.OPTION_VALUE,
+        OPTION_TYPE  = source.OPTION_TYPE,
         OPTION_TABLE = source.OPTION_TABLE,
         IS_DELETE    = 0
 WHEN NOT MATCHED THEN
-    INSERT (ID, FORM_FIELD_DROPDOWN_ID, OPTION_TEXT, OPTION_VALUE, OPTION_TABLE, IS_DELETE)
+    INSERT (ID, FORM_FIELD_DROPDOWN_ID, OPTION_TEXT, OPTION_VALUE, OPTION_TYPE, OPTION_TABLE, IS_DELETE)
     VALUES (ISNULL(source.ID, NEWID()),       -- 若 Guid.Empty → 直接 NEWID()
             source.FORM_FIELD_DROPDOWN_ID,
             source.OPTION_TEXT,
             source.OPTION_VALUE,
+            source.OPTION_TYPE,
             source.OPTION_TABLE,
             0)
 OUTPUT INSERTED.ID;                          -- 把 ID 回傳給 Dapper
@@ -105,6 +110,7 @@ OUTPUT INSERTED.ID;                          -- 把 ID 回傳給 Dapper
                     DropdownId = dropdownId,
                     OptionText = row.OptionText,
                     OptionValue = row.OptionValue,
+                    OptionType = row.OptionType,
                     OptionTable = optionTable
                 }, tx);
 
@@ -114,7 +120,8 @@ OUTPUT INSERTED.ID;                          -- 把 ID 回傳給 Dapper
                     FORM_FIELD_DROPDOWN_ID = dropdownId,
                     OPTION_TABLE = optionTable,
                     OPTION_VALUE = row.OptionValue,
-                    OPTION_TEXT = row.OptionText
+                    OPTION_TEXT = row.OptionText,
+                    OPTION_TYPE = row.OptionType
                 });
             }
 
@@ -152,6 +159,12 @@ OUTPUT INSERTED.ID;                          -- 把 ID 回傳給 Dapper
         cmd.Transaction = transaction;
 
         using var reader = cmd.ExecuteReader();
+        return ReadSqlResult(reader);
+    }
+
+    internal static (List<DropdownSqlRow> Rows, List<Dictionary<string, object?>> Preview) ReadSqlResult(
+        DbDataReader reader)
+    {
         var schema = reader.GetColumnSchema();
 
         if (schema.Count < 2)
@@ -161,9 +174,10 @@ OUTPUT INSERTED.ID;                          -- 把 ID 回傳給 Dapper
                        ?? throw new DropdownSqlSyncException("查詢結果必須包含 ID 欄位別名。");
         var nameColumn = FindColumn(schema, "NAME")
                          ?? throw new DropdownSqlSyncException("查詢結果必須包含 NAME 欄位別名。");
+        var typeColumn = FindColumn(schema, "TYPE");
 
         var rows = new List<DropdownSqlRow>();
-        var preview = new List<Dictionary<string, object>>();
+        var preview = new List<Dictionary<string, object?>>();
         var rowNumber = 0;
 
         while (reader.Read())
@@ -172,12 +186,13 @@ OUTPUT INSERTED.ID;                          -- 把 ID 回傳給 Dapper
 
             var optionValue = ReadRequiredString(reader, idColumn, rowNumber, "ID");
             var optionText = ReadRequiredString(reader, nameColumn, rowNumber, "NAME");
+            var optionType = ReadOptionalString(reader, typeColumn, rowNumber, "TYPE");
 
-            rows.Add(new DropdownSqlRow(rowNumber, optionValue, optionText));
+            rows.Add(new DropdownSqlRow(rowNumber, optionValue, optionText, optionType));
 
             if (preview.Count < 10)
             {
-                var rowPreview = new Dictionary<string, object>(schema.Count, StringComparer.OrdinalIgnoreCase);
+                var rowPreview = new Dictionary<string, object?>(schema.Count, StringComparer.OrdinalIgnoreCase);
                 foreach (var column in schema)
                 {
                     var ordinal = column.ColumnOrdinal ?? throw new DropdownSqlSyncException("查詢結果缺少欄位序號資訊。");
@@ -192,7 +207,7 @@ OUTPUT INSERTED.ID;                          -- 把 ID 回傳給 Dapper
         return (rows, preview);
     }
 
-    private static string ReadRequiredString(SqlDataReader reader, DbColumn column, int rowNumber, string columnAlias)
+    private static string ReadRequiredString(DbDataReader reader, DbColumn column, int rowNumber, string columnAlias)
     {
         var ordinal = column.ColumnOrdinal ?? throw new DropdownSqlSyncException("查詢結果缺少欄位序號資訊。");
         if (reader.IsDBNull(ordinal))
@@ -201,6 +216,33 @@ OUTPUT INSERTED.ID;                          -- 把 ID 回傳給 Dapper
         var value = Convert.ToString(reader.GetValue(ordinal))?.Trim() ?? string.Empty;
         if (value.Length == 0)
             throw new DropdownSqlSyncException($"第 {rowNumber} 筆資料的 {columnAlias} 為空字串。");
+
+        return value;
+    }
+
+    private static string? ReadOptionalString(
+        DbDataReader reader,
+        DbColumn? column,
+        int rowNumber,
+        string columnAlias)
+    {
+        if (column is null)
+            return null;
+
+        var ordinal = column.ColumnOrdinal
+                      ?? throw new DropdownSqlSyncException("查詢結果缺少欄位序號資訊。");
+        if (reader.IsDBNull(ordinal))
+            return null;
+
+        var value = Convert.ToString(reader.GetValue(ordinal))?.Trim();
+        if (string.IsNullOrWhiteSpace(value))
+            return null;
+
+        if (value.Length > MaxOptionTypeLength)
+        {
+            throw new DropdownSqlSyncException(
+                $"第 {rowNumber} 筆資料的 {columnAlias} 長度不可超過 {MaxOptionTypeLength} 個字元。");
+        }
 
         return value;
     }
@@ -219,13 +261,18 @@ OUTPUT INSERTED.ID;                          -- 把 ID 回傳給 Dapper
     private static string NormalizeOptionTable(string? table) =>
         string.IsNullOrWhiteSpace(table) ? string.Empty : table.Trim().ToLowerInvariant();
 
-    private sealed record DropdownSqlRow(int RowNumber, string OptionValue, string OptionText);
+    internal sealed record DropdownSqlRow(
+        int RowNumber,
+        string OptionValue,
+        string OptionText,
+        string? OptionType);
 
     private sealed class DropdownOptionDbRow
     {
         public Guid ID { get; set; }
         public string OPTION_VALUE { get; set; } = string.Empty;
         public string OPTION_TEXT { get; set; } = string.Empty;
+        public string? OPTION_TYPE { get; set; }
         public string? OPTION_TABLE { get; set; }
         public bool IS_DELETE { get; set; }
     }

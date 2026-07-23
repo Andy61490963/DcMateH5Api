@@ -1,4 +1,6 @@
 using System.Reflection;
+using System.Text.Json;
+using DcMateH5.Abstractions.Form.Models;
 using DcMateH5.Abstractions.Form.ViewModels;
 using Xunit;
 
@@ -6,6 +8,11 @@ namespace DcMateH5ApiTest.Form;
 
 public class FormJsonContractTests
 {
+    private static readonly JsonSerializerOptions ApiJsonOptions = new(JsonSerializerDefaults.Web)
+    {
+        PropertyNamingPolicy = null
+    };
+
     [Theory]
     [MemberData(nameof(FormContractTypes))]
     public void FormContracts_KeepPublicJsonPropertyNames(Type contractType, string[] expectedPropertyNames)
@@ -102,7 +109,40 @@ public class FormJsonContractTests
 
         yield return Contract<DropdownOptionItemViewModel>(
             "OptionText",
-            "OptionValue");
+            "OptionValue",
+            "OptionType");
+
+        yield return Contract<FormFieldDropdownOptionsDto>(
+            "ID",
+            "FORM_FIELD_DROPDOWN_ID",
+            "OPTION_TABLE",
+            "OPTION_VALUE",
+            "OPTION_TEXT",
+            "OPTION_TYPE",
+            "IS_DELETE");
+    }
+
+    [Fact]
+    public void DropdownOptionItem_AcceptsCamelCaseOptionType()
+    {
+        const string json =
+            """{"optionText":"Enabled","optionValue":"Y","optionType":"Status"}""";
+
+        var option = JsonSerializer.Deserialize<DropdownOptionItemViewModel>(json, ApiJsonOptions);
+
+        Assert.NotNull(option);
+        Assert.Equal("Status", option.OptionType);
+    }
+
+    [Fact]
+    public void DropdownOptionResponse_UsesUppercaseOptionType()
+    {
+        var json = JsonSerializer.Serialize(
+            new FormFieldDropdownOptionsDto { OPTION_TYPE = "Status" },
+            ApiJsonOptions);
+
+        Assert.Contains("\"OPTION_TYPE\":\"Status\"", json);
+        Assert.DoesNotContain("\"optionType\"", json);
     }
 
     private static object[] Contract<T>(params string[] propertyNames)
